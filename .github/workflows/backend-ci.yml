@@ -1,0 +1,17 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # Placeholder gate. This only proves the backend parses; it installs no
+  # dependencies and runs no tests. Replace it with an install-and-pytest job
+  # once backend/tests/ collects cases -- `pytest` exits non-zero when it
+  # collects nothing, so it cannot be added before then.
+  syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m compileall -q backend
