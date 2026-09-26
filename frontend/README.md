@@ -34,6 +34,8 @@ flutter run --dart-define=API_BASE_URL=https://api.example.org
 
 There is no hardcoded host. `AppConfig` reads `API_BASE_URL` from
 `--dart-define`, falling back to `http://10.0.2.2:8000` for local development.
+`--dart-define` is resolved by the compiler, so switching environments means
+rebuilding rather than flipping a setting at runtime.
 
 `10.0.2.2` is the Android emulator's alias for the host machine's loopback.
 `localhost` inside the emulator is the emulator itself, which is the single most
@@ -52,7 +54,7 @@ flutter test --coverage
 ```
 
 `flutter analyze` is the gate CI enforces. It runs `very_good_analysis`, with
-three rules relaxed in `analysis_options.yaml` and the reasoning recorded there.
+four rules relaxed in `analysis_options.yaml` and the reasoning recorded there.
 
 ## Layout
 
@@ -70,6 +72,35 @@ lib/
 `core/` must never import from `features/`. A feature must not import another
 feature's `presentation/` layer; cross-feature reuse goes through the owning
 feature's `data/repositories/` contract.
+
+`test/architecture/dependency_rules_test.dart` enforces those three boundaries
+by reading the source tree, so a violation fails `flutter test` rather than
+waiting for review.
+
+### The core layer
+
+| Path                | Contents                                                              |
+| ------------------- | --------------------------------------------------------------------- |
+| `config/`           | `AppConfig`: build-time configuration from `--dart-define`             |
+| `constants/`        | `AppDimens`: the spacing and radius scale                              |
+| `error/`            | `Failure`: a sealed hierarchy the UI renders instead of transport types |
+| `models/`           | Types genuinely shared by several features                             |
+| `network/`          | `buildApiClient`, the auth interceptor, and error classification       |
+| `storage/`          | `TokenStore` (keystore-backed) and `PreferencesStore` (plaintext)      |
+| `theme/`            | `AppTheme`: Material 3 themes from a provisional seed                 |
+| `utils/`            | `Validators`: shape checks that spare a round trip                     |
+| `widgets/`          | `FailureView`, `EmptyView`, `LoadingView`, `ContentWidthLimiter`       |
+
+Three conventions are worth knowing before adding to it:
+
+- **Failures, not exceptions.** `DioException` and `SocketException` stop at
+  `network/`. Everything above renders a `Failure`. The hierarchy is sealed, so
+  adding a variant is a compile error until every presentation site handles it.
+- **No business rules.** `GradingScale` and `Grade` carry no competency
+  thresholds and `Validators` carry no policy. Those rules live in the API. A
+  client-side rule that disagrees with the server is a bug, not a shortcut.
+- **Tokens never touch `shared_preferences`.** `TokenStore` is keystore-backed;
+  `PreferencesStore` is explicitly for non-sensitive values only.
 
 Tests mirror `lib/`. `test/integration/` is reserved for end-to-end runs of the
 real app.
