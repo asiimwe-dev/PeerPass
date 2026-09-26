@@ -77,6 +77,19 @@ feature's `data/repositories/` contract.
 by reading the source tree, so a violation fails `flutter test` rather than
 waiting for review.
 
+### The shell
+
+`main.dart` is the composition root and nothing else: it overrides
+`authRepositoryProvider` with the implementation to use, so swapping the
+in-memory auth for the real API is a one-line change. `app/router.dart` holds
+the routes and the redirect guard.
+
+The guard is one pure function, `_redirectFor`, that maps an auth status and the
+current location to a destination. Keeping it free of a router, a widget tree,
+and a session means the rule is testable directly. It holds the app on
+`SplashScreen` while the status is `unknown`, because a returning tutor who is
+flashed sign-in for one frame reads as being logged out.
+
 ### The core layer
 
 | Path                | Contents                                                              |
@@ -104,6 +117,14 @@ Three conventions are worth knowing before adding to it:
 
 Tests mirror `lib/`. `test/integration/` is reserved for end-to-end runs of the
 real app.
+
+### What is not built yet
+
+`features/auth/` and `features/home/` hold their data contracts, a provider, and
+a placeholder screen. Sign-in, registration, and the home content are not
+implemented, and no feature carries behaviour yet. The remaining five features
+have no directory: they are created when their first screen is written, so that
+an empty tree is never mistaken for finished work.
 
 ## Known deferrals
 
