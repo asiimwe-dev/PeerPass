@@ -20,6 +20,7 @@ os.environ.setdefault("JWT_SECRET", _SUITE_JWT_SECRET)
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import event  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncSession,
     async_sessionmaker,
@@ -40,6 +41,13 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+    """Turn on the foreign key enforcement SQLite leaves off by default."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
 @pytest.fixture
 def settings():
     """The settings built from the test environment."""
@@ -56,7 +64,14 @@ async def db_engine():
     test passing here is not proof the schema is valid on PostgreSQL. The
     migration is what proves that.
     """
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        # SQLite enforces no foreign keys unless asked per connection. Without
+        # this the ON DELETE CASCADE clauses are inert and every cascade test
+        # passes without deleting anything.
+        connect_args={"check_same_thread": False},
+    )
+    event.listen(engine.sync_engine, "connect", _enable_sqlite_foreign_keys)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     yield engine
