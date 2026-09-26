@@ -54,16 +54,35 @@ def settings():
     return get_settings()
 
 
+#: Points the whole suite at a real PostgreSQL instead of SQLite. Set it and the
+#: same tests run against the database the service actually uses:
+#:
+#:     ULEARN_TEST_DATABASE_URL=postgresql+psycopg://user@host/db pytest
+#:
+#: This is not a convenience. SQLite does not enforce `numeric(6,2)`, does not
+#: name its constraints, and stores UUIDs as strings, so a green SQLite run is
+#: not evidence the schema is valid on PostgreSQL. Running the same suite
+#: against both is what caught a `standing` column that accepted any string,
+#: which SQLite had happily reported as enforced.
+TEST_DATABASE_URL = os.environ.get("ULEARN_TEST_DATABASE_URL")
+
+
 @pytest.fixture
 async def db_engine():
-    """An in-memory SQLite engine with the schema created.
+    """An engine with the schema created, on SQLite unless overridden.
 
-    SQLite rather than the PostgreSQL the service runs on because the domain
-    tests must run in CI with no database service. The tradeoff is real and
-    worth naming: SQLite does not enforce the same types or constraints, so a
-    test passing here is not proof the schema is valid on PostgreSQL. The
-    migration is what proves that.
+    SQLite is the default because the domain tests must run in CI with no
+    database service.
     """
+    if TEST_DATABASE_URL:
+        engine = create_async_engine(TEST_DATABASE_URL)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.drop_all)
+            await connection.run_sync(Base.metadata.create_all)
+        yield engine
+        await engine.dispose()
+        return
+
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         # SQLite enforces no foreign keys unless asked per connection. Without

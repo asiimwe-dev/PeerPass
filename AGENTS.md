@@ -101,6 +101,20 @@ cd backend
 pytest
 ```
 
+The suite runs on in-memory SQLite by default and must stay runnable that way,
+since CI has no database service for the fast job. It also runs against real
+PostgreSQL, which is the only thing that actually proves the schema:
+
+```bash
+cd backend
+ULEARN_TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/scratch_db pytest
+```
+
+That run drops and recreates the schema, so it must never be pointed at a
+database holding real data. Any change to a model, a constraint, or a migration
+needs both runs: SQLite will not catch a missing `numeric` scale or an
+unconstrained enum column.
+
 Frontend:
 
 ```bash

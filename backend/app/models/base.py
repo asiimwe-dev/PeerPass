@@ -22,16 +22,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.security import new_public_id
 
-# Explicit naming so a renamed constraint is applied by Alembic as a rename
-# rather than a drop-and-recreate, which would drop the data with it.
-NAMING_CONVENTION = {
-    "ix": "ix_%(column_0_label)s",
-    "uq": "uq_%(table_name)s_%(column_0_name)s",
-    "ck": "ck_%(table_name)s_%(constraint_name)s",
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-    "pk": "pk_%(table_name)s",
-}
-
 
 def public_id_column() -> Mapped[uuid.UUID]:
     """The client-facing identifier.
@@ -62,15 +52,23 @@ def enum_column(enum_type: type[enum.Enum], *, name: str) -> Enum:
       Without it the database holds the Python identifier, so renaming a member
       silently rewrites stored data and the column stops matching the wire
       format the client already parses.
-    - `native_enum=False` stores a VARCHAR with a CHECK constraint instead of a
-      PostgreSQL enum type. A native enum cannot be given a new value without a
-      migration that rewrites the type, which is a poor trade for a column that
-      will grow a handful of states.
+    - `native_enum=False` stores a VARCHAR instead of a PostgreSQL enum type. A
+      native enum cannot be given a new value without a migration that rewrites
+      the type, which is a poor trade for a column that will grow a handful of
+      states.
+    - `create_constraint=True` is what makes the VARCHAR safe. It is the flag
+      that emits `CHECK (col IN (...))`, and it defaults to False, so leaving it
+      out yields a bare VARCHAR that will happily store a value no enum member
+      has. That was the case until a schema check on real PostgreSQL accepted
+      `standing = 'wizard'`. The constraint also means a bad value is rejected by
+      a raw SQL insert, a data fix, or anything else that does not go through
+      the ORM.
     """
     return Enum(
         enum_type,
         name=name,
         native_enum=False,
+        create_constraint=True,
         values_callable=lambda members: [member.value for member in members],
         validate_strings=True,
         length=32,
@@ -98,4 +96,4 @@ class TimestampMixin:
     )
 
 
-__all__ = ["NAMING_CONVENTION", "TimestampMixin", "enum_column", "public_id_column"]
+__all__ = ["TimestampMixin", "enum_column", "public_id_column"]

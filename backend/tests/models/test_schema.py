@@ -116,17 +116,43 @@ class TestEnums:
         raw = await db_session.execute(text("SELECT role FROM user_roles"))
         assert raw.all() == [("tutor",)]
 
-    async def test_unknown_enum_value_is_rejected(
+    async def test_unknown_enum_value_is_rejected_by_the_database(
         self, db_session: AsyncSession
     ) -> None:
-        with pytest.raises(Exception):  # noqa: B017, RUF100 - driver-specific type
-            db_session.add(
-                TutorProfile(
-                    user_id=uuid.uuid4(),
-                    standing="wizard",  # type: ignore[arg-type]
-                )
+        """Rejected by the database, not just by the ORM.
+
+        Worth insisting on: the ORM would refuse this value anyway, so a test that
+        only inserted through the ORM would pass whether or not the column had a
+        constraint. A data fix, a reporting query, or any other raw SQL would not
+        get that protection, and an unrecognised `standing` silently fails every
+        tutor filter that reads it.
+        """
+        user = _user()
+        db_session.add(user)
+        await db_session.flush()
+
+        with pytest.raises(IntegrityError):
+            await db_session.execute(
+                text(
+                    "INSERT INTO tutor_profiles "
+                    "(id, public_id, user_id, standing, completed_sessions, "
+                    "certified_minutes, rating_total, rating_count, "
+                    "created_at, updated_at) "
+                    "VALUES (:id, :public_id, :user_id, 'wizard', 0, 0, 0, 0, "
+                    ":now, :now)"
+                ),
+                # Bound as strings: a raw text() statement skips SQLAlchemy's
+                # type coercion, and aiosqlite cannot bind a UUID object.
+                # PostgreSQL coerces the literal to the column type on insert.
+                {
+                    "id": str(uuid.uuid4()),
+                    "public_id": str(uuid.uuid4()),
+                    "user_id": str(user.id),
+                    # ISO text rather than a datetime object, which trips
+                    # aiosqlite's deprecated default adapter.
+                    "now": datetime.now(UTC).isoformat(),
+                },
             )
-            await db_session.commit()
 
 
 class TestGradingScale:

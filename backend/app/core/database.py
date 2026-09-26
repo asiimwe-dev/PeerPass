@@ -13,6 +13,7 @@ declarative base.
 from collections.abc import AsyncIterator
 from functools import lru_cache
 
+from sqlalchemy import MetaData
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -23,9 +24,31 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import get_settings
 
+# Deterministic names for everything the schema creates without an explicit one.
+# Two reasons this is not optional decoration:
+#
+# - Alembic detects a renamed constraint by name. A constraint whose name is
+#   generated afresh on every migration looks like a drop plus an add, and a drop
+#   of a constraint on a large table takes a lock and, for a unique index, drops
+#   the guarantee for its duration.
+# - A foreign key with no name is an anonymous constraint. Nothing can alter or
+#   drop it later, and `alembic` has nothing to match on.
+#
+# It lives here rather than in `app.models` because it configures the metadata
+# that `Base` owns, and core must not import from models.
+NAMING_CONVENTION = {
+    "ix": "ix_%(table_name)s_%(column_0_name)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
 
 class Base(DeclarativeBase):
     """Declarative base for every ORM model."""
+
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 @lru_cache(maxsize=1)

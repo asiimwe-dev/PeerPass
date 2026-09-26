@@ -480,15 +480,26 @@ Fixes #57
 ### Running Tests
 
 ```bash
-# Backend
+# Backend, on in-memory SQLite
 pytest
 pytest --cov=app
+
+# The same suite against real PostgreSQL. Worth running before any change to a
+# model, a constraint, or a migration. SQLite does not enforce numeric precision,
+# does not apply the constraint naming convention, and treats an enum column as
+# an unconstrained VARCHAR, so a green SQLite run is not evidence the schema is
+# valid where it will run. CI runs both.
+cd backend
+ULEARN_TEST_DATABASE_URL=postgresql+psycopg://ulearn:ulearn@localhost:5432/ulearn_test pytest
 
 # Frontend
 flutter test
 flutter test --coverage
 flutter test --name="matching"
 ```
+
+The PostgreSQL run drops and recreates the schema in the target database, so point
+it at a scratch database. It must never be given a URL holding real data.
 
 ---
 
