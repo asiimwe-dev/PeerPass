@@ -125,5 +125,12 @@ class Grade(Base, TimestampMixin):
     course_units: Mapped[list["CourseUnit"]] = relationship(back_populates="grade")
     grading_scale: Mapped["GradingScale"] = relationship(back_populates="grades")
 
+    #: Public ids of referenced resources, for response schemas. See the note in
+    #: `app.schemas.base` for why these exist rather than the raw key columns.
+
+    @property
+    def grading_scale_public_id(self) -> uuid.UUID:
+        return self.grading_scale.public_id
+
     def __repr__(self) -> str:
         return f"<Grade {self.label} {self.grade_points}/{self.max_points}>"

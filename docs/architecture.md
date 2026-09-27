@@ -131,6 +131,55 @@ Primary tables (see Section 5 for details):
 | `sessions`          | A tutoring session that actually took place                       |
 | `ratings`           | Post-session feedback that drives tutor promotion / demotion     |
 
+### 4.4 Transport Schemas (`backend/app/schemas/`)
+
+Pydantic v2 models, separated from the ORM, so the wire contract can change
+without a migration and the tables can change without a client release.
+
+Two base types carry the whole policy:
+
+- `RequestSchema` — `extra="forbid"`. A misspelled field is an error rather than
+  a silent drop, because a `rating` sent as `score` would otherwise create a
+  rating with no score.
+- `OrmSchema` — `from_attributes`, `frozen`, `populate_by_name`.
+
+**Internal keys never reach the wire.** A response field named `id` is populated
+from the model's `public_id` through `validation_alias`, and a referenced
+resource is named the same way:
+
+| Response field          | Read from                      |
+| ----------------------- | ------------------------------ |
+| `id`                    | `public_id`                    |
+| `course_unit_id`        | `course_unit_public_id`        |
+| `university_id`         | `university_public_id`         |
+| `grading_scale_id`      | `grading_scale_public_id`      |
+| `user_id` (tutor)       | `user.public_id`               |
+
+This is not a convention to remember, it is a test:
+`backend/tests/schemas/test_public_id_projection.py` resolves every alias
+against the real mapped class and fails on a `*_id` field that has no alias —
+which is the shape of a primary key quietly shipping to a client.
+
+**Not every response can be built straight from a query.** These fields need a
+service, and the test file lists them so each one is a deliberate edit:
+
+| Field                  | Why                                                        |
+| ---------------------- | ---------------------------------------------------------- |
+| `UserResponse.roles`   | `user_roles` is an association table, not a relationship   |
+| `SessionResponse.is_rated` | `Session.is_rated(db)` is an async query hook           |
+| `CompetencyResponse.meets_threshold` | A method taking the threshold, not a field |
+| `CompetencyResponse.grade_points`    | Computed in the service                 |
+
+**Decimals cross the wire as JSON strings.** Pydantic's default, kept
+deliberately: a JSON number is a double in Dart, and a double cannot represent
+every `numeric(6,2)` value, so `rating_total` is `"18.00"` and not `18.0`. The
+client parses it for display; every threshold comparison happens server-side
+against the `Decimal`.
+
+**Trimming is per field, not per model.** `app.schemas.base.Trimmed` is applied
+to names, topics, and feedback, and deliberately *not* to passwords, whose
+leading and trailing spaces are part of the secret.
+
 ---
 
 ## 5. Data Model
@@ -280,7 +329,7 @@ threshold, whatever grade it carries: a grade is a claim until checked.
 - `id` (PK)
 - `tutee_id` (FK → users), `course_unit_id` (FK → course_units)
 - `topic`, `description`
-- `status` — `open` | `matched` | `cancelled` | `expired`
+- `status` — `open` | `matched` | `withdrawn` | `expired`
 - `matched_tutor_id` (FK → users, optional)
 
 **Sessions**

@@ -4,5 +4,6 @@ sqlalchemy[asyncio]
 alembic
 psycopg[binary]
 pydantic-settings
+email-validator
 pyjwt[crypto]
 pytest

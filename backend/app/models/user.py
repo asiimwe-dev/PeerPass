@@ -111,6 +111,11 @@ class User(Base, TimestampMixin):
         back_populates="user", passive_deletes=True
     )
 
+    @property
+    def university_public_id(self) -> uuid.UUID | None:
+        """`None` when the user has not chosen a university yet."""
+        return self.university.public_id if self.university else None
+
     def __repr__(self) -> str:
         return f"<User {self.email}>"
 

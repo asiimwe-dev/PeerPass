@@ -92,6 +92,30 @@ class HelpRequest(Base, TimestampMixin):
     def __repr__(self) -> str:
         return f"<HelpRequest {self.public_id} {self.status}>"
 
+    #: Public ids of the resources this row references.
+    #:
+    #: A response schema that declared `course_unit_id` without an alias would
+    #: have `from_attributes` hand it the internal primary key, which looks
+    #: plausible in a test and leaks the key in production. These exist so the
+    #: public id is what the field can only ever receive.
+    #:
+    #: They read a relationship, so the service must eager-load it. On an async
+    #: session a lazy load raises `MissingGreenlet` rather than quietly costing a
+    #: query, which is the behaviour wanted here: a missing `selectinload` should
+    #: be a crash, not an N+1 that only shows up under load.
+
+    @property
+    def tutee_public_id(self) -> uuid.UUID:
+        return self.tutee.public_id
+
+    @property
+    def course_unit_public_id(self) -> uuid.UUID:
+        return self.course_unit.public_id
+
+    @property
+    def matched_tutor_public_id(self) -> uuid.UUID | None:
+        return self.matched_tutor.public_id if self.matched_tutor else None
+
 
 class Session(Base, TimestampMixin):
     """A tutoring session between a student and a tutor.
@@ -196,3 +220,31 @@ class Session(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<Session {self.public_id} {self.status}>"
+
+    #: Public ids of the resources this row references.
+    #:
+    #: A response schema that declared `course_unit_id` without an alias would
+    #: have `from_attributes` hand it the internal primary key, which looks
+    #: plausible in a test and leaks the key in production. These exist so the
+    #: public id is what the field can only ever receive.
+    #:
+    #: They read a relationship, so the service must eager-load it. On an async
+    #: session a lazy load raises `MissingGreenlet` rather than quietly costing a
+    #: query, which is the behaviour wanted here: a missing `selectinload` should
+    #: be a crash, not an N+1 that only shows up under load.
+
+    @property
+    def tutee_public_id(self) -> uuid.UUID:
+        return self.tutee.public_id
+
+    @property
+    def tutor_public_id(self) -> uuid.UUID:
+        return self.tutor.public_id
+
+    @property
+    def course_unit_public_id(self) -> uuid.UUID:
+        return self.course_unit.public_id
+
+    @property
+    def help_request_public_id(self) -> uuid.UUID | None:
+        return self.help_request.public_id if self.help_request else None

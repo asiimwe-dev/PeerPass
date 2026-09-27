@@ -45,6 +45,15 @@ class University(Base, TimestampMixin):
         back_populates="universities"
     )
 
+    @property
+    def grading_scale_public_id(self) -> uuid.UUID | None:
+        """The scale's public id, for `UniversityResponse`.
+
+        Reached through the relationship rather than off `grading_scale_id`, so
+        the response cannot pick up the raw key by accident.
+        """
+        return self.grading_scale.public_id if self.grading_scale else None
+
     def __repr__(self) -> str:
         return f"<University {self.name}>"
 
@@ -135,6 +144,21 @@ class CourseUnit(Base, TimestampMixin):
     competencies: Mapped[list["Competency"]] = relationship(
         back_populates="course_unit", passive_deletes=True
     )
+
+    #: Public ids of referenced resources, for response schemas. See the note in
+    #: `app.schemas.base` for why these exist rather than the raw key columns.
+
+    @property
+    def university_public_id(self) -> uuid.UUID:
+        return self.university.public_id
+
+    @property
+    def subject_public_id(self) -> uuid.UUID | None:
+        return self.subject.public_id if self.subject else None
+
+    @property
+    def grade_public_id(self) -> uuid.UUID | None:
+        return self.grade.public_id if self.grade else None
 
     def __repr__(self) -> str:
         return f"<CourseUnit {self.code}>"

@@ -135,6 +135,30 @@ class Competency(Base, TimestampMixin):
             return False
         return self.grade.grade_points >= minimum_points  # type: ignore[operator]
 
+    #: Public ids of the resources this row references.
+    #:
+    #: A response schema that declared `course_unit_id` without an alias would
+    #: have `from_attributes` hand it the internal primary key, which looks
+    #: plausible in a test and leaks the key in production. These exist so the
+    #: public id is what the field can only ever receive.
+    #:
+    #: They read a relationship, so the service must eager-load it. On an async
+    #: session a lazy load raises `MissingGreenlet` rather than quietly costing a
+    #: query, which is the behaviour wanted here: a missing `selectinload` should
+    #: be a crash, not an N+1 that only shows up under load.
+
+    @property
+    def user_public_id(self) -> uuid.UUID:
+        return self.user.public_id
+
+    @property
+    def course_unit_public_id(self) -> uuid.UUID:
+        return self.course_unit.public_id
+
+    @property
+    def grade_public_id(self) -> uuid.UUID:
+        return self.grade.public_id
+
     def __repr__(self) -> str:
         return (
             f"<Competency user={self.user_id} unit={self.course_unit_id} {self.status}>"

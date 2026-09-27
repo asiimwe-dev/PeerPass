@@ -82,5 +82,21 @@ class Rating(Base, TimestampMixin):
     rater: Mapped["User"] = relationship(foreign_keys=[rater_id])
     ratee: Mapped["User"] = relationship(foreign_keys=[ratee_id])
 
+    #: Public id of the user whose rating this is. A response that exposed
+    #: `rater_id` straight from the column would leak an internal key, and a
+    #: profile listing would then be built from primary keys.
+
+    @property
+    def session_public_id(self) -> uuid.UUID:
+        return self.session.public_id
+
+    @property
+    def rater_public_id(self) -> uuid.UUID:
+        return self.rater.public_id
+
+    @property
+    def ratee_public_id(self) -> uuid.UUID:
+        return self.ratee.public_id
+
     def __repr__(self) -> str:
         return f"<Rating {self.score} by {self.rater_id}>"
