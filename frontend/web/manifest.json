@@ -1,11 +1,11 @@
 {
-    "name": "ulearn",
-    "short_name": "ulearn",
+    "name": "Ulearn",
+    "short_name": "Ulearn",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Peer-to-peer academic support for university students.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,8 +1,9 @@
 fastapi
 uvicorn[standard]
-sqlalchemy
+sqlalchemy[asyncio]
 alembic
 psycopg[binary]
 pydantic-settings
-python-jose[cryptography]
+email-validator
+pyjwt[crypto]
 pytest

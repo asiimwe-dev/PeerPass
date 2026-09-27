@@ -1,8 +1,11 @@
 # =========================
 # Ulearn - Root .gitignore
 # =========================
-# Ignore github actions for now
-.github/
+# ---------- Reference-only trees ----------
+# legacy/ is a pre-Flutter-scaffold layout sketch. It has no pubspec.yaml and
+# cannot be built, so it is intentionally never tracked. Declared explicitly so
+# the exclusion does not depend on the Python `lib/` rule further down.
+legacy/
 
 # ---------- OS generated ----------
 .DS_Store
@@ -47,7 +50,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Anchored to the repository root. An unanchored `lib/` also matched the Dart
+# client directories, which is why the `!frontend/lib` negations below exist.
+/lib/
 lib64/
 parts/
 sdist/
