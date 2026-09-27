@@ -1,121 +1,244 @@
-# Ulearn contributor and agent guide
+# Ulearn — Agent & Contributor Guide
 
-## Project context
+This file is the **source of truth** for how code is written in this repository.  
+Any agent (or human) working here must follow it. Prefer a smaller, correct change over a large, incomplete one.
 
-Ulearn is a mobile-first peer tutoring network for university students. The
-product connects tutees with verified peer tutors for focused academic
-interventions, records completed sessions, and tracks tutor incentives.
+---
 
-Before changing behavior, read:
+## 1. Project context
 
-- `README.md` for product scope and local setup.
-- `docs/Ulearn_Research_Document.md` for the problem, stakeholders, and pilot
-  assumptions.
-- `docs/architecture.md` for system boundaries, data model, matching, and
-  validation rules.
-- `docs/Contribution.md` for workflow, standards, and review requirements.
+Ulearn is a mobile-first peer tutoring network for university students. It matches tutees with verified peer tutors, records sessions, and tracks tutor standing through ratings.
 
-## Repository boundaries
+**Read before changing behavior:**
 
-- `frontend/` is the Flutter mobile client. Keep it feature-first and
-  low-bandwidth friendly.
-- `backend/` is the FastAPI service. Keep HTTP concerns in `app/api`, domain
-  logic in `app/services`, persistence in `app/models`, and transport types in
-  `app/schemas`.
-- `backend/tests/` contains backend unit and integration tests.
-- `frontend/test/` mirrors `frontend/lib/`, with `test/integration/` reserved
-  for end-to-end runs of the real app.
-- `docs/` contains architecture and project documentation.
+| Document               | Why it matters                                      |
+| ---------------------- | --------------------------------------------------- |
+| `README.md`            | Product scope and local setup                       |
+| `docs/architecture.md` | System boundaries, data model, matching, validation |
+| `docs/MVP_Brief.md`    | What is in / out of the current MVP                 |
+| `docs/CONTRIBUTING.md` | Workflow, standards, review rules                   |
 
-The canonical client directory is `frontend/`. The `legacy/` directory is a
-reference-only copy of an earlier layout attempt: it is not a buildable Flutter
-project, it has no `pubspec.yaml`, and it is intentionally excluded from version
-control. Do not add new code there, and do not treat it as a source of truth for
-the current layout.
+Do not invent product rules. Matching, grade gates, rating thresholds, and role transitions are defined in architecture and the backend — not in Flutter widgets.
 
-## Frontend architecture
+---
 
-`frontend/lib/` is feature-first with two layers per feature. A `domain/` layer is
-deliberately absent: all matching, validation, grade, and rating rules are owned by
-the backend, so a client-side domain layer would hold pass-through types with no
-logic in it.
+## 2. Agent team model (how work is run)
+
+Treat the agents on this project as a **small engineering team**, not a single chat that does everything.
+
+### Roles
+
+| Role                           | Who                                                                     | Responsibility                                                                                                                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Lead engineer (main model)** | Primary agent in the session                                            | Owns the outcome. Plans, decides architecture, implements critical paths, reviews delegated work, runs final verification. Remains accountable for every change that lands.                  |
+| **Specialist / sub-agents**    | Secondary agents (cheaper or narrower models, or parallel sub-sessions) | Execute bounded tasks: docs, boilerplate, repetitive refactors, test scaffolding, formatting, research of existing patterns. They do **not** set product policy or change domain invariants. |
+
+### Lead engineer rules
+
+1. **You are the brain.** You hold product context, architecture, and the definition of done. Sub-agents do not replace your judgment.
+2. **Delegate to protect context.** Do not burn the main context window on low-leverage work. Push to sub-agents:
+   - Documentation drafts and doc-only edits
+   - Boilerplate (empty feature folders, model stubs, test shells)
+   - Mechanical renames / formatting
+   - “Find how X is done in this repo” research summaries
+   - Generating first-pass tests from a clear spec you wrote
+3. **Keep hard problems on the main agent.** Matching logic, validation/grade gates, rating → verification transitions, auth/security, schema changes, and any cross-feature design stay with the lead.
+4. **Brief every sub-agent.** A sub-agent gets a tight brief: goal, files allowed to touch, constraints from this guide, and what “done” means. No open-ended “improve the app.”
+5. **Review before merge into the main line of work.** Sub-agent output is a draft. The lead checks it against architecture, invariants, and tests before accepting it.
+6. **One source of truth.** Sub-agents must not invent new folder layouts, state-management patterns, or product rules. If unsure, they stop and the lead decides.
+
+### What to delegate vs keep
+
+| Delegate (sub-agent)                       | Keep on lead (main agent)              |
+| ------------------------------------------ | -------------------------------------- |
+| `docs/` wording updates                    | Matching / competency / rating rules   |
+| README / CONTRIBUTING polish               | API contract and schema design         |
+| Feature folder scaffolding                 | Session lifecycle and role transitions |
+| Repetitive model/DTO stubs                 | Security, auth, data privacy paths     |
+| Test file shells from a written cases list | Final integration of a feature slice   |
+| Locating existing patterns in the repo     | Cross-feature design decisions         |
+
+### Context discipline
+
+- Prefer a short plan + delegated tasks over one long monologue that touches every layer.
+- After a large delegated batch, re-state the current goal and open risks in the main thread so the lead does not drift.
+- If the main agent’s context is getting noisy, summarize decisions into a short note (or update the relevant doc) and continue from that — do not keep improvising on a polluted thread.
+
+The lead remains **responsible for everything** that ships, including work produced by sub-agents.
+
+---
+
+## 3. Repository boundaries
+
+| Path             | Role                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| `frontend/`      | Flutter client. Feature-first. Canonical app.                                                               |
+| `backend/`       | FastAPI service. HTTP in `api`, logic in `services`, persistence in `models`, transport types in `schemas`. |
+| `backend/tests/` | Backend unit and integration tests                                                                          |
+| `frontend/test/` | Mirrors `frontend/lib/`; `test/integration/` for end-to-end                                                 |
+| `docs/`          | Architecture and project documentation                                                                      |
+| `legacy/`        | **Reference only.** Not buildable. Do not add code here.                                                    |
+
+---
+
+## 4. Frontend architecture (strict)
 
 ```text
 lib/
-├── main.dart            # ProviderScope and runApp only
-├── app/                 # MaterialApp.router, GoRouter, auth redirect guard
-├── core/                # shared foundations, no feature knowledge
-└── features/<name>/     # data/ and presentation/
+├── main.dart              # ProviderScope + runApp only
+├── app/                   # MaterialApp.router, GoRouter, auth redirect
+├── core/                  # Shared foundations — no feature knowledge
+└── features/<name>/       # data/ + presentation/ only
 ```
 
-Within a feature, each directory has one job:
+### Per-feature layout
 
-| Path                    | Role                                                     |
-| ----------------------- | -------------------------------------------------------- |
-| `data/models/`          | Wire DTOs for that feature's endpoints                   |
-| `data/datasources/`     | Remote and in-memory fake data sources                   |
-| `data/repositories/`    | The abstract contract, plus its implementation           |
-| `presentation/`         | Screens, widgets, and Riverpod providers                 |
+| Path                 | Role                                         |
+| -------------------- | -------------------------------------------- |
+| `data/models/`       | Wire DTOs for this feature’s endpoints       |
+| `data/datasources/`  | Remote (and in-memory fake) data sources     |
+| `data/repositories/` | Abstract contract **and** its implementation |
+| `presentation/`      | Screens, widgets, Riverpod providers         |
 
-`core/models/` holds domain types genuinely shared by several features. Prefer a
-new type in `core/models/` over a `shared/` directory, which has no enforceable
-scope and becomes a dumping ground.
+### Hard rules
 
-Dependency direction is strict:
+- **No client-side domain layer.** Matching, validation, grades, and ratings are owned by the backend. Client “domain” types would be pass-through noise.
+- Shared types that several features need live in `core/models/` — not a loose `shared/` dumping ground.
+- `core/` must **never** import from `features/`.
+- A feature must **not** import another feature’s `presentation/`. Cross-feature reuse goes through the owning feature’s repository contract only.
+- Business rules do **not** belong in widgets, providers that only format UI, or route handlers.
 
-- `core/` must never import from `features/`.
-- `features/` may import from `core/`.
-- A feature must not import another feature's `presentation/` layer. Cross-feature
-  reuse goes through the owning feature's `data/repositories/` contract only.
+---
 
-## Domain invariants
+## 5. Backend architecture (strict)
 
-- Tutor matching must consult validation and competency status before proposing
-  a tutor.
-- A tutor competency requires a verified B+ or higher unless an explicitly
-  documented portfolio/manual override applies.
-- Completed sessions require post-session ratings.
-- Session records are the source for tutor hours and certificate eligibility.
-- Academic records and credentials are sensitive: use environment variables for
-  secrets, explicit consent for academic data, and HTTPS at runtime.
+| Layer           | Responsibility                                           |
+| --------------- | -------------------------------------------------------- |
+| `app/api/`      | HTTP routes, dependency injection, status codes          |
+| `app/schemas/`  | Pydantic request/response models                         |
+| `app/services/` | Business logic (matching, validation, sessions, ratings) |
+| `app/models/`   | SQLAlchemy ORM                                           |
+| `app/core/`     | Config, security, database session, exceptions           |
 
-## Implementation standards
+Do not put matching or grade logic in route handlers. Do not put HTTP concerns in services.
 
-- Preserve the layered architecture; do not move business rules into Flutter
-  widgets or route handlers.
-- Use strong typing and narrow exception handling. Do not silently swallow
-  validation, authorization, or persistence errors.
-- Use snake_case for Python and Dart files, PascalCase for classes, camelCase
-  for methods and variables, and UPPER_SNAKE_CASE for constants.
-- Add focused tests for changed behavior, especially matching constraints,
-  grade boundaries, rating thresholds, and session transitions.
-- Update the relevant architecture or API documentation when a boundary or
-  public behavior changes.
+---
 
-## Validation commands
+## 6. Domain invariants (non-negotiable)
 
-Backend:
+These are product rules. Breaking them is a bug, not a style issue.
+
+1. **Matching** must only propose tutors who pass competency + status checks for that unit.
+2. **Competency** requires a declared grade of **B+ or higher** (unless an explicitly documented portfolio/manual override exists — not in MVP by default).
+3. New tutors start as **Provisional**; **Verified** is earned via ratings, not self-claim.
+4. A completed session **requires** a post-session rating before the quality loop is considered done.
+5. Session records are the source of truth for hours and future certificate eligibility.
+6. Academic data is sensitive: secrets only via environment variables, explicit consent where required, HTTPS in real deployments.
+
+---
+
+## 7. How agents must work
+
+The main agent operates as **lead engineer** (see §2). Plan on the main thread; delegate low-leverage work; keep critical logic and final review on the lead.
+
+### Plan before large edits
+
+For any change that touches more than ~2–3 files or changes behavior:
+
+1. State the goal in one sentence.
+2. List the files you will touch.
+3. Note which invariants or tests apply.
+4. Decide what the lead keeps vs what a sub-agent can draft.
+5. Only then implement.
+
+Do not “explore by rewriting.” Read the existing pattern in a neighboring feature and match it.
+
+### Prefer small, verifiable steps
+
+- One concern per change set (one feature slice, one bug, one refactor).
+- After each meaningful step: code should analyze clean and relevant tests should pass.
+- Do not accumulate a large unfinished pile of files and “fix it at the end.”
+
+### Match existing patterns
+
+- Copy structure from an existing feature that already works (auth, matching, sessions).
+- Same naming, same folder roles, same error-handling style.
+- Do not introduce a new state-management approach, folder convention, or HTTP client pattern without an explicit decision recorded in docs.
+
+### Definition of done (every feature / PR-sized change)
+
+A change is **not done** until all of the following are true:
+
+- [ ] Behavior matches the MVP brief and architecture rules above
+- [ ] Types are strong; no `dynamic` / untyped escape hatches without a comment
+- [ ] Errors are handled narrowly (validation, auth, network, not bare `catch`)
+- [ ] New or changed behavior has focused tests
+- [ ] `flutter analyze` / `pytest` (as relevant) pass
+- [ ] No drive-by refactors outside the stated goal
+- [ ] Docs updated in the **same** change if a boundary or public behavior changed
+- [ ] No secrets, `.env`, or credentials committed
+
+### Explicitly forbidden
+
+- Implementing business rules (matching, grade gates, rating thresholds) only on the client
+- Creating a parallel “domain” layer in Flutter that duplicates backend logic
+- Silent failure (empty catches, returning null where an error should surface)
+- Giant unfocused diffs (“while I was here I also…”)
+- Adding dependencies without a clear need
+- Writing to `legacy/`
+- Pushing to remote, or adding `Co-Authored-By` / attribution trailers
+- Claiming “tests pass” without running them
+
+---
+
+## 8. Implementation standards
+
+**Naming**
+
+| Kind                | Convention                                |
+| ------------------- | ----------------------------------------- |
+| Dart / Python files | `snake_case`                              |
+| Classes             | `PascalCase`                              |
+| Methods / variables | `camelCase` (Dart), `snake_case` (Python) |
+| Constants           | `UPPER_SNAKE_CASE`                        |
+
+**Quality**
+
+- Prefer explicit types over inference where it helps readability at boundaries.
+- Prefer small pure functions in services over god-objects.
+- UI should be dumb: display state, emit intents; logic lives in providers calling repositories, which call the API.
+- Comments explain **why**, not what the next line obviously does.
+
+**Tests that matter most**
+
+- Matching eligibility (wrong unit, low grade, provisional vs verified)
+- Grade boundaries (B+ in, B out)
+- Rating thresholds and Provisional → Verified transitions
+- Session status transitions (requested → accepted → completed → rated)
+
+---
+
+## 9. Validation commands
+
+Run these before considering work complete.
+
+**Backend**
 
 ```bash
 cd backend
 pytest
 ```
 
-The suite runs on in-memory SQLite by default and must stay runnable that way,
-since CI has no database service for the fast job. It also runs against real
-PostgreSQL, which is the only thing that actually proves the schema:
+Default suite uses in-memory SQLite and must stay green that way (CI has no DB for the fast job).
+
+Schema-sensitive changes also need a real PostgreSQL run (never point this at production data):
 
 ```bash
 cd backend
 ULEARN_TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/scratch_db pytest
 ```
 
-That run drops and recreates the schema, so it must never be pointed at a
-database holding real data. Any change to a model, a constraint, or a migration
-needs both runs: SQLite will not catch a missing `numeric` scale or an
-unconstrained enum column.
-
-Frontend:
+**Frontend**
 
 ```bash
 cd frontend
@@ -123,41 +246,50 @@ flutter analyze
 flutter test
 ```
 
-## Git workflow
+Both analyze and test must be clean for frontend work.
 
-Branch naming follows `docs/Contribution.md`:
+---
 
-| Type                | Use it for                            | Example                  |
-| ------------------- | ------------------------------------- | ------------------------ |
-| `feature/`, `fix/`  | New behavior and defect fixes         | `feature/tutor-matching` |
-| `docs/`             | Documentation only                    | `docs/api-reference`     |
-| `refactor/`         | Structural change, no new behavior    | `refactor/structure-setup` |
-| `test/`             | Test additions or corrections         | `test/matching-constraints` |
-| `chore/`            | Tooling and auxiliary configuration   | `chore/initialize-alembic` |
+## 10. Git workflow
 
-Commit messages use conventional commits, restricted to these types: `feat:`,
-`fix:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, `chore:`.
+| Branch prefix | Use for                           |
+| ------------- | --------------------------------- |
+| `feature/`    | New behavior                      |
+| `fix/`        | Defect fixes                      |
+| `docs/`       | Documentation only                |
+| `refactor/`   | Structure change, no new behavior |
+| `test/`       | Tests only                        |
+| `chore/`      | Tooling / config                  |
+
+**Commits** — conventional commits only:
 
 ```text
-<type>: <subject>
-
-<body>
+feat: | fix: | docs: | style: | refactor: | perf: | test: | chore:
 ```
 
-The subject must start lowercase unless it begins with a proper noun, stay at or
-below ~50 characters, use the imperative mood, and carry no trailing period. The
-body explains the why. Keep one concern per commit and stay well under 1000
-changed lines.
+- Subject: lowercase start (unless proper noun), ≤ ~50 chars, imperative, no trailing period
+- Body: explain **why** when it is not obvious
+- One concern per commit; keep diffs reviewable
+- Commit after each complete, verifiable step
+- Update docs that the change invalidates in the **same** commit
+- **Never push.** Maintainer publishes
+- **Never** add `Co-Authored-By`, `Signed-off-by`, or other attribution trailers
 
-Rules that apply to every commit in this repository:
+Before every commit:
 
-- Commit after each complete, verifiable step, so history reads as a sequence of
-  working states rather than one large drop.
-- Update the documentation a change invalidates in the same commit, as
-  `docs/Contribution.md` requires for architecture changes.
-- Never push. Leave publishing to the maintainer.
-- Never add `Co-Authored-By`, `Signed-off-by`, or any other attribution trailer.
-  Commits are authored solely by the repository owner using the identity already
-  configured in git.
-- Before committing, run the validation commands above and confirm `git status`
-  contains only intended files.
+1. Run the relevant validation commands
+2. `git status` shows only intended files
+
+---
+
+## 11. When stuck or unsure
+
+1. Re-read `docs/architecture.md` and the relevant feature’s existing code.
+2. Prefer the smallest change that preserves invariants.
+3. If the product rule is unclear, stop and ask — do not invent matching or verification policy.
+4. Do not “make it work” by weakening a grade gate, skipping a rating, or bypassing role checks.
+
+---
+
+**Maintainers expect agents and contributors to treat this file as binding.**  
+Clean architecture + passing tests + respect for domain invariants = shippable work.
