@@ -36,6 +36,6 @@ class PreferencesStore {
   Future<void> writeLastViewedUnitId(String unitId) =>
       _preferences.setString(_lastViewedUnitKey, unitId);
 
-  static const String _seenIntroductionKey = 'ulearn.seen_introduction';
-  static const String _lastViewedUnitKey = 'ulearn.last_viewed_unit_id';
+  static const String _seenIntroductionKey = 'peerpass.seen_introduction';
+  static const String _lastViewedUnitKey = 'peerpass.last_viewed_unit_id';
 }

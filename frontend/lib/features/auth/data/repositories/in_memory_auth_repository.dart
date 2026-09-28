@@ -1,6 +1,6 @@
-import 'package:ulearn/features/auth/data/datasources/in_memory_auth_datasource.dart';
-import 'package:ulearn/features/auth/data/models/auth_session.dart';
-import 'package:ulearn/features/auth/data/repositories/auth_repository.dart';
+import 'package:peerpass/features/auth/data/datasources/in_memory_auth_datasource.dart';
+import 'package:peerpass/features/auth/data/models/auth_session.dart';
+import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 
 /// [AuthRepository] over an in-memory datasource.
 class InMemoryAuthRepository implements AuthRepository {

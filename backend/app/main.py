@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     application = FastAPI(
-        title="Ulearn API",
+        title="PeerPass API",
         version="0.1.0",
         default_response_class=JSONResponse,
         responses={

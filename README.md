@@ -1,9 +1,9 @@
-# Ulearn
+# PeerPass
 
 **A Peer-to-Peer Academic Support Network**
 
 > Dismantling the "attend lectures and fight for your life" model.  
-> Ulearn matches struggling university students with verified peer tutors for focused, stigma-free micro-interventions — reducing retake rates and academic drop-off.
+> PeerPass matches struggling university students with verified peer tutors for focused, stigma-free micro-interventions — reducing retake rates and academic drop-off.
 
 [![Flutter](https://img.shields.io/badge/Frontend-Flutter-02569B?logo=flutter)](https://flutter.dev)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -14,7 +14,7 @@
 
 ## Overview
 
-Ulearn is a localized, dynamic platform designed for Ugandan (and East African) universities. It connects students who need help on hyper-specific topics with peer tutors who have proven competency in those exact areas.
+PeerPass is a localized, dynamic platform designed for Ugandan (and East African) universities. It connects students who need help on hyper-specific topics with peer tutors who have proven competency in those exact areas.
 
 The platform operates on a **B2B / incentive-based model** backed by institutions or corporate sponsors. Students receive frictionless academic support; tutors earn verified Teaching Assistant certificates and leadership credits.
 
@@ -33,7 +33,7 @@ The platform operates on a **B2B / incentive-based model** backed by institution
 
 ## System Architecture
 
-Ulearn is built as a modular, high-performance system designed for eventual integration with institutional Learning Management Systems (LMS).
+PeerPass is built as a modular, high-performance system designed for eventual integration with institutional Learning Management Systems (LMS).
 
 | Layer        | Technology       | Purpose                                                                    |
 | ------------ | ---------------- | -------------------------------------------------------------------------- |
@@ -66,7 +66,7 @@ Ensure the following tools are installed on your local development environment:
 podman run --name p2p-postgres \
   -e POSTGRES_USER=admin \
   -e POSTGRES_PASSWORD=secret \
-  -e POSTGRES_DB=Ulearn \
+  -e POSTGRES_DB=PeerPass \
   -p 5432:5432 \
   -d postgres:latest
 ```
@@ -98,7 +98,7 @@ flutter run
 
 ## Regulatory Compliance
 
-Ulearn is engineered for institutional deployment and adheres to:
+PeerPass is engineered for institutional deployment and adheres to:
 
 - **Uganda Data Protection and Privacy Act, 2019 (DPPA)** — Explicit consent, secure storage, and registration requirements for handling sensitive academic data (transcripts & grades)
 - **Electronic Transactions Act, 2011** — Intermediary liability protections

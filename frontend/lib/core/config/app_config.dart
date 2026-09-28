@@ -31,7 +31,7 @@ class AppConfig {
     );
   }
 
-  /// Root URL of the Ulearn API, without a trailing slash.
+  /// Root URL of the PeerPass API, without a trailing slash.
   final String apiBaseUrl;
 
   /// How long to wait for a TCP connection before giving up.

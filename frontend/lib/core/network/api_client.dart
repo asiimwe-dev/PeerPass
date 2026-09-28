@@ -1,8 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:ulearn/core/config/app_config.dart';
-import 'package:ulearn/core/network/auth_interceptor.dart';
-import 'package:ulearn/core/storage/token_store.dart';
+import 'package:peerpass/core/config/app_config.dart';
+import 'package:peerpass/core/network/auth_interceptor.dart';
+import 'package:peerpass/core/storage/token_store.dart';
 
 /// Builds the configured HTTP client.
 ///

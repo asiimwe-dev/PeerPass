@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ulearn/core/constants/app_dimens.dart';
+import 'package:peerpass/core/constants/app_dimens.dart';
 
 /// Placeholder for the sign-in screen.
 ///
@@ -21,7 +21,7 @@ class SignInScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Ulearn', style: theme.textTheme.headlineMedium),
+                Text('PeerPass', style: theme.textTheme.headlineMedium),
                 const SizedBox(height: AppDimens.sm),
                 Text(
                   'Sign in is not implemented yet.',

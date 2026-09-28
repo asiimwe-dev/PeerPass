@@ -1,1 +1,1 @@
-"""Ulearn FastAPI application package."""
+"""PeerPass FastAPI application package."""

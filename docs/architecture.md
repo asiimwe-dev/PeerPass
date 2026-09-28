@@ -1,8 +1,8 @@
-# Ulearn Architecture
+# PeerPass Architecture
 
 **System Design & Technical Blueprint**
 
-> This document describes the high-level architecture, core components, data model, matching engine, and validation protocol of Ulearn — a peer-to-peer academic support network for university students.
+> This document describes the high-level architecture, core components, data model, matching engine, and validation protocol of PeerPass — a peer-to-peer academic support network for university students.
 
 **Last Updated**: September 2026 | **Status**: Active
 
@@ -10,7 +10,7 @@
 
 ## 1. Vision & Design Goals
 
-Ulearn exists to replace the “attend lectures and fight for your life” model with a reliable, stigma-free micro-intervention safety net. The architecture is shaped by the following goals:
+PeerPass exists to replace the “attend lectures and fight for your life” model with a reliable, stigma-free micro-intervention safety net. The architecture is shaped by the following goals:
 
 | Goal                        | Architectural Implication                                                           |
 | --------------------------- | ----------------------------------------------------------------------------------- |
@@ -364,7 +364,7 @@ against.
 
 ## 6. Multi-Tiered Tutor Validation Protocol
 
-A peer-to-peer system is only useful if tutors are competent. Ulearn enforces quality through three sequential gates:
+A peer-to-peer system is only useful if tutors are competent. PeerPass enforces quality through three sequential gates:
 
 ### Tier 1 — Academic Data Gate (Hard Gate)
 

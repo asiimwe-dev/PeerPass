@@ -1,6 +1,6 @@
-# Ulearn — Flutter client
+# PeerPass — Flutter client
 
-The mobile client for Ulearn, a peer-to-peer academic support network. See
+The mobile client for PeerPass, a peer-to-peer academic support network. See
 [the architecture document](../docs/architecture.md) for system boundaries and
 [the repository guide](../AGENTS.md) for contribution rules.
 
@@ -128,7 +128,7 @@ an empty tree is never mistaken for finished work.
 
 ## Known deferrals
 
-- **Application id.** `com.ulearn.app` is a placeholder pending a registered
+- **Application id.** `com.peerpass.app` is a placeholder pending a registered
   domain. It is free to change until a keystore is signed or a store listing is
   created; after that it is effectively permanent. Update
   `android/app/build.gradle.kts` (`namespace` and `applicationId`), the Kotlin

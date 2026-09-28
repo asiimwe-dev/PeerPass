@@ -15,7 +15,7 @@ jobs:
     # actually valid.
     env:
       DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-      JWT_SECRET: ulearn-ci-suite-signing-key-0123456789abcdef
+      JWT_SECRET: peerpass-ci-suite-signing-key-0123456789abcdef
       JWT_ALGORITHM: HS256
 
     steps:
@@ -59,21 +59,21 @@ jobs:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_USER: ulearn
-          POSTGRES_PASSWORD: ulearn
-          POSTGRES_DB: ulearn_test
+          POSTGRES_USER: peerpass
+          POSTGRES_PASSWORD: peerpass
+          POSTGRES_DB: peerpass_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ulearn"
+          --health-cmd "pg_isready -U peerpass"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
     env:
-      DATABASE_URL: "postgresql+psycopg://ulearn:ulearn@localhost:5432/ulearn_test"
-      ULEARN_TEST_DATABASE_URL: "postgresql+psycopg://ulearn:ulearn@localhost:5432/ulearn_test"
-      JWT_SECRET: ulearn-ci-suite-signing-key-0123456789abcdef
+      DATABASE_URL: "postgresql+psycopg://peerpass:peerpass@localhost:5432/peerpass_test"
+      PEERPASS_TEST_DATABASE_URL: "postgresql+psycopg://peerpass:peerpass@localhost:5432/peerpass_test"
+      JWT_SECRET: peerpass-ci-suite-signing-key-0123456789abcdef
       JWT_ALGORITHM: HS256
 
     steps:

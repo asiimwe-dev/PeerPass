@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ulearn/core/constants/app_dimens.dart';
+import 'package:peerpass/core/constants/app_dimens.dart';
 
 /// Placeholder for a screen whose content has not arrived yet.
 ///

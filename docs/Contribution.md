@@ -1,8 +1,8 @@
-# Contributing to Ulearn
+# Contributing to PeerPass
 
-**Professional Contribution Guidelines & Code of Conduct for the Ulearn Project**
+**Professional Contribution Guidelines & Code of Conduct for the PeerPass Project**
 
-> Complete guide for contributing code, reporting issues, and participating in the Ulearn community.  
+> Complete guide for contributing code, reporting issues, and participating in the PeerPass community.  
 > Learn our development workflow, code standards, review process, and behavioral expectations.
 
 **Last Updated**: September 2026 | **Status**: Active | **Audience**: Contributors, Developers, Peer Tutors & Maintainers
@@ -35,11 +35,11 @@
 
 ### Our Commitment
 
-We, as contributors and maintainers of **Ulearn** (a Peer-to-Peer Academic Support Network), pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
+We, as contributors and maintainers of **PeerPass** (a Peer-to-Peer Academic Support Network), pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
 
 We pledge to act and interact in ways that contribute to an open, welcoming, diverse, inclusive, and healthy community.
 
-Ulearn is dedicated to providing a safe, respectful, and professional environment where:
+PeerPass is dedicated to providing a safe, respectful, and professional environment where:
 
 - All contributors feel **safe and respected**
 - Diverse perspectives are **valued and heard**
@@ -141,14 +141,14 @@ All reports are **confidential** and investigated promptly.
 
 ```bash
 # 1. Fork the repository on GitHub
-# (Click "Fork" on the Ulearn repository)
+# (Click "Fork" on the PeerPass repository)
 
 # 2. Clone your fork
-git clone https://github.com/YOUR_USERNAME/Ulearn.git
-cd Ulearn
+git clone https://github.com/YOUR_USERNAME/PeerPass.git
+cd PeerPass
 
 # 3. Add upstream remote
-git remote add upstream https://github.com/asiimwe-dev/Ulearn.git
+git remote add upstream https://github.com/asiimwe-dev/PeerPass.git
 ```
 
 ### Step 2: Create Feature Branch
@@ -185,7 +185,7 @@ pip install -r requirements.txt
 podman run --name p2p-postgres \
   -e POSTGRES_USER=admin \
   -e POSTGRES_PASSWORD=secret \
-  -e POSTGRES_DB=Ulearn \
+  -e POSTGRES_DB=PeerPass \
   -p 5432:5432 -d postgres:latest
 
 # Apply migrations and start the server
@@ -223,7 +223,7 @@ flutter run
    Visit the project's GitHub Issues. Is your feature or bug already being worked on? Are there related discussions?
 
 2. **Review the Project Vision**  
-   Read the project README and research/proposal documents. Align your work with Ulearn's goals of reducing retake rates through verified peer tutoring.
+   Read the project README and research/proposal documents. Align your work with PeerPass's goals of reducing retake rates through verified peer tutoring.
 
 3. **Understand the Architecture**  
    Read **[Architecture](./architecture.md)**  
@@ -490,7 +490,7 @@ pytest --cov=app
 # an unconstrained VARCHAR, so a green SQLite run is not evidence the schema is
 # valid where it will run. CI runs both.
 cd backend
-ULEARN_TEST_DATABASE_URL=postgresql+psycopg://ulearn:ulearn@localhost:5432/ulearn_test pytest
+PEERPASS_TEST_DATABASE_URL=postgresql+psycopg://peerpass:peerpass@localhost:5432/peerpass_test pytest
 
 # Frontend
 flutter test
@@ -541,7 +541,7 @@ Brief, clear description of the bug.
 
 ### Feature Requests
 
-Open an issue describing the problem you want to solve, the proposed solution, and any alternatives you considered. Align requests with Ulearn’s core mission of verified, low-friction peer academic support.
+Open an issue describing the problem you want to solve, the proposed solution, and any alternatives you considered. Align requests with PeerPass’s core mission of verified, low-friction peer academic support.
 
 ---
 
@@ -565,7 +565,7 @@ Open an issue describing the problem you want to solve, the proposed solution, a
 
 ## Release & Versioning Policy
 
-Ulearn follows Semantic Versioning (`MAJOR.MINOR.PATCH`):
+PeerPass follows Semantic Versioning (`MAJOR.MINOR.PATCH`):
 
 - **MAJOR** — Incompatible API or architectural changes
 - **MINOR** — New features in a backward-compatible manner
@@ -619,7 +619,7 @@ We celebrate all contributions. Contributors are recognized in:
 
 ---
 
-**Thank you for contributing to Ulearn!**  
+**Thank you for contributing to PeerPass!**  
 Your work helps create a stigma-free academic safety net for university students and strengthens peer-supported learning across institutions.
 
 ---

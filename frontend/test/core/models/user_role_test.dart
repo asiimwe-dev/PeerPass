@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ulearn/core/models/user_role.dart';
+import 'package:peerpass/core/models/user_role.dart';
 
 void main() {
   group('UserRole.fromWire', () {

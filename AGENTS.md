@@ -1,4 +1,4 @@
-# Ulearn — Agent & Contributor Guide
+# PeerPass — Agent & Contributor Guide
 
 This file is the **source of truth** for how code is written in this repository.  
 Any agent (or human) working here must follow it. Prefer a smaller, correct change over a large, incomplete one.
@@ -7,7 +7,7 @@ Any agent (or human) working here must follow it. Prefer a smaller, correct chan
 
 ## 1. Project context
 
-Ulearn is a mobile-first peer tutoring network for university students. It matches tutees with verified peer tutors, records sessions, and tracks tutor standing through ratings.
+PeerPass is a mobile-first peer tutoring network for university students. It matches tutees with verified peer tutors, records sessions, and tracks tutor standing through ratings.
 
 **Read before changing behavior:**
 
@@ -235,7 +235,7 @@ Schema-sensitive changes also need a real PostgreSQL run (never point this at pr
 
 ```bash
 cd backend
-ULEARN_TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/scratch_db pytest
+PEERPASS_TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/scratch_db pytest
 ```
 
 **Frontend**

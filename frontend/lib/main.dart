@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ulearn/app/app.dart';
-import 'package:ulearn/features/auth/data/datasources/in_memory_auth_datasource.dart';
-import 'package:ulearn/features/auth/data/repositories/in_memory_auth_repository.dart';
-import 'package:ulearn/features/auth/presentation/providers/auth_providers.dart';
+import 'package:peerpass/app/app.dart';
+import 'package:peerpass/features/auth/data/datasources/in_memory_auth_datasource.dart';
+import 'package:peerpass/features/auth/data/repositories/in_memory_auth_repository.dart';
+import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
 
 void main() {
   runApp(
@@ -16,7 +16,7 @@ void main() {
           InMemoryAuthRepository(InMemoryAuthDatasource()),
         ),
       ],
-      child: const UlearnApp(),
+      child: const PeerPassApp(),
     ),
   );
 }

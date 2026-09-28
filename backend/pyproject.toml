@@ -1,7 +1,7 @@
 [project]
-name = "ulearn-backend"
+name = "peerpass-backend"
 version = "0.1.0"
-description = "FastAPI service for the Ulearn peer tutoring network"
+description = "FastAPI service for the PeerPass peer tutoring network"
 requires-python = ">=3.12"
 
 [tool.pytest.ini_options]

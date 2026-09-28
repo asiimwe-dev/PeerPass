@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:ulearn/app/app.dart';
-import 'package:ulearn/app/router.dart';
-import 'package:ulearn/app/splash_screen.dart';
-import 'package:ulearn/core/models/user_role.dart';
-import 'package:ulearn/core/storage/token_store.dart';
-import 'package:ulearn/features/auth/data/datasources/in_memory_auth_datasource.dart';
-import 'package:ulearn/features/auth/data/models/auth_session.dart';
-import 'package:ulearn/features/auth/data/repositories/auth_repository.dart';
-import 'package:ulearn/features/auth/data/repositories/in_memory_auth_repository.dart';
-import 'package:ulearn/features/auth/presentation/providers/auth_providers.dart';
+import 'package:peerpass/app/app.dart';
+import 'package:peerpass/app/router.dart';
+import 'package:peerpass/app/splash_screen.dart';
+import 'package:peerpass/core/models/user_role.dart';
+import 'package:peerpass/core/storage/token_store.dart';
+import 'package:peerpass/features/auth/data/datasources/in_memory_auth_datasource.dart';
+import 'package:peerpass/features/auth/data/models/auth_session.dart';
+import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
+import 'package:peerpass/features/auth/data/repositories/in_memory_auth_repository.dart';
+import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
 
 const String _signedOutText = 'Sign in is not implemented yet.';
 const String _homeText = 'Home is not implemented yet.';
@@ -64,7 +64,7 @@ void main() {
             InMemoryAuthRepository(datasource),
           ),
         ],
-        child: const UlearnApp(),
+        child: const PeerPassApp(),
       ),
     );
     await _settle(tester);
@@ -85,7 +85,7 @@ void main() {
             InMemoryAuthRepository(datasource),
           ),
         ],
-        child: const UlearnApp(),
+        child: const PeerPassApp(),
       ),
     );
     await _settle(tester);
@@ -101,7 +101,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [authRepositoryProvider.overrideWithValue(repository)],
-        child: const UlearnApp(),
+        child: const PeerPassApp(),
       ),
     );
     await tester.pump();
@@ -134,7 +134,7 @@ void main() {
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
-      UncontrolledProviderScope(container: container, child: const UlearnApp()),
+      UncontrolledProviderScope(container: container, child: const PeerPassApp()),
     );
     await _settle(tester);
     expect(find.text(_homeText), findsOneWidget);
@@ -158,7 +158,7 @@ void main() {
             InMemoryAuthRepository(datasource),
           ),
         ],
-        child: const UlearnApp(),
+        child: const PeerPassApp(),
       ),
     );
     await _settle(tester);

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:ulearn/core/error/failures.dart';
+import 'package:peerpass/core/error/failures.dart';
 
 /// Translates a transport error into a [Failure].
 ///

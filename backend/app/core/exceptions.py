@@ -38,7 +38,7 @@ class ProblemException(Exception):
     def to_problem(self, instance: str) -> dict[str, Any]:
         """The RFC 9457 document for this error."""
         problem: dict[str, Any] = {
-            "type": f"https://ulearn.app/problems/{self.code or 'error'}",
+            "type": f"https://peerpass.app/problems/{self.code or 'error'}",
             "title": self.title,
             "status": self.status_code,
             "detail": self.detail,

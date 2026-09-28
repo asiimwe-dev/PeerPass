@@ -1,5 +1,5 @@
 # =========================
-# Ulearn - Root .gitignore
+# PeerPass - Root .gitignore
 # =========================
 # ---------- Reference-only trees ----------
 # legacy/ is a pre-Flutter-scaffold layout sketch. It has no pubspec.yaml and
