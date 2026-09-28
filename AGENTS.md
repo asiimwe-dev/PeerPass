@@ -263,6 +263,8 @@ Both analyze and test must be clean for frontend work.
 
 **Commits** — conventional commits only:
 
+Make sure that for any implement, you are working on a separate branch from main, the main branch should never be used to make any changes of any kind. If a different branch does not exist create the branch and then start working.
+
 ```text
 feat: | fix: | docs: | style: | refactor: | perf: | test: | chore:
 ```
