@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:ulearn/app/splash_screen.dart';
-import 'package:ulearn/features/auth/presentation/providers/auth_providers.dart';
-import 'package:ulearn/features/auth/presentation/screens/sign_in_screen.dart';
-import 'package:ulearn/features/home/presentation/screens/home_screen.dart';
+import 'package:peerpass/app/splash_screen.dart';
+import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
+import 'package:peerpass/features/auth/presentation/screens/sign_in_screen.dart';
+import 'package:peerpass/features/home/presentation/screens/home_screen.dart';
 
 /// Every location the shell can be at.
 abstract final class AppRoutes {

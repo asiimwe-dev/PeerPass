@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ulearn/core/constants/app_dimens.dart';
+import 'package:peerpass/core/constants/app_dimens.dart';
 
 /// Shown while stored tokens are checked on cold start.
 ///
@@ -18,7 +18,7 @@ class SplashScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Ulearn', style: Theme.of(context).textTheme.headlineSmall),
+            Text('PeerPass', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: AppDimens.xl),
             const CircularProgressIndicator.adaptive(),
           ],

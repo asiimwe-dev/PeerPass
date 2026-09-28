@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ulearn/core/error/failures.dart';
-import 'package:ulearn/core/models/grading_scale.dart';
-import 'package:ulearn/core/models/university.dart';
-import 'package:ulearn/core/storage/token_store.dart';
+import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/models/grading_scale.dart';
+import 'package:peerpass/core/models/university.dart';
+import 'package:peerpass/core/storage/token_store.dart';
 
 void main() {
   group('Failure defaults', () {

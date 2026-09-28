@@ -1,4 +1,4 @@
-import 'package:ulearn/features/auth/data/models/auth_session.dart';
+import 'package:peerpass/features/auth/data/models/auth_session.dart';
 
 /// The authentication contract the rest of the client depends on.
 ///

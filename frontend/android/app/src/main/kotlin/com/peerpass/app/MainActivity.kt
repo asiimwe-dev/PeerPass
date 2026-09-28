@@ -1,4 +1,4 @@
-package com.ulearn.app
+package com.peerpass.app
 
 import io.flutter.embedding.android.FlutterActivity
 

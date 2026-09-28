@@ -56,8 +56,8 @@ class SecureTokenStore implements TokenStore {
     await _storage.delete(key: _refreshKey);
   }
 
-  static const String _accessKey = 'ulearn_access_token';
-  static const String _refreshKey = 'ulearn_refresh_token';
+  static const String _accessKey = 'peerpass_access_token';
+  static const String _refreshKey = 'peerpass_refresh_token';
 }
 
 /// Non-persistent [TokenStore] for tests and for the fake data sources.

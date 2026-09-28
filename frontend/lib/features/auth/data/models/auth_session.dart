@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:ulearn/core/models/user_role.dart';
+import 'package:peerpass/core/models/user_role.dart';
 
 /// An authenticated identity restored from stored tokens.
 ///

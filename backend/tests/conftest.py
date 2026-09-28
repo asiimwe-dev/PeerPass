@@ -13,7 +13,7 @@ import pytest
 
 # Deliberately not prefixed with "test" or "changeme": Settings refuses a
 # placeholder signing key, and that guard should apply to the suite too.
-_SUITE_JWT_SECRET = "ulearn-local-suite-signing-key-0123456789abcdef"
+_SUITE_JWT_SECRET = "peerpass-local-suite-signing-key-0123456789abcdef"
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", _SUITE_JWT_SECRET)
@@ -57,14 +57,14 @@ def settings():
 #: Points the whole suite at a real PostgreSQL instead of SQLite. Set it and the
 #: same tests run against the database the service actually uses:
 #:
-#:     ULEARN_TEST_DATABASE_URL=postgresql+psycopg://user@host/db pytest
+#:     PEERPASS_TEST_DATABASE_URL=postgresql+psycopg://user@host/db pytest
 #:
 #: This is not a convenience. SQLite does not enforce `numeric(6,2)`, does not
 #: name its constraints, and stores UUIDs as strings, so a green SQLite run is
 #: not evidence the schema is valid on PostgreSQL. Running the same suite
 #: against both is what caught a `standing` column that accepted any string,
 #: which SQLite had happily reported as enforced.
-TEST_DATABASE_URL = os.environ.get("ULEARN_TEST_DATABASE_URL")
+TEST_DATABASE_URL = os.environ.get("PEERPASS_TEST_DATABASE_URL")
 
 
 @pytest.fixture

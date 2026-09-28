@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ulearn/core/error/failures.dart';
-import 'package:ulearn/core/network/network_exceptions.dart';
+import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/network/network_exceptions.dart';
 
 /// Builds a 401-shaped problem details response.
 Response<dynamic> problemResponse(int status, Object? body) {

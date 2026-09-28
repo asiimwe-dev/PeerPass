@@ -1,5 +1,5 @@
-import 'package:ulearn/core/storage/token_store.dart';
-import 'package:ulearn/features/auth/data/models/auth_session.dart';
+import 'package:peerpass/core/storage/token_store.dart';
+import 'package:peerpass/features/auth/data/models/auth_session.dart';
 
 /// In-memory stand-in for the auth endpoints.
 ///

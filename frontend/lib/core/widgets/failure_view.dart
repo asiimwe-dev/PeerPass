@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ulearn/core/constants/app_dimens.dart';
-import 'package:ulearn/core/error/failures.dart';
+import 'package:peerpass/core/constants/app_dimens.dart';
+import 'package:peerpass/core/error/failures.dart';
 
 /// Renders a [Failure] as something a student can act on.
 ///

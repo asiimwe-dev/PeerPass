@@ -1,4 +1,4 @@
-# Static analysis configuration for the Ulearn client.
+# Static analysis configuration for the PeerPass client.
 #
 # `flutter analyze` is the gate; CI runs it before `flutter test`.
 

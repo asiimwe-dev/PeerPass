@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.ulearn.app"
+    namespace = "com.peerpass.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.ulearn.app"
+        applicationId = "com.peerpass.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

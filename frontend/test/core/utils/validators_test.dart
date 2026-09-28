@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ulearn/core/utils/validators.dart';
+import 'package:peerpass/core/utils/validators.dart';
 
 void main() {
   group('Validators.required', () {

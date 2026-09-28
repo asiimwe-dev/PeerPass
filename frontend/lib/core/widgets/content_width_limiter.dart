@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ulearn/core/constants/app_dimens.dart';
+import 'package:peerpass/core/constants/app_dimens.dart';
 
 /// Constrains a page's content to a readable width.
 ///

@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:ulearn/features/auth/data/models/auth_session.dart';
-import 'package:ulearn/features/auth/data/repositories/auth_repository.dart';
+import 'package:peerpass/features/auth/data/models/auth_session.dart';
+import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 
 /// Whether the app knows who is signed in.
 enum AuthStatus {

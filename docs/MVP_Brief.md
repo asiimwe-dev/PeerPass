@@ -1,4 +1,4 @@
-# Ulearn MVP Brief
+# PeerPass MVP Brief
 
 **Peer-to-Peer Academic Support Network**  
 **Version:** 1.0 | **Date:** September 2026  
@@ -8,7 +8,7 @@
 
 ## 1. Purpose of This Document
 
-This brief defines the Minimum Viable Product (MVP) for Ulearn. It captures:
+This brief defines the Minimum Viable Product (MVP) for PeerPass. It captures:
 
 - What we will build first
 - Why these features were chosen
@@ -25,7 +25,7 @@ Many university students fall behind in core course units but hesitate to ask le
 
 Existing options (large review sessions, generic study groups, or pure self-study) often fail to address **hyper-specific** learning gaps quickly and without stigma.
 
-Ulearn solves this by matching a struggling student with a verified peer who has already succeeded in that exact area.
+PeerPass solves this by matching a struggling student with a verified peer who has already succeeded in that exact area.
 
 ---
 
@@ -181,5 +181,5 @@ This order delivers a working end-to-end loop as early as possible.
 
 ---
 
-**Document owner:** Ulearn Team  
+**Document owner:** PeerPass Team  
 **Related documents:** [Architecture](./architecture.md) · [Contributing](./Contribution.md) · [README](../README.md)

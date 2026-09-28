@@ -1,4 +1,4 @@
-# Ulearn Project Structure
+# PeerPass Project Structure
 
 This is the implementation skeleton for the architecture described in
 [`architecture.md`](./architecture.md). It keeps the Flutter client, FastAPI
@@ -6,7 +6,7 @@ service, database migrations, and tests independently deployable while leaving
 room for future LMS and institutional integrations.
 
 ```text
-Ulearn/
+PeerPass/
 ├── README.md
 ├── AGENTS.md
 ├── LICENSE
@@ -14,7 +14,7 @@ Ulearn/
 ├── .env.example
 ├── docs/
 │   ├── Contribution.md       # Contribution guide (kept here; not moved)
-│   ├── Ulearn_Research_Document.md
+│   ├── PeerPass_Research_Document.md
 │   ├── architecture.md
 │   ├── matching-engine.md
 │   ├── tutor-validation.md

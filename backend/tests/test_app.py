@@ -44,7 +44,7 @@ async def test_problem_type_url_is_https() -> None:
 
     problem = ProblemException("Something is wrong.").to_problem("/v1/things")
 
-    assert problem["type"].startswith("https://ulearn.app/problems/")
+    assert problem["type"].startswith("https://peerpass.app/problems/")
 
 
 async def test_unexpected_error_does_not_leak_its_message() -> None:

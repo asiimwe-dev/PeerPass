@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:ulearn/core/storage/token_store.dart';
+import 'package:peerpass/core/storage/token_store.dart';
 
 /// Refreshes the access token, returning whether the session is still usable.
 ///
@@ -107,5 +107,5 @@ class AuthInterceptor extends Interceptor {
   static const int _statusUnauthorized = 401;
   static const String _authorizationHeader = 'Authorization';
   static const String _bearerPrefix = 'Bearer';
-  static const String _retriedKey = 'ulearn.retried_after_refresh';
+  static const String _retriedKey = 'peerpass.retried_after_refresh';
 }

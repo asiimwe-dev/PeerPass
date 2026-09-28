@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from app.core.config import Settings
 
 _MINIMAL = {
-    "database_url": "postgresql+psycopg://ulearn@localhost/ulearn",
+    "database_url": "postgresql+psycopg://peerpass@localhost/peerpass",
     "jwt_secret": "a-sufficiently-long-signing-key-for-tests",
 }
 

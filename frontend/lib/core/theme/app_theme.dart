@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:ulearn/core/constants/app_dimens.dart';
+import 'package:peerpass/core/constants/app_dimens.dart';
 
 /// The app's light and dark [ThemeData].
 ///

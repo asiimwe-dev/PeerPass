@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:ulearn/core/models/grading_scale.dart';
+import 'package:peerpass/core/models/grading_scale.dart';
 
 /// A university that students and tutors belong to.
 ///
