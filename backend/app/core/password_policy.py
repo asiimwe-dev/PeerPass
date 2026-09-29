@@ -20,10 +20,26 @@ the rule while being weaker than a passphrase of the same length. See
 #: Both bounds are counted in Unicode code points, which is what `len()` returns
 #: for a `str` and therefore what the schema's `min_length`/`max_length` count
 #: too. The two have to agree: if the policy counted bytes and the schema counted
-#: code points, a twelve character non-ASCII password would pass one and fail
-#: the other, and the rejection would arrive as an opaque field error from a
+#: code points, an eight character non-ASCII password would pass one and fail the
+#: other, and the rejection would arrive as an opaque field error from a
 #: different layer than the one that explains it.
-MIN_PASSWORD_LENGTH = 12
+#:
+#: Eight, not the twelve this was originally set to. The length floor exists to
+#: spare a student from being asked to invent a long passphrase, and twelve was
+#: measurably past the point where students start writing `Password123!` and
+#: forgetting it -- the predictable substitution is worse than a shorter
+#: memorable secret. What keeps an eight character password safe is not the floor
+#: but the deny-list below, which rejects the passwords an attacker actually
+#: opens with, and Argon2id at 19 MiB, which makes each guess expensive. A
+#: longer floor only ever rejected honest students, not attackers: nobody
+#: brute-forces at twelve when the useful guesses are all short.
+#:
+#: The residual risk is recorded rather than hidden. There is still no rate
+#: limiting on sign-in (see `docs/architecture.md` 9.8), so the number of guesses
+#: is unbounded and the deny-list is the only thing standing between a leaked
+#: address and a guessed password. Rate limiting is the correct follow-up and is
+#: the next thing to add here.
+MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 
 #: Returned by `denial_reason` when the password is on the deny-list.
@@ -68,6 +84,8 @@ _COMMON_PASSWORDS = frozenset(
     zxcvbnm 987654321 qwerty2020 summer2020 winter2020 password2020
     student teacher welcome123 changeme changeme123 default secret
     server qwerty12345 1q2w3e4r 12345678a
+    abcdefgh abcdefghi a1b2c3d4 qazwsxedc 1q2w3e4r5t6y7u
+    asshole dickhead
     """.split()  # noqa: SIM905
 )
 

@@ -7,43 +7,70 @@ import 'package:go_router/go_router.dart';
 import 'package:peerpass/app/app.dart';
 import 'package:peerpass/app/router.dart';
 import 'package:peerpass/app/splash_screen.dart';
+import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
-import 'package:peerpass/core/storage/token_store.dart';
-import 'package:peerpass/features/auth/data/datasources/in_memory_auth_datasource.dart';
-import 'package:peerpass/features/auth/data/models/auth_session.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
-import 'package:peerpass/features/auth/data/repositories/in_memory_auth_repository.dart';
+import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
+import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
 
-const String _signedOutText = 'Sign in is not implemented yet.';
-const String _homeText = 'Home is not implemented yet.';
+const String _signedOutText = 'Sign in';
 
-const AuthSession _tutor = AuthSession(
+/// The greeting home builds from the stored name. Asserting on this rather than
+/// on a placeholder string means the test fails if the profile stopped reaching
+/// the screen, which is the thing it is actually about.
+const String _homeText = 'Hello, Achieng';
+
+/// A student who has finished onboarding.
+const UserProfile _enrolled = UserProfile(
   publicId: 'user-1',
-  email: 'tutor@ug.ac.ug',
-  roles: {UserRole.tutor},
+  email: 'student@must.ac.ug',
+  fullName: 'Achieng Okello',
+  roles: {UserRole.student},
+  universityId: 'university-1',
+  facultyId: 'subject-1',
+  yearOfStudy: 2,
+);
+
+/// A student who has signed up but has not run the wizard.
+const UserProfile _freshAccount = UserProfile(
+  publicId: 'user-2',
+  email: 'newcomer@must.ac.ug',
+  roles: {UserRole.student},
 );
 
 /// A repository whose restore stays pending until the test releases it.
 ///
-/// Needed to observe the window where the auth status is genuinely unknown.
-/// The in-memory datasource resolves within a microtask, so the app would pass
-/// straight through splash and the redirect would never be seen mid-flight.
-class _GatedAuthRepository implements AuthRepository {
-  final Completer<AuthSession?> _gate = Completer<AuthSession?>();
+/// Needed to observe the window where the auth status is genuinely unknown. The
+/// fake resolves within a microtask, so the app would pass straight through
+/// splash and the redirect would never be seen mid-flight.
+///
+/// Extends the fake rather than implementing the contract, so it keeps answering
+/// sign-in and profile calls if a test needs them.
+class _GatedAuthRepository extends FakeAuthRepository {
+  final Completer<UserProfile?> _gate = Completer<UserProfile?>();
 
-  void release({AuthSession? session}) => _gate.complete(session);
+  void release({UserProfile? profile}) => _gate.complete(profile);
 
   @override
-  Future<AuthSession?> restoreSession() => _gate.future;
-
-  @override
-  Future<void> signOut() async {}
+  Future<UserProfile?> restoreSession() => _gate.future;
 }
 
-/// A token store holding a session, so the in-memory datasource reports one.
-TokenStore _signedInTokenStore() {
-  return InMemoryTokenStore(accessToken: 'access', refreshToken: 'refresh');
+/// A repository that fails the cold-start check the way a dropped connection
+/// does, rather than reporting signed out.
+class _OfflineAuthRepository extends FakeAuthRepository {
+  @override
+  Future<UserProfile?> restoreSession() async {
+    throw const NetworkFailure();
+  }
+}
+
+FakeAuthRepository _signedIn({UserProfile? profile}) {
+  return FakeAuthRepository(
+    session: profile ?? _enrolled,
+    refreshToken: 'refresh',
+  );
 }
 
 Future<void> _settle(WidgetTester tester) async {
@@ -55,14 +82,10 @@ void main() {
   testWidgets('lands on sign-in when there is no stored session', (
     tester,
   ) async {
-    final datasource = InMemoryAuthDatasource(tokenStore: InMemoryTokenStore());
-
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authRepositoryProvider.overrideWithValue(
-            InMemoryAuthRepository(datasource),
-          ),
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
         ],
         child: const PeerPassApp(),
       ),
@@ -73,17 +96,10 @@ void main() {
   });
 
   testWidgets('lands on home when a stored session restores', (tester) async {
-    final datasource = InMemoryAuthDatasource(
-      session: _tutor,
-      tokenStore: _signedInTokenStore(),
-    );
-
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authRepositoryProvider.overrideWithValue(
-            InMemoryAuthRepository(datasource),
-          ),
+          authRepositoryProvider.overrideWithValue(_signedIn()),
         ],
         child: const PeerPassApp(),
       ),
@@ -117,29 +133,67 @@ void main() {
     expect(find.text(_signedOutText), findsOneWidget);
   });
 
+  testWidgets('a new account is sent to onboarding rather than home', (
+    tester,
+  ) async {
+    // The whole point of onboarding existing: signing up gets you a session, and
+    // a session alone is not a usable account. Landing such a student on home
+    // would show them a shell with nothing in it and no route to filling it in.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(
+            _signedIn(profile: _freshAccount),
+          ),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+
+    expect(find.text(_homeText), findsNothing);
+    expect(find.text('What is your name?'), findsOneWidget);
+  });
+
+  testWidgets('a network failure keeps the user on splash with a way out', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(_OfflineAuthRepository()),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+
+    // Not signed in, and not stranded: the splash screen says what happened and
+    // offers a retry, because a student on a train is not signed out.
+    expect(find.byType(SplashScreen), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
   testWidgets('an auth change redirects without the screen asking', (
     tester,
   ) async {
-    final datasource = InMemoryAuthDatasource(
-      session: _tutor,
-      tokenStore: _signedInTokenStore(),
-    );
     final container = ProviderContainer(
       overrides: [
-        authRepositoryProvider.overrideWithValue(
-          InMemoryAuthRepository(datasource),
-        ),
+        authRepositoryProvider.overrideWithValue(_signedIn()),
       ],
     );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
-      UncontrolledProviderScope(container: container, child: const PeerPassApp()),
+      UncontrolledProviderScope(
+        container: container,
+        child: const PeerPassApp(),
+      ),
     );
     await _settle(tester);
     expect(find.text(_homeText), findsOneWidget);
 
-    await container.read(authControllerProvider.notifier).signOut();
+    await container.read(authControllerProvider).signOut();
     await _settle(tester);
 
     expect(find.text(_signedOutText), findsOneWidget);
@@ -149,23 +203,105 @@ void main() {
   testWidgets('a deep link to home is sent to sign-in when signed out', (
     tester,
   ) async {
-    final datasource = InMemoryAuthDatasource(tokenStore: InMemoryTokenStore());
-
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          authRepositoryProvider.overrideWithValue(
-            InMemoryAuthRepository(datasource),
-          ),
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
         ],
         child: const PeerPassApp(),
       ),
     );
     await _settle(tester);
 
-    GoRouter.of(tester.element(find.byType(Scaffold).first)).go(AppRoutes.home);
+    GoRouter.of(
+      tester.element(find.byType(Scaffold).first),
+    ).go(AppRoutes.home);
     await _settle(tester);
 
     expect(find.text(_signedOutText), findsOneWidget);
+  });
+
+  testWidgets('the sign-in screen can reach the sign-up screen', (tester) async {
+    // Regression. The redirect guard exempted only /sign-in while signed out, so
+    // tapping "Create one" navigated to /sign-up and was immediately redirected
+    // back. The button therefore did nothing at all.
+    //
+    // This test taps the button and goes through the real router, which is the
+    // only arrangement that could have caught it. `sign_up_screen_test.dart`
+    // pumps `SignUpScreen` directly, so it proved the screen renders and said
+    // nothing about whether anything could ever navigate to it.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+    expect(find.text(_signedOutText), findsOneWidget);
+
+    await tester.tap(find.text('No account yet? Create one'));
+    await _settle(tester);
+
+    expect(find.byType(SignUpScreen), findsOneWidget);
+    expect(
+      find.text(_signedOutText),
+      findsNothing,
+      reason: 'the guard bounced the student back to sign-in',
+    );
+    expect(
+      Router.of(
+        tester.element(find.byType(SignUpScreen)),
+      ).routeInformationProvider!.value.uri.path,
+      AppRoutes.signUp,
+    );
+  });
+
+  testWidgets('a deep link to sign-up is allowed while signed out', (
+    tester,
+  ) async {
+    // The same rule from the other direction: a shared /sign-up link must open
+    // the sign-up screen rather than bounce to sign-in.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+
+    GoRouter.of(
+      tester.element(find.byType(Scaffold).first),
+    ).go(AppRoutes.signUp);
+    await _settle(tester);
+
+    expect(find.byType(SignUpScreen), findsOneWidget);
+  });
+
+  testWidgets('a deep link to onboarding is sent to sign-in when signed out', (
+    tester,
+  ) async {
+    // The guard is widened, so the routes it must still refuse are pinned here.
+    // Without this, "widen the allow-list" and "let anyone in" look identical.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+
+    GoRouter.of(
+      tester.element(find.byType(Scaffold).first),
+    ).go(AppRoutes.onboarding);
+    await _settle(tester);
+
+    expect(find.text(_signedOutText), findsOneWidget);
+    expect(find.byType(SignUpScreen), findsNothing);
   });
 }

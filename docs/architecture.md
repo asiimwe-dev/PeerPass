@@ -79,18 +79,76 @@ PeerPass exists to replace the “attend lectures and fight for your life” mod
 
 Organized in a **feature-first** structure:
 
-- `auth` — Login, registration, SSO hand-off
-- `profile` — Student / tutor profile & role management
-- `matching` — Create topic requests, view matches, accept/reject
-- `sessions` — Schedule, join, and complete micro-sessions
-- `tutor_validation` — Upload transcript / link portfolio, view verification status
-- `incentives` — View logged hours and certificate status
+- `auth` — Registration, sign-in, and the onboarding wizard
+- `home` — The signed-in hub. Phase 2 ships it as an honest empty state
+- `profile` — Student / tutor profile & role management _(planned)_
+- `matching` — Create topic requests, view matches, accept/reject _(planned)_
+- `sessions` — Schedule, join, and complete micro-sessions _(planned)_
+- `tutor_validation` — Upload transcript / link portfolio, view verification status _(planned)_
+- `incentives` — View logged hours and certificate status _(planned)_
 
 Shared layers:
 
-- Network client (Dio or equivalent)
-- Riverpod (or similar) for state management
+- Network client (Dio), failures, and RFC 9457 translation
+- Riverpod for state management
 - Core theme, constants, and reusable widgets
+
+#### Session state lives in `core/`, not in `auth`
+
+`frontend/lib/core/state/session.dart` holds the one source of truth for who is
+signed in. This is not a layering preference, it is forced by two rules in
+`AGENTS.md`: a feature must never import another feature's `presentation/`, and
+`core/` must never import from `features/`.
+
+Home has to know who is signed in, and the router has to decide where a session
+belongs. If the session lived in `auth`'s presentation layer, both would be
+either an illegal import or a rule exception. Promoting it to `core/` gives one
+place that auth writes and that the router and every feature can read, with no
+rule changed. `UserProfile` moved to `core/models/` for the same reason — it is
+consumed by several features, so a feature-local home for it was always going to
+be wrong.
+
+The consequence worth stating: `AuthController` no longer holds state. It
+performs repository calls and records the outcome in the core session, so there
+is exactly one `SessionState` and no second copy to fall out of step.
+
+#### The repository provider is declared with the contract
+
+`authRepositoryProvider` is declared in
+`frontend/lib/features/auth/data/repositories/auth_repository.dart`, not in the
+feature's presentation layer. A provider declared in `presentation/` could not be
+imported by a sibling feature without dragging that feature's screens along, so
+the handle has to sit beside the interface it hands out.
+
+This is the one cross-feature import the architecture permits, and home's
+sign-out uses it (`features/home/presentation/providers/sign_out_controller.dart`):
+it calls the auth repository contract and records the outcome in the core
+session. `test/architecture/dependency_rules_test.dart` enforces exactly this
+line — another feature's `presentation/` is forbidden, its repository contract
+is not.
+
+#### Composition happens in `main.dart`, once
+
+`lib/main.dart` is a real composition root: `AppConfig`, `SecureTokenStore`,
+`RemoteAuthRepository`, and the remote datasources are built there and overridden
+into `ProviderScope`. There is no in-memory default on the request path, so a
+stub cannot hide behind a working screen.
+
+#### Validation is deliberately duplicated
+
+`frontend/lib/core/utils/validators.dart` repeats the server's rules rather than
+the server being the only enforcer. The server stays the authority; the client
+checks only to spare a round trip and to put a message under the input that
+caused it. A client-side rule that drifts from the server is a cosmetic bug, not
+a security hole.
+
+#### Animations are native and finite
+
+Splash, sign-in, sign-up, and the consent tick are custom-painted. No Rive, no
+animation package, no image assets. They are also finite rather than looping, so
+`pumpAndSettle()` terminates in a widget test and the app is not burning a
+timeline forever behind a static screen. All of them respect
+`MediaQuery.disableAnimations`.
 
 ### 4.2 Backend (FastAPI)
 
@@ -211,23 +269,27 @@ carries a filter for sessions that never happened.
 
 | Table             | Core Attributes                                                | Purpose                                                                                |
 | ----------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **Users**         | `id`, `public_id`, `email`, `full_name`, `university_id`       | Identity. Roles live in `user_roles`, because one user may be both student and tutor   |
+| **Users**         | `id`, `public_id`, `email`, `full_name`, `university_id`, `faculty_id`, `year_of_study` | Identity. Roles live in `user_roles`, because one user may be both student and tutor. `full_name` is **nullable**: an account exists between sign-up and the end of onboarding, and requiring a name at registration would put four fields on the sign-up form to get the same result — the first one lost is a student who abandons it |
 | **User_Roles**    | `user_id`, `role`                                              | Join table; composite primary key stops a role being held twice                         |
 | **Tutor_Profiles**| `user_id`, `standing`, `rating_total`, `rating_count`, `certified_minutes` | Aggregate standing, stored rather than recomputed per matching query          |
 | **Grading_Scales**| `max_points`, `competency_min_points`                          | The B+ bar as data, since pilot institutions disagree on what B+ means                 |
 | **Grades**        | `label`, `grade_points`, `grading_scale_id`                    | Grade catalogue; one label per scale                                                    |
 | **Course_Units**  | `code`, `name`, `university_id`, `subject_id`, `grade_id`      | Maps the exact university curriculum                                                    |
 | **Competencies**  | `user_id`, `course_unit_id`, `grade_id`, `status`, `source`    | Validation gate requiring a verified grade at or above the scale's threshold            |
-| **Refresh_Tokens**
+| **Refresh_Tokens** | `id` (PK), `user_id` (FK → users), `token_hash` (unique), `expires_at`, `revoked_at`, `replaced_by_id` (FK → refresh_tokens, optional) | The handle is a JWT; only its peppered hash is stored, so a database disclosure yields no usable token. `replaced_by_id` forms the chain that makes reuse of an already-rotated token detectable. Every row is deleted on user deletion |
 
-- `id` (PK)
-- `user_id` (FK → users)
-- `token_hash` (unique) — the handle is a JWT; only its hash is stored, so a
-  database disclosure does not yield usable refresh tokens
-- `expires_at`, `revoked_at`
-- `replaced_by_id` (FK → refresh_tokens, optional) — forms the chain that makes
-  reuse of an already-rotated token detectable
-- Every row is deleted on user deletion
+##### A known limitation: `subjects` is global
+
+`users.faculty_id` points at `subjects`, because a faculty is a property of a
+course unit rather than of an institution. The consequence is that
+`subjects.name` is **globally unique** and `subjects` carries no
+`university_id`. So `GET /v1/academics/faculties` is a global list, and two
+universities cannot have a subject with the same name.
+
+A single-institution pilot hides this. A multi-institution deployment will not,
+and it will be discovered by a seed failure rather than by reading this. Lifting
+it: give `subjects` a nullable `university_id`, change the unique constraint to
+`(university_id, name)`, and add a `university_id` filter to `/faculties`.
 
 **Help_Requests** | `tutee_id`, `course_unit_id`, `topic`, `status`                | What was asked for, before a tutor was matched                                          |
 | **Sessions**      | `tutee_id`, `tutor_id`, `course_unit_id`, `status`, `duration_minutes` | A session that happened; the source for tutor hours and certificates          |
@@ -509,12 +571,29 @@ called yet:
 
 ### 9.3 Password acceptance
 
-Length-based, 12 to 128 code points, with no composition rules. Character-class
+Length-based, **8 to 128** code points, with no composition rules. Character-class
 requirements are well documented to produce `Passw0rd!` — a predictable
 substitution that satisfies the rule and is weaker than a passphrase of the same
 length. The 128 ceiling exists so that a future move to bcrypt, which truncates at
 72 bytes silently, cannot quietly reduce a long password to its first 72
 characters.
+
+**The floor was twelve and is now eight.** The reasoning matters, because a long
+floor looks like the safer choice and is not. Past about eight characters students
+stop inventing and start satisfying — they write `Password1!` and forget it, or
+abandon the form. A longer floor therefore rejects honest students without
+rejecting attackers, because every guess worth making is short: nobody
+brute-forces a twelve character space when the useful guesses are eight characters
+and known. The deny-list, not the floor, is what rejects attacker guesses, and
+Argon2id's 19 MiB cost is what makes each one expensive.
+
+**The residual risk is that there is no rate limiting on sign-in** (see 9.8), so
+the number of guesses is unbounded and the deny-list is the only thing between a
+leaked student address and a guessed password. This is a pre-existing gap that a
+short floor makes load-bearing rather than theoretical. Rate limiting on
+`/v1/auth/login` and `/v1/auth/register` is the correct next control, and it is
+preferable to raising the floor back, because it addresses the actual threat
+without the cost to the student.
 
 A small static deny-list covers the passwords that would otherwise make the
 Argon2 cost affordable. It is checked at **registration and password change only,
@@ -529,6 +608,16 @@ breach-API lookup would hand a third party a list of student addresses to check 
 would make account creation depend on someone else's uptime. Keeping it short
 enough to audit by eye is what makes it a control rather than decoration; it needs a
 manual refresh, and that is a known cost rather than an oversight.
+
+The cost of a static list is that it only covers what someone thought to add, and
+at a floor of eight a student can reach a keyboard run the list never anticipated.
+Entries are therefore listed in **base form**, because `denial_reason` strips
+trailing digits and punctuation before the lookup: listing `asshole` refuses
+`asshole1` and `asshole!` without naming either, and listing `1q2w3e4r` already
+covers the trailing digits of its own longer variants. The list still has holes —
+`tests/core/test_password_policy.py` pins the ones found so far, and a new one is
+found by trying one, not by a control failing. That is the argument for rate
+limiting.
 
 ### 9.4 Tokens
 
@@ -555,6 +644,34 @@ shipped for a capability not in use.
 `public_id` rather than the primary key is the `sub` because a UUIDv7 encodes its
 creation time, and a leaked primary key would otherwise date and help enumerate
 every other record.
+
+Refresh tokens **rotate on every use**. Each exchange issues a new token and
+records `replaced_by_id` on the one presented, so the table holds a chain.
+Presenting a token that has already been replaced is treated as theft and
+revokes the whole family, which signs out the attacker's device and the
+legitimate one together. The cost is real: a client that retries a refresh
+without storing the new token revokes its own session. That is the correct
+trade, because the alternative — tolerating reuse — makes a stolen 30-day token
+indefinitely renewable.
+
+The consequence for the client is that **`/v1/auth/refresh` must replace the
+stored refresh token with the one in its response.** The token just sent stops
+working the moment the response returns.
+
+#### Cold start
+
+The access token lives in memory only, so a cold start has no access token and
+must hold the splash screen until it has one. The order matters and is fixed:
+
+1. Read the refresh token from secure storage. Nothing there → the session is
+   simply unauthenticated, and this is not an error.
+2. Exchange it for a pair, replacing the stored refresh token.
+3. `GET /v1/auth/me` for the profile.
+
+A network failure at step 2 or 3 keeps the user on the splash screen **with a
+retry**; it does not report them as signed out, because "we could not reach the
+network" and "your session ended" are different facts and only one of them is
+true. A refresh that is *refused* does clear the token and routes to sign-in.
 
 ### 9.5 Logging
 

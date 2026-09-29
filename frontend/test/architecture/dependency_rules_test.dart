@@ -54,7 +54,13 @@ void main() {
             continue;
           }
           final target = _importedFeature(trimmed);
-          if (target != null && target != owner) {
+          // Importing another feature's *data* layer is the sanctioned way to
+          // reuse it, so only presentation is an offence. The previous version
+          // rejected every cross-feature import while its own failure message
+          // described a presentation-only rule, which meant the guide's one
+          // permitted dependency -- the owning feature's repository contract --
+          // was untestable in practice.
+          if (target != null && target != owner && trimmed.contains('/presentation/')) {
             offenders.add('${file.path} imports $target/presentation');
           }
         }
@@ -66,6 +72,41 @@ void main() {
         reason:
             "Cross-feature access must go through the owning feature's "
             'data/repositories/ contract. Found:\n${offenders.join('\n')}',
+      );
+    });
+
+    test('a feature reaches another feature only through its data layer', () {
+      // The flip side of the rule above, and the reason the layer is split at
+      // all. A cross-feature import that lands in data/ is allowed, but it has to
+      // land in data/ -- not in a shared/ dumping ground, and not in core.
+      final offenders = <String>[];
+
+      for (final file in _dartFilesIn('lib/features')) {
+        final lines = file.readAsLinesSync();
+        final owner = _owningFeature(file.path);
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (!trimmed.startsWith('import') || !trimmed.contains('features/')) {
+            continue;
+          }
+          final target = _importedFeature(trimmed);
+          if (target == null || target == owner) continue;
+          final isDataLayer = trimmed.contains('/data/');
+          final isOwnContract =
+              trimmed.contains('/data/repositories/auth_repository.dart');
+          if (!isDataLayer || !isOwnContract) {
+            offenders.add('${file.path} imports $target outside its contract');
+          }
+        }
+      }
+
+      expect(
+        offenders,
+        isEmpty,
+        reason:
+            'The only cross-feature import permitted today is another '
+            "feature's repository contract, so that reuse goes through an "
+            'interface rather than a screen. Found:\n${offenders.join('\n')}',
       );
     });
   });

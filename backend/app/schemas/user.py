@@ -28,33 +28,24 @@ MAX_FULL_NAME_LENGTH = 160
 
 
 class RegisterRequest(RequestSchema):
-    """A new account.
+    """A new account: an email and a password, and nothing else.
 
-    The password minimum is higher than most services use, and deliberately so:
-    a peer-tutoring account is tied to a real person's verified academic record,
-    and the pilot's threat model is an attacker who has a list of student emails
+    Deliberately the shortest form the product has. The name, the faculty and the
+    year are collected by the onboarding wizard that runs immediately afterwards,
+    which is a separate screen the student can leave and come back to. Asking for
+    them here as well would put four fields on the sign-up form to get the same
+    result, and the first one lost is a student who abandons the form.
+
+    The password minimum is higher than most services use, and deliberately so: a
+    peer-tutoring account is tied to a real person's verified academic record, and
+    the pilot's threat model is an attacker who has a list of student emails
     rather than a password-spraying bot. Length beats composition rules, so there
     is no required-symbol rule -- it produces `Passw0rd!` and teaches nothing.
     """
 
     email: EmailStr
-    full_name: Trimmed = Field(
-        min_length=MIN_FULL_NAME_LENGTH, max_length=MAX_FULL_NAME_LENGTH
-    )
     password: str = Field(
         min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH
-    )
-    university_id: uuid.UUID | None = Field(
-        default=None,
-        description="The public id of the user's university.",
-    )
-    roles: list[UserRole] = Field(
-        default_factory=list,
-        description=(
-            "Roles requested at sign-up. A user may hold several, and the tutor "
-            "role is only granted once competencies are verified, so requesting "
-            "it here records intent rather than granting it."
-        ),
     )
 
     @field_validator("password")
@@ -69,17 +60,6 @@ class RegisterRequest(RequestSchema):
         if not value.strip():
             raise ValueError("password must not be only whitespace")
         return value
-
-    @field_validator("roles")
-    @classmethod
-    def reject_duplicate_roles(cls, value: list[UserRole]) -> list[UserRole]:
-        """Collapse duplicates instead of failing.
-
-        The join table's primary key rejects them anyway; collapsing here means
-        the client gets a clear field-level message rather than a 409 for
-        something it can fix on its own.
-        """
-        return list(dict.fromkeys(value))
 
 
 class LoginRequest(RequestSchema):
@@ -105,6 +85,36 @@ class RefreshRequest(RequestSchema):
     refresh_token: str = Field(min_length=1, max_length=4096)
 
 
+class UpdateProfileRequest(RequestSchema):
+    """A partial update to the caller's own profile, from the wizard.
+
+    Every field is optional and an absent one is left alone, because the wizard
+    saves each step as it is completed. A step that sends only `full_name` must
+    not blank the faculty the student picked a moment earlier, and a retried
+    step must be safe to send twice.
+
+    A field is cleared by sending an explicit `null`, which is what makes the
+    partial update unambiguous. `exclude_unset` on the service side is what tells
+    "not mentioned" apart from "set to nothing".
+    """
+
+    full_name: Trimmed | None = Field(
+        default=None, min_length=MIN_FULL_NAME_LENGTH, max_length=MAX_FULL_NAME_LENGTH
+    )
+    university_id: uuid.UUID | None = None
+    faculty_id: uuid.UUID | None = None
+    year_of_study: int | None = Field(default=None, ge=1, le=6)
+    academic_data_consented: bool | None = Field(
+        default=None,
+        description=(
+            "Set true to record consent to the processing of academic records. "
+            "Consent is never withdrawn through this field, because the Uganda "
+            "Data Protection and Privacy Act requires a withdrawal to be as "
+            "express as the original grant and to be logged."
+        ),
+    )
+
+
 class UserResponse(OrmSchema):
     """A user as the client sees them.
 
@@ -115,11 +125,22 @@ class UserResponse(OrmSchema):
 
     id: uuid.UUID = Field(validation_alias="public_id")
     email: EmailStr
-    full_name: str
-    roles: list[UserRole]
+    full_name: str | None
+    roles: list[UserRole] = Field(
+        default_factory=list,
+        description=(
+            "Read from the join table by the caller, not off the user row. "
+            "`User` has no roles attribute, so a schema default is what lets "
+            "`model_validate` succeed before the service injects the real set."
+        ),
+    )
     university_id: uuid.UUID | None = Field(
         default=None, validation_alias="university_public_id"
     )
+    faculty_id: uuid.UUID | None = Field(
+        default=None, validation_alias="faculty_public_id"
+    )
+    year_of_study: int | None = None
     is_active: bool
     created_at: datetime
 
@@ -135,11 +156,15 @@ class CurrentUserResponse(OrmSchema):
 
     id: uuid.UUID = Field(validation_alias="public_id")
     email: EmailStr
-    full_name: str
-    roles: list[UserRole]
+    full_name: str | None
+    roles: list[UserRole] = Field(default_factory=list)
     university_id: uuid.UUID | None = Field(
         default=None, validation_alias="university_public_id"
     )
+    faculty_id: uuid.UUID | None = Field(
+        default=None, validation_alias="faculty_public_id"
+    )
+    year_of_study: int | None = None
     academic_data_consented_at: datetime | None = None
     created_at: datetime
 

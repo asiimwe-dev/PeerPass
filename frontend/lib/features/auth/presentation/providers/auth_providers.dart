@@ -1,89 +1,122 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:peerpass/features/auth/data/models/auth_session.dart';
+import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/models/subject.dart';
+import 'package:peerpass/core/state/session.dart';
+import 'package:peerpass/features/auth/data/models/university_option.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 
-/// Whether the app knows who is signed in.
-enum AuthStatus {
-  /// Stored tokens have not been checked yet. The router holds here rather than
-  /// showing sign-in, so a returning user is not flashed the sign-in screen
-  /// before landing on their home screen.
-  unknown,
-
-  authenticated,
-
-  unauthenticated,
-}
-
-@immutable
-class AuthState {
-  const AuthState({required this.status, this.session});
-
-  const AuthState.unknown() : status = AuthStatus.unknown, session = null;
-
-  const AuthState.signedOut()
-    : status = AuthStatus.unauthenticated,
-      session = null;
-
-  const AuthState.signedIn(this.session) : status = AuthStatus.authenticated;
-
-  final AuthStatus status;
-
-  final AuthSession? session;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is AuthState && other.status == status && other.session == session;
-
-  @override
-  int get hashCode => Object.hash(status, session);
-
-  @override
-  String toString() => 'AuthState($status)';
-}
-
-/// The auth contract, overridden at startup with the chosen implementation.
+/// The auth operations, as calls the screens can make.
 ///
-/// Throwing rather than defaulting keeps a missing override loud: a silent fake
-/// default would let a build ship pointed at nothing.
-final authRepositoryProvider = Provider<AuthRepository>(
-  (ref) => throw UnimplementedError(
-    'authRepositoryProvider must be overridden in ProviderScope.',
-  ),
-);
+/// Performs authentication against the repository and records the outcome in
+/// [SessionController]. It owns no session state of its own, so "who is signed
+/// in" has exactly one home regardless of whether it was established by a
+/// sign-in, a sign-up, a profile update, or a cold-start restore.
+///
+/// A plain [Provider] rather than a [Notifier]: it exposes no value of its own,
+/// and a notifier that never does is one pretending to be something it is not.
+/// Its single piece of behaviour is starting the cold-start check the first time
+/// anything reads it, which is why the body is not a bare constructor.
+final authControllerProvider = Provider<AuthController>((ref) {
+  final controller = AuthController(ref)..startRestore();
+  return controller;
+});
 
-final authControllerProvider = NotifierProvider<AuthController, AuthState>(
-  AuthController.new,
-);
+class AuthController {
+  const AuthController(this._ref);
 
-/// Owns the session lifecycle for the shell.
-class AuthController extends Notifier<AuthState> {
-  @override
-  AuthState build() {
-    unawaited(_restore());
-    return const AuthState.unknown();
+  final Ref _ref;
+
+  AuthRepository get _repository => _ref.read(authRepositoryProvider);
+
+  SessionController get _session =>
+      _ref.read(sessionControllerProvider.notifier);
+
+  /// Signs in and adopts the account the API returns.
+  Future<void> signIn({required String email, required String password}) async {
+    final profile = await _repository.signIn(email: email, password: password);
+    _session.signedIn(profile);
+  }
+
+  /// Creates the account, which the API signs straight in.
+  ///
+  /// The new account has no name yet, so the router sends it to onboarding. The
+  /// controller does not care; deciding where a profile leads is the router's job
+  /// and duplicating that rule here would give two places to get it wrong.
+  Future<void> register({
+    required String email,
+    required String password,
+  }) async {
+    final profile = await _repository.register(
+      email: email,
+      password: password,
+    );
+    _session.signedIn(profile);
+  }
+
+  /// Updates the profile and adopts the stored record the API returns.
+  Future<void> updateProfile({
+    String? fullName,
+    String? universityId,
+    String? facultyId,
+    int? yearOfStudy,
+    bool? academicDataConsented,
+  }) async {
+    final profile = await _repository.updateProfile(
+      fullName: fullName,
+      universityId: universityId,
+      facultyId: facultyId,
+      yearOfStudy: yearOfStudy,
+      academicDataConsented: academicDataConsented,
+    );
+    _session.signedIn(profile);
   }
 
   /// Ends the session and returns to the signed-out state.
   Future<void> signOut() async {
-    await ref.read(authRepositoryProvider).signOut();
-    state = const AuthState.signedOut();
+    await _repository.signOut();
+    _session.signedOut();
   }
+
+  /// Tries the cold-start check again after it failed.
+  ///
+  /// Offered by the splash screen. Without it a student whose connection dropped
+  /// on launch has no way forward but force-quitting the app, which on a
+  /// low-memory handset is not something they will think to do.
+  Future<void> retryRestore() => _restore();
+
+  /// Starts the cold-start check of the stored session.
+  ///
+  /// Called once, by [authControllerProvider] when it is first read, rather than
+  /// exposed for the shell to remember to invoke -- a check nobody calls is a
+  /// check that never happens, and an app held on splash forever.
+  void startRestore() => unawaited(_restore());
 
   Future<void> _restore() async {
     try {
-      final session = await ref.read(authRepositoryProvider).restoreSession();
-      state = session == null
-          ? const AuthState.signedOut()
-          : AuthState.signedIn(session);
+      final profile = await _repository.restoreSession();
+      if (profile == null) {
+        _session.signedOut();
+      } else {
+        _session.signedIn(profile);
+      }
+    } on NetworkFailure catch (failure) {
+      _session.stillUnknown(restoreFailure: failure);
     } on Object {
-      // An unreachable API on cold start must not strand the app on the splash
-      // route with no way forward, so an unresolvable session is treated as
-      // signed out and the user signs in again.
-      state = const AuthState.signedOut();
+      // Anything else means the stored session is not usable, which is the
+      // definition of signed out.
+      _session.signedOut();
     }
   }
 }
+
+/// The universities the wizard offers.
+final universitiesProvider = FutureProvider<List<UniversityOption>>(
+  (ref) => ref.read(authRepositoryProvider).universities(),
+);
+
+/// The faculties the wizard offers.
+final facultiesProvider = FutureProvider<List<Subject>>(
+  (ref) => ref.read(authRepositoryProvider).faculties(),
+);

@@ -52,7 +52,16 @@ Failure _mapResponse(Response<dynamic>? response) {
       message ?? 'Some of the details you entered are not valid.',
       fieldErrors: fieldErrors,
     ),
-    401 || 403 => const AuthFailure(),
+    // The API's detail is preferred, and it matters here: the same 401 answers a
+    // wrong password and an expired token, and the student needs to be told
+    // which. Hardcoding "your session has ended" made a mistyped password look
+    // like a sign-out, which sends them to a sign-in screen they are already on.
+    401 || 403 => AuthFailure(
+      message ??
+          (status == 401
+              ? 'Email or password is incorrect.'
+              : 'You do not have access to that.'),
+    ),
     404 => NotFoundFailure(message ?? 'That item could not be found.'),
     409 => ConflictFailure(
       message ?? 'That has already changed. Refresh and try again.',

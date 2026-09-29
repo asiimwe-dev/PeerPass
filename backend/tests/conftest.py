@@ -110,15 +110,43 @@ async def db_session(db_engine) -> AsyncIterator[AsyncSession]:
 
 
 @pytest.fixture
-async def client() -> AsyncIterator[AsyncClient]:
+async def client(db_session) -> AsyncIterator[AsyncClient]:
     """An HTTP client bound to the app, with exceptions left unhandled.
 
     `raise_app_exceptions=False` is deliberate: a route that returns a problem
     document is a normal outcome the test asserts on, not a test failure.
+
+    The `get_db` override is what makes the requests above actually reach the
+    test database. Without it the routes would use the process-wide engine from
+    `app.core.database`, which is a different database from the one `db_session`
+    is bound to -- so a test would write rows the test could not then read, and
+    a suite exercising real requests would pass against rows it never wrote.
+
+    The override has to be an async generator *function*, not a callable that
+    returns one. FastAPI decides how to resolve a dependency by inspecting what
+    it was given: given a generator function it iterates it, and given anything
+    else it treats the result as the value. A lambda returning a generator is
+    the second case, so the route would be handed the generator object itself
+    and fail on the first query with an `async_generator has no attribute
+    'execute'`.
     """
+    from app.core.database import get_db
     from app.main import create_app
 
-    transport = ASGITransport(app=create_app())
+    async def _override_get_db() -> AsyncIterator[AsyncSession]:
+        """Hand the request the test's own session.
+
+        `get_db` is an async generator dependency, so this one is too. It does
+        not open or close anything: the test owns the session's lifetime, and
+        the point of the override is only to redirect which session the route
+        is handed.
+        """
+        yield db_session
+
+    app = create_app()
+    app.dependency_overrides[get_db] = _override_get_db
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as http_client:

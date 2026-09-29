@@ -1,19 +1,81 @@
-import 'package:peerpass/features/auth/data/models/auth_session.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/models/subject.dart';
+import 'package:peerpass/core/models/user_profile.dart';
+import 'package:peerpass/features/auth/data/models/university_option.dart';
 
-/// The authentication contract the rest of the client depends on.
+/// The authentication and own-profile contract the rest of the client depends
+/// on.
 ///
-/// Sign-in and registration are intentionally absent for now: the shell only
-/// needs to know whether a session can be restored, and adding credential
-/// handling before the API's auth endpoints exist would mean shipping
-/// behaviour with nothing to verify it against.
+/// Every method throws a [Failure], never a transport exception. Translating
+/// `DioException` and RFC 9457 problem documents into [Failure] happens in the
+/// implementation, so a screen renders a message and never has to know whether
+/// the API answered with a socket error or a problem document.
 abstract interface class AuthRepository {
-  /// The session implied by stored tokens, or null when signed out.
+  /// Signs in with an address and a password, and stores the returned tokens.
+  Future<UserProfile> signIn({
+    required String email,
+    required String password,
+  });
+
+  /// Creates the account and signs it in.
   ///
-  /// Called on cold start. Implementations must clear a rejected refresh
-  /// token rather than surfacing an error, because a token the server no
-  /// longer honours is the definition of signed out.
-  Future<AuthSession?> restoreSession();
+  /// The API returns a session with the registration, so the client does not
+  /// have to follow this with a sign-in the user did not ask for.
+  Future<UserProfile> register({
+    required String email,
+    required String password,
+  });
+
+  /// The signed-in user's own record, or null when there is no session.
+  ///
+  /// Called on cold start. Implementations must spend the refresh token to get
+  /// an access token and then clear the session rather than surfacing an error,
+  /// because a token the server no longer honours *is* the definition of signed
+  /// out. A network failure is the one case worth reporting: it is retryable and
+  /// a student on a bad connection should be told so rather than signed out.
+  Future<UserProfile?> restoreSession();
+
+  /// Renews the access token, returning whether the session survived.
+  ///
+  /// The shape the auth interceptor wants: a bool, because the interceptor's only
+  /// question is whether to retry the request that got a `401`.
+  Future<bool> refreshSession();
+
+  /// The universities the picker offers.
+  Future<List<UniversityOption>> universities();
+
+  /// The faculties the picker offers.
+  Future<List<Subject>> faculties();
+
+  /// Updates the caller's own profile, returning the stored record.
+  ///
+  /// Partial by design. The wizard saves one step at a time, so a step that sent
+  /// the whole record would blank the university chosen on the previous screen.
+  Future<UserProfile> updateProfile({
+    String? fullName,
+    String? universityId,
+    String? facultyId,
+    int? yearOfStudy,
+    bool? academicDataConsented,
+  });
 
   /// Discards the stored session on this device.
   Future<void> signOut();
 }
+
+/// The auth contract, as a live instance.
+///
+/// Declared in the contract file rather than beside the auth screens, because it
+/// is the handle by which *other* features reach this feature. AGENTS.md allows
+/// exactly one cross-feature dependency: the owning feature's repository contract.
+/// A provider living in `presentation/` could not be imported by a sibling
+/// feature without also importing its screens, so the handle has to sit here.
+///
+/// Throwing rather than defaulting keeps a missing override loud: a silent fake
+/// default would let a build ship pointed at nothing.
+final authRepositoryProvider = Provider<AuthRepository>(
+  (ref) => throw UnimplementedError(
+    'authRepositoryProvider must be overridden in ProviderScope.',
+  ),
+);
