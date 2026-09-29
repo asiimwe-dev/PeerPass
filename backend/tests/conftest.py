@@ -12,12 +12,14 @@ from collections.abc import AsyncIterator
 import pytest
 
 # Deliberately not prefixed with "test" or "changeme": Settings refuses a
-# placeholder signing key, and that guard should apply to the suite too.
+# placeholder secret of any kind, and that guard should apply to the suite too.
 _SUITE_JWT_SECRET = "peerpass-local-suite-signing-key-0123456789abcdef"
+_SUITE_TOKEN_PEPPER = "peerpass-local-suite-token-pepper-0123456789abcdef"
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET", _SUITE_JWT_SECRET)
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
+os.environ.setdefault("TOKEN_PEPPER", _SUITE_TOKEN_PEPPER)
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import event  # noqa: E402
