@@ -45,16 +45,38 @@ Dio buildApiClient({
 }
 
 Interceptor _buildLoggingInterceptor() {
-  // Verbose transport logging is a development aid only. Headers are suppressed
-  // because they carry the Authorization bearer token, which must not reach
-  // logcat or the browser console on a device a student is holding.
+  // Transport logging is a development aid only. It is disabled outside debug
+  // builds, where the output would go to logcat on a device a student is
+  // holding and into any `flutter logs` capture attached to a bug report.
   if (!kDebugMode) {
     return const Interceptor();
   }
 
+  // Headers carry the Authorization bearer token, and every body in this API is
+  // a credential or a student's academic record: sign-up carries a submitted
+  // password, the auth responses carry issued tokens, and the rest carries
+  // grades and session history. None of it goes to the device log.
+  //
+  // `requestBody` and `responseBody` are set even though dio already defaults
+  // them to false, because that default is the only thing standing between a
+  // debug build and a password in logcat, and it is one dio release away from
+  // changing. A security-relevant default is worth stating where it is relied
+  // on; the redundant-argument lint is silenced for the same reason.
+  //
+  // What is left is method, path, status and timing: enough to see that a
+  // request went somewhere and came back, and nothing a student would mind
+  // seeing pasted into a bug report.
   return LogInterceptor(
     requestHeader: false,
     responseHeader: false,
+    // Matches the current dio default, but stated here on purpose: the default
+    // is the only thing keeping a submitted password out of logcat, and a
+    // review that reads the argument list should not have to know that.
+    // ignore: avoid_redundant_argument_values
+    requestBody: false,
+    // As above. Response bodies here carry issued access and refresh tokens.
+    // ignore: avoid_redundant_argument_values
+    responseBody: false,
     logPrint: (object) => debugPrint(object.toString()),
   );
 }
