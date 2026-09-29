@@ -100,6 +100,42 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
+      # The suite below builds its schema with `create_all`, straight from the
+      # models. That means it cannot see a migration that disagrees with them:
+      # the models are always right by construction, and a migration that omits
+      # a column would ship green and only fail once applied to a real database.
+      #
+      # These three steps close that gap, and they run before the suite for a
+      # reason that is not cosmetic. `create_all` leaves the tables in place, so
+      # a migration checked afterwards finds `grading_scales` already there and
+      # dies on a duplicate table. The first draft of this job was written in the
+      # other order and failed that way, which is a fine way to find out.
+      #
+      # Ordering also decides what `check` is comparing. Run against a database
+      # that only the migrations have touched, it answers the question that
+      # matters: does the migration history build exactly the schema the models
+      # describe? Run after `create_all`, it would compare the models against a
+      # database the models themselves produced, which is true by construction
+      # and proves nothing.
+      #
+      # `upgrade head` is not a formality either. The first draft of the initial
+      # migration failed here by declaring every enum CHECK constraint twice,
+      # once from the column and once as a table constraint, and nothing else in
+      # the toolchain noticed.
+      - name: Apply migrations
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Verify migrations match the models
+        working-directory: backend
+        run: alembic check
+
+      - name: Migrations are reversible
+        working-directory: backend
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
       - name: Test against PostgreSQL
         working-directory: backend
         run: python -m pytest

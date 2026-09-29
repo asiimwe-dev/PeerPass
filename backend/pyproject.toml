@@ -18,6 +18,11 @@ asyncio_default_fixture_loop_scope = "function"
 [tool.ruff]
 line-length = 88
 target-version = "py314"
+# Autogenerate output is regenerated, not edited. Reformatting it produces a
+# diff nobody can meaningfully review, because the next `--autogenerate` run
+# reintroduces the same long lines and the churn hides the real changes. Linting
+# still applies; only the formatter is kept away from it.
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = [
@@ -37,3 +42,9 @@ ignore = [
     # used in the same modules to mean something else entirely.
     "N818",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Same reason as the format exclusion above: a migration is written by
+# `--autogenerate`, and its shape is SQLAlchemy's to decide. The checks that
+# still matter on a migration -- unused imports, undefined names -- stay on.
+"alembic/versions/*" = ["E501", "I001"]
