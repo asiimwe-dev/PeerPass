@@ -226,11 +226,18 @@ class TestPublicIdProjection:
 
 
 class TestRegistration:
+    """Sign-up takes an address and a password, and nothing else.
+
+    Every test here constructs `RegisterRequest` with *only* those two fields.
+    A test that also passed `full_name` or `roles` would keep passing after those
+    fields were removed, because `extra_forbidden` would raise for a reason that
+    had nothing to do with what the test was checking.
+    """
+
     def test_a_short_password_is_rejected(self) -> None:
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="password"):
             RegisterRequest(
                 email="student@ug.ac.ug",
-                full_name="Test Student",
                 password="short",
             )
 
@@ -243,7 +250,6 @@ class TestRegistration:
         with pytest.raises(ValidationError, match="whitespace"):
             RegisterRequest(
                 email="student@ug.ac.ug",
-                full_name="Test Student",
                 password=" " * 20,
             )
 
@@ -251,24 +257,8 @@ class TestRegistration:
         with pytest.raises(ValidationError):
             RegisterRequest(
                 email="not-an-email",
-                full_name="Test Student",
-                password="correct-horse-battery",
+                password="correct-horse-battery-staple",
             )
-
-    def test_duplicate_roles_collapse(self) -> None:
-        """The client is told the field is fine rather than getting a 409.
-
-        The join table rejects the duplicate regardless; collapsing here means the
-        failure is a field-level message the app can render beside the control.
-        """
-        request = RegisterRequest(
-            email="student@ug.ac.ug",
-            full_name="Test Student",
-            password="correct-horse-battery",
-            roles=[UserRole.STUDENT, UserRole.STUDENT],
-        )
-
-        assert request.roles == [UserRole.STUDENT]
 
     def test_an_unknown_field_is_rejected(self) -> None:
         """Not ignored.
@@ -279,9 +269,35 @@ class TestRegistration:
         with pytest.raises(ValidationError):
             RegisterRequest(
                 email="student@ug.ac.ug",
-                full_name="Test Student",
-                password="correct-horse-battery",
+                password="correct-horse-battery-staple",
                 verified=True,  # type: ignore[call-arg]
+            )
+
+    def test_a_name_cannot_be_supplied_at_sign_up(self) -> None:
+        """The name arrives during onboarding, and a client cannot pre-empt it.
+
+        `extra_forbidden` is what makes this safe rather than merely ignored: a
+        caller who thinks they set the name gets a 422 instead of an account that
+        silently kept the one it was given.
+        """
+        with pytest.raises(ValidationError, match="full_name"):
+            RegisterRequest(
+                email="student@ug.ac.ug",
+                password="correct-horse-battery-staple",
+                full_name="Test Student",
+            )
+
+    def test_roles_cannot_be_claimed_at_sign_up(self) -> None:
+        """The tutor role is earned through a verified competency.
+
+        A client sending `roles: ["tutor"]` must be refused outright, never
+        honoured and never quietly dropped.
+        """
+        with pytest.raises(ValidationError, match="roles"):
+            RegisterRequest(
+                email="student@ug.ac.ug",
+                password="correct-horse-battery-staple",
+                roles=[UserRole.TUTOR],
             )
 
 
