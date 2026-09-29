@@ -13,6 +13,7 @@ import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
+import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
 
 const String _signedOutText = 'Sign in';
 
@@ -218,5 +219,89 @@ void main() {
     await _settle(tester);
 
     expect(find.text(_signedOutText), findsOneWidget);
+  });
+
+  testWidgets('the sign-in screen can reach the sign-up screen', (tester) async {
+    // Regression. The redirect guard exempted only /sign-in while signed out, so
+    // tapping "Create one" navigated to /sign-up and was immediately redirected
+    // back. The button therefore did nothing at all.
+    //
+    // This test taps the button and goes through the real router, which is the
+    // only arrangement that could have caught it. `sign_up_screen_test.dart`
+    // pumps `SignUpScreen` directly, so it proved the screen renders and said
+    // nothing about whether anything could ever navigate to it.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+    expect(find.text(_signedOutText), findsOneWidget);
+
+    await tester.tap(find.text('No account yet? Create one'));
+    await _settle(tester);
+
+    expect(find.byType(SignUpScreen), findsOneWidget);
+    expect(
+      find.text(_signedOutText),
+      findsNothing,
+      reason: 'the guard bounced the student back to sign-in',
+    );
+    expect(
+      Router.of(
+        tester.element(find.byType(SignUpScreen)),
+      ).routeInformationProvider!.value.uri.path,
+      AppRoutes.signUp,
+    );
+  });
+
+  testWidgets('a deep link to sign-up is allowed while signed out', (
+    tester,
+  ) async {
+    // The same rule from the other direction: a shared /sign-up link must open
+    // the sign-up screen rather than bounce to sign-in.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+
+    GoRouter.of(
+      tester.element(find.byType(Scaffold).first),
+    ).go(AppRoutes.signUp);
+    await _settle(tester);
+
+    expect(find.byType(SignUpScreen), findsOneWidget);
+  });
+
+  testWidgets('a deep link to onboarding is sent to sign-in when signed out', (
+    tester,
+  ) async {
+    // The guard is widened, so the routes it must still refuse are pinned here.
+    // Without this, "widen the allow-list" and "let anyone in" look identical.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+
+    GoRouter.of(
+      tester.element(find.byType(Scaffold).first),
+    ).go(AppRoutes.onboarding);
+    await _settle(tester);
+
+    expect(find.text(_signedOutText), findsOneWidget);
+    expect(find.byType(SignUpScreen), findsNothing);
   });
 }

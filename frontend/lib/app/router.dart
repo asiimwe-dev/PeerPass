@@ -75,17 +75,32 @@ String? _redirectFor(SessionState state, String location) {
     // the app on splash rather than guessing and flashing the wrong screen.
     SessionStatus.unknown =>
       location == AppRoutes.splash ? null : AppRoutes.splash,
+    // Sign-in and sign-up are both reachable while signed out, and the two must
+    // be listed together. Exempting only sign-in made the guard redirect a
+    // student off the sign-up screen the instant they arrived, so "No account
+    // yet? Create one" did nothing at all: the button navigated, the guard
+    // undid it, and the screen never rendered. The screen itself was correct and
+    // its widget tests passed, because they pumped it directly and never went
+    // through here.
     SessionStatus.unauthenticated =>
-      location == AppRoutes.signIn ? null : AppRoutes.signIn,
+      _isPublicAuthRoute(location) ? null : AppRoutes.signIn,
     SessionStatus.authenticated => _redirectForSignedIn(state.profile, location),
   };
 }
+
+/// The two routes a signed-out student is allowed to be on.
+///
+/// Shared by both branches of the guard deliberately. The signed-in branch has
+/// to reject these and the signed-out branch has to accept them, and writing the
+/// pair out separately is how the two halves drifted apart in the first place.
+bool _isPublicAuthRoute(String location) =>
+    location == AppRoutes.signIn || location == AppRoutes.signUp;
 
 /// Where a signed-in student belongs.
 String? _redirectForSignedIn(UserProfile? profile, String location) {
   // Sign-in and sign-up are the two places a signed-in student must not be, or
   // a bookmarked /sign-in link would strand them in a form that cannot succeed.
-  if (location == AppRoutes.signIn || location == AppRoutes.signUp) {
+  if (_isPublicAuthRoute(location)) {
     return _landingFor(profile);
   }
 
