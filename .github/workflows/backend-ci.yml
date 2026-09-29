@@ -43,8 +43,10 @@ jobs:
 
       - name: Lint
         working-directory: backend
+        # Ruff comes from requirements-dev.txt rather than being installed here,
+        # so the version that decides whether a merge is clean is the one in the
+        # lockfile and the one that was reviewed.
         run: |
-          python -m pip install ruff
           ruff check .
           ruff format --check .
 
