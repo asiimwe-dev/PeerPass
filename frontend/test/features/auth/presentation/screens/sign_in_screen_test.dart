@@ -174,7 +174,7 @@ void main() {
     await _settle(tester);
 
     expect(find.text('Email address is required'), findsOneWidget);
-    expect(find.text('Password must be at least 12 characters'), findsOneWidget);
+    expect(find.text('Password must be at least 8 characters'), findsOneWidget);
     expect(
       repository.signInAttempts,
       isZero,

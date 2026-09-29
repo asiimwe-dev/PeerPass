@@ -125,7 +125,7 @@ void main() {
     await tester.tap(_submitButton);
     await _settle(tester);
 
-    expect(find.text('Password must be at least 12 characters'), findsOneWidget);
+    expect(find.text('Password must be at least 8 characters'), findsOneWidget);
     expect(
       repository.registerAttempts,
       isZero,
@@ -148,7 +148,7 @@ void main() {
     await tester.tap(_submitButton);
     await _settle(tester);
 
-    expect(find.text('Password must be at least 12 characters'), findsOneWidget);
+    expect(find.text('Password must be at least 8 characters'), findsOneWidget);
     expect(repository.registerAttempts, isZero);
   });
 
@@ -165,7 +165,7 @@ void main() {
 
     expect(find.text('Passwords do not match'), findsOneWidget);
     // The password itself was fine, so it must not be the one reported.
-    expect(find.text('Password must be at least 12 characters'), findsNothing);
+    expect(find.text('Password must be at least 8 characters'), findsNothing);
     expect(repository.registerAttempts, isZero);
   });
 

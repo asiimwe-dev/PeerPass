@@ -571,12 +571,29 @@ called yet:
 
 ### 9.3 Password acceptance
 
-Length-based, 12 to 128 code points, with no composition rules. Character-class
+Length-based, **8 to 128** code points, with no composition rules. Character-class
 requirements are well documented to produce `Passw0rd!` — a predictable
 substitution that satisfies the rule and is weaker than a passphrase of the same
 length. The 128 ceiling exists so that a future move to bcrypt, which truncates at
 72 bytes silently, cannot quietly reduce a long password to its first 72
 characters.
+
+**The floor was twelve and is now eight.** The reasoning matters, because a long
+floor looks like the safer choice and is not. Past about eight characters students
+stop inventing and start satisfying — they write `Password1!` and forget it, or
+abandon the form. A longer floor therefore rejects honest students without
+rejecting attackers, because every guess worth making is short: nobody
+brute-forces a twelve character space when the useful guesses are eight characters
+and known. The deny-list, not the floor, is what rejects attacker guesses, and
+Argon2id's 19 MiB cost is what makes each one expensive.
+
+**The residual risk is that there is no rate limiting on sign-in** (see 9.8), so
+the number of guesses is unbounded and the deny-list is the only thing between a
+leaked student address and a guessed password. This is a pre-existing gap that a
+short floor makes load-bearing rather than theoretical. Rate limiting on
+`/v1/auth/login` and `/v1/auth/register` is the correct next control, and it is
+preferable to raising the floor back, because it addresses the actual threat
+without the cost to the student.
 
 A small static deny-list covers the passwords that would otherwise make the
 Argon2 cost affordable. It is checked at **registration and password change only,
@@ -591,6 +608,16 @@ breach-API lookup would hand a third party a list of student addresses to check 
 would make account creation depend on someone else's uptime. Keeping it short
 enough to audit by eye is what makes it a control rather than decoration; it needs a
 manual refresh, and that is a known cost rather than an oversight.
+
+The cost of a static list is that it only covers what someone thought to add, and
+at a floor of eight a student can reach a keyboard run the list never anticipated.
+Entries are therefore listed in **base form**, because `denial_reason` strips
+trailing digits and punctuation before the lookup: listing `asshole` refuses
+`asshole1` and `asshole!` without naming either, and listing `1q2w3e4r` already
+covers the trailing digits of its own longer variants. The list still has holes —
+`tests/core/test_password_policy.py` pins the ones found so far, and a new one is
+found by trying one, not by a control failing. That is the argument for rate
+limiting.
 
 ### 9.4 Tokens
 

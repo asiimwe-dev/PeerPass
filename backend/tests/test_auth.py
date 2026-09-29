@@ -38,8 +38,8 @@ ME_URL = "/v1/auth/me"
 PROFILE_URL = "/v1/users/me"
 EMAIL = "student@must.ac.ug"
 
-#: 28 characters: past the 12 minimum, not on the deny-list, and a real phrase so
-#: it is obviously not a test fixture that leaked into a policy check.
+#: 28 characters: well past the 8 minimum, not on the deny-list, and a real
+#: phrase so it is obviously not a test fixture that leaked into a policy check.
 GOOD_PASSWORD = "correct horse battery staple"
 
 
@@ -156,9 +156,10 @@ async def test_register_lowercases_the_stored_address(
 @pytest.mark.parametrize(
     ("password", "reason"),
     [
-        ("short", "under the 12 character minimum"),
-        ("            ", "twelve spaces, which a length check alone accepts"),
-        ("password1234", "on the deny-list, though a legal length"),
+        ("short12", "under the 8 character minimum, and a literal under it"),
+        ("        ", "eight spaces, which a length check alone accepts"),
+        ("password1", "on the deny-list, though a legal length"),
+        ("abcdefgh", "a keyboard run at a now-legal length"),
     ],
 )
 async def test_register_rejects_an_unacceptable_password(
@@ -170,6 +171,35 @@ async def test_register_rejects_an_unacceptable_password(
 
     assert response.status_code == 422, reason
     assert "password" in response.json()["errors"]
+
+
+async def test_an_eight_character_password_registers_and_signs_in(
+    client: AsyncClient,
+) -> None:
+    """The point of lowering the minimum: a short, memorable password works.
+
+    Asserted through the router rather than against `denial_reason` alone,
+    because the length rule is enforced in two places -- the policy and the
+    request schema -- and only the request path proves they agree. A policy test
+    passing while the schema still demanded twelve would leave a student unable
+    to sign up for the reason this change was made.
+
+    The value is eight characters, not on the deny-list, and deliberately
+    unmemorable-looking enough that the deny-list result is not an accident of
+    this particular string.
+    """
+    password = "Kampala!7"
+
+    registered = await client.post(
+        REGISTER_URL, json={"email": EMAIL, "password": password}
+    )
+    assert registered.status_code == 201, registered.text
+
+    signed_in = await client.post(
+        LOGIN_URL, json={"email": EMAIL, "password": password}
+    )
+    assert signed_in.status_code == 200, signed_in.text
+    assert signed_in.json()["user"]["email"] == EMAIL
 
 
 async def test_register_rejects_an_unknown_field(client: AsyncClient) -> None:

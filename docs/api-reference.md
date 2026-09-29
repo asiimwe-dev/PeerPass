@@ -88,11 +88,16 @@ holds a valid token it cannot yet render a name for.
 | 409    | `An account already exists for that email address.`  |
 | 422    | `That password cannot be accepted.` — the reason is in `errors.password` |
 
-The password is 12–128 characters, must not be entirely whitespace, and is
+The password is 8–128 characters, must not be entirely whitespace, and is
 checked against a common-password deny-list. The reason is returned as
-`errors.password`, e.g. `Password must be at least 12 characters long.`,
+`errors.password`, e.g. `Password must be at least 8 characters long.`,
 `That password is too common. Choose something longer that is not a dictionary
 word or a keyboard pattern.`
+
+Lowering the minimum to 8 cannot invalidate an existing password: this endpoint
+creates accounts, and `POST /v1/auth/login` enforces no minimum at all (only the
+128 maximum), so a password accepted under the old 12-character rule keeps
+working.
 
 A new account has `full_name: null` and holds only the `student` role. The tutor
 role is not grantable at registration; it is earned by declaring a grade and

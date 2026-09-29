@@ -59,18 +59,26 @@ abstract final class Validators {
 
   /// Requires a password strong enough to survive a reused-credential list.
   ///
-  /// Twelve characters, because that is what the API requires. The two numbers
+  /// Eight characters, because that is what the API requires. The two numbers
   /// are duplicated on purpose -- the server is the authority and this only
   /// spares a round trip -- but they are duplicated, not chosen independently: a
-  /// client that accepted eight and the server twelve would fail every
-  /// password between the two, and the user would be told the field was wrong
-  /// without being told which rule they broke.
+  /// client that accepted six and the server eight would fail every password
+  /// between the two, and the user would be told the field was wrong without
+  /// being told which rule they broke.
   ///
-  /// Length is the only requirement, because it is the only property that
-  /// reliably matters. Composition rules push students towards predictable
-  /// substitutions, and the API enforces the real rule regardless.
+  /// This is deliberately shorter than a service average. The floor is not what
+  /// protects the account: the API's deny-list rejects the passwords an attacker
+  /// actually opens with, and a longer floor only rejected students who gave up
+  /// and typed a predictable one instead. It is also deliberately not a complete
+  /// check. It cannot see the deny-list, so it does not try to duplicate it --
+  /// a client that blocked `password1` locally would be enforcing a list that
+  /// changes on the server without this file changing, and the two would drift.
+  ///
+  /// Length is the only requirement here, because it is the only property this
+  /// can check that reliably matters. Composition rules push students towards
+  /// predictable substitutions, and the API enforces the real rule regardless.
   static String? password(String? value) {
-    final lengthError = length(value, min: 12, max: null, field: 'Password');
+    final lengthError = length(value, min: 8, max: null, field: 'Password');
     if (lengthError != null) return lengthError;
     return null;
   }

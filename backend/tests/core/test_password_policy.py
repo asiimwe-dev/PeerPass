@@ -20,15 +20,22 @@ def test_a_long_passphrase_is_accepted() -> None:
 # --- Length ------------------------------------------------------------------
 
 
-def test_s1_the_minimum_is_twelve() -> None:
-    """Length beats composition rules.
+def test_s1_the_minimum_is_eight() -> None:
+    """Length beats composition rules, and eight is the point past which the
+    floor stops helping.
 
     A required-symbol rule produces `Passw0rd!`, which is predictable and is
     spelled out in every credential corpus. Length has no equivalent failure
-    mode, so the minimum is set well above the service average and there is no
-    symbol requirement at all.
+    mode, so there is no symbol requirement at all.
+
+    The floor is pinned rather than read from the module because changing it is a
+    product decision with a security consequence, not a refactor. It was twelve
+    and was lowered to eight: past that point students start writing the
+    predictable substitution and forgetting it, and a longer floor rejects
+    honest students without rejecting attackers, since every useful guess is
+    short. The deny-list, not the floor, is what rejects attacker guesses.
     """
-    assert MIN_PASSWORD_LENGTH == 12
+    assert MIN_PASSWORD_LENGTH == 8
 
 
 def test_a_password_one_below_the_minimum_is_refused() -> None:
@@ -38,8 +45,8 @@ def test_a_password_one_below_the_minimum_is_refused() -> None:
 def test_a_password_exactly_at_the_minimum_is_accepted() -> None:
     """The boundary itself, not just either side of it.
 
-    A student who types a twelve character passphrase has to be let through;
-    an off-by-one here is the kind of defect that only shows up in production
+    A student who types an eight character passphrase has to be let through; an
+    off-by-one here is the kind of defect that only shows up in production
     sign-up, and only for the people unlucky enough to pick the exact length.
     """
     assert denial_reason("a" * MIN_PASSWORD_LENGTH) is None
@@ -63,6 +70,46 @@ def test_the_maximum_is_128() -> None:
 
 
 # --- The deny-list -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "password",
+    [
+        # Keyboard and alphabet runs. The list already refused the top-row walks
+        # (`1qaz2wsx`, `q1w2e3r4`, `1q2w3e4r`) but not the home-row or
+        # alphabetical equivalents, which is the gap that only opens once the
+        # length floor is short enough for them to be typeable at all.
+        "abcdefgh",
+        "abcdefghi",
+        "a1b2c3d4",
+        "qazwsxedc",
+        "1q2w3e4r5t6y7u",
+    ],
+)
+def test_s1_a_keyboard_or_alphabet_run_is_refused(password: str) -> None:
+    """A run is not a secret.
+
+    Pinning these because they were accepted at a minimum of eight until they
+    were found by trying them, and a static deny-list has no way to notice one on
+    its own. That is the argument for rate limiting rather than for a longer
+    floor.
+    """
+    assert denial_reason(password) is not None
+
+
+@pytest.mark.parametrize(
+    "password",
+    [
+        # Listed in the base form only. The trailing-strip rule turns these into
+        # coverage of every decorated variant, so `asshole1` and `asshole!` are
+        # refused because `asshole` is listed, not because each is.
+        "dickhead",
+        "asshole1",
+        "asshole!",
+    ],
+)
+def test_s1_a_listed_base_form_refuses_its_decorated_variants(password: str) -> None:
+    assert denial_reason(password) is not None
 
 
 @pytest.mark.parametrize(

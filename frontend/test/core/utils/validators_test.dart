@@ -72,12 +72,12 @@ void main() {
   });
 
   group('Validators.password', () {
-    test('requires at least twelve characters, the API minimum', () {
+    test('requires at least eight characters, the API minimum', () {
       // Pinned on the boundary rather than around it. A test that only checked
       // a very short value would still pass if the minimum were dropped to four,
       // and the value it used to accept would be a password the API refuses.
-      expect(Validators.password('a' * 11), isNotNull);
-      expect(Validators.password('a' * 12), isNull);
+      expect(Validators.password('a' * 7), isNotNull);
+      expect(Validators.password('a' * 8), isNull);
     });
 
     test('rejects an empty password', () {
@@ -85,7 +85,16 @@ void main() {
     });
 
     test('rejects a password of only whitespace', () {
-      expect(Validators.password(' ' * 12), isNotNull);
+      expect(Validators.password(' ' * 8), isNotNull);
+    });
+
+    test('does not try to duplicate the API deny-list', () {
+      // The server refuses this one through its common-password list. The client
+      // deliberately does not, because a locally-copied deny-list would drift
+      // from the server's the next time that file changed, and the user would be
+      // shown an error the API never sent. The round trip is the cost of having
+      // one authority.
+      expect(Validators.password('password1'), isNull);
     });
   });
 

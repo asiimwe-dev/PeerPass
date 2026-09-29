@@ -97,7 +97,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                       ),
                       const SizedBox(height: AppDimens.sm),
                       Text(
-                        'It takes a moment. Your name comes next.',
+                        'It takes a moment',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
@@ -146,7 +146,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Text('Create account'),
                       ),
