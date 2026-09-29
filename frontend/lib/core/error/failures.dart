@@ -11,7 +11,13 @@ import 'package:flutter/foundation.dart';
 /// exhaustive `switch` over a failure is a compile error when a new variant is
 /// added, which is the point: adding a failure type should force every
 /// presentation site to decide how to show it.
-sealed class Failure {
+///
+/// Implements [Exception] because these are thrown across the data/presentation
+/// boundary and caught by screen code. A hierarchy that is thrown but is not an
+/// [Exception] breaks the convention every `catch` and `on` clause in the
+/// codebase relies on, and makes the lints that guard that convention fire at
+/// every throw site.
+sealed class Failure implements Exception {
   const Failure(this.message);
 
   /// Message safe to show to a user.

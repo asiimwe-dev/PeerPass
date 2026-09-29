@@ -4,29 +4,34 @@ import 'package:go_router/go_router.dart';
 import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/constants/app_dimens.dart';
 import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/utils/validators.dart';
 import 'package:peerpass/core/widgets/content_width_limiter.dart';
 import 'package:peerpass/core/widgets/failure_view.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
 import 'package:peerpass/features/auth/presentation/widgets/credential_fields.dart';
 import 'package:peerpass/features/auth/presentation/widgets/field_errors.dart';
-import 'package:peerpass/features/auth/presentation/widgets/sign_in_lock.dart';
+import 'package:peerpass/features/auth/presentation/widgets/sign_up_id_card.dart';
 
-/// Where an existing student signs back in.
+/// Where a new student creates an account.
 ///
-/// A plain form with no local session: the router decides what a successful sign
-/// in leads to, so a returning student is sent to onboarding if their profile is
-/// still incomplete and home if it is not. The screen does not branch on that.
-class SignInScreen extends ConsumerStatefulWidget {
-  const SignInScreen({super.key});
+/// Collects an address and a password and nothing else. A name is asked for
+/// immediately afterwards, in the wizard, because registration is also what
+/// grants the session -- and requiring a name before the account exists would
+/// mean a student who abandons the form has an account they never finished
+/// making, or no account at all depending on how the form is wired. The wizard
+/// is the better place for it: it is the part that can be resumed.
+class SignUpScreen extends ConsumerStatefulWidget {
+  const SignUpScreen({super.key});
 
   @override
-  ConsumerState<SignInScreen> createState() => _SignInScreenState();
+  ConsumerState<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignInScreenState extends ConsumerState<SignInScreen> {
+class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _confirmation = TextEditingController();
 
   Failure? _failure;
   bool _submitting = false;
@@ -35,6 +40,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _confirmation.dispose();
     super.dispose();
   }
 
@@ -50,18 +56,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     try {
       await ref
           .read(authControllerProvider)
-          .signIn(email: _email.text, password: _password.text);
+          .register(email: _email.text, password: _password.text);
     } on Failure catch (failure) {
-      // Only a failure that survived to here is worth showing. A success moves
-      // the router before this frame finishes, and the guard takes the student
-      // away, so nothing below this runs.
       if (mounted) setState(() => _failure = failure);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
-  /// The API's complaint about the address, rendered under the field.
+  /// The API's complaint about a named field, rendered under that field.
   String? _fieldError(String field) => fieldErrorFor(_failure, field);
 
   /// Whatever is left once the field-level messages have been placed.
@@ -72,6 +75,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
+      appBar: AppBar(leading: const BackButton()),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -84,16 +88,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Center(child: SignInLock()),
+                      const Center(child: SignUpIdCard()),
                       const SizedBox(height: AppDimens.xl),
                       Text(
-                        'Welcome back',
+                        'Create your account',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineSmall,
                       ),
                       const SizedBox(height: AppDimens.sm),
                       Text(
-                        'Sign in to your PeerPass account',
+                        'It takes a moment. Your name comes next.',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
@@ -103,19 +107,34 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       CredentialFields(
                         emailController: _email,
                         passwordController: _password,
+                        autofillHints: const [AutofillHints.newPassword],
                         emailError: _fieldError('email'),
                         passwordError: _fieldError('password'),
-                        // The server is the authority on whether an address
-                        // exists. Autocomplete offers a previously used one
-                        // rather than risking the account being named in
-                        // traffic as having failed.
-                        autofillHints: const [AutofillHints.password],
                         onChanged: () => setState(() {}),
                       ),
-                      // A rejection that names a field is shown next to that field
-                      // instead of in a banner, so the student is told which input to
-                      // change. A banner is still shown when the rejection names no
-                      // field, because then there is nowhere better to put it.
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _confirmation,
+                        enabled: !_submitting,
+                        autocorrect: false,
+                        obscureText: true,
+                        // A different hint from the field above: this one must not
+                        // be the browser's idea of "the" password, or autofill
+                        // fills it with something that then fails to match.
+                        autofillHints: const [],
+                        textInputAction: TextInputAction.done,
+                        decoration: InputDecoration(
+                          labelText: 'Confirm password',
+                          prefixIcon: const Icon(Icons.lock_reset_outlined),
+                          // The API has no separate confirmation field, so its
+                          // complaint about the password belongs here too: it is
+                          // the field the student is about to correct.
+                          errorText: _fieldError('password'),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                        validator: (value) =>
+                            Validators.passwordsMatch(_password.text, value),
+                      ),
                       if (_bannerFailure case final banner?) ...[
                         const SizedBox(height: AppDimens.lg),
                         FailureView(failure: banner),
@@ -129,14 +148,14 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                 width: 20,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text('Sign in'),
+                            : const Text('Create account'),
                       ),
                       const SizedBox(height: AppDimens.lg),
                       TextButton(
                         onPressed: _submitting
                             ? null
-                            : () => context.go(AppRoutes.signUp),
-                        child: const Text('No account yet? Create one'),
+                            : () => context.go(AppRoutes.signIn),
+                        child: const Text('Already have an account? Sign in'),
                       ),
                     ],
                   ),
