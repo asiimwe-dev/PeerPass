@@ -1,0 +1,42 @@
+# Direct runtime dependencies. Edit this, then regenerate:
+#
+#     pip-compile --generate-hashes --strip-extras \
+#       --output-file=requirements.txt requirements.in
+#
+# Expect this to take a long time -- tens of minutes, not seconds. Hash mode
+# fetches the hash of every published file for every resolved package, and
+# `cffi`, `pydantic-core`, `uvloop`, `psycopg-binary` and `argon2-cffi-bindings`
+# between them publish several hundred wheels each. The slowness is in the
+# compiled dependencies, not a network fault; if it is still running after an
+# hour, that is the reason and not a hang.
+#
+# `requirements.txt` is generated and hash-pinned, and is what CI and production
+# install. It is committed rather than resolved at install time because a service
+# holding student records should install exactly what was reviewed, not whatever
+# the index serves that day. The hashes are what make that claim about the
+# artifacts rather than only about the version numbers.
+fastapi
+uvicorn[standard]
+sqlalchemy[asyncio]
+alembic
+psycopg[binary]
+pydantic-settings
+email-validator
+
+# Symmetric JWT signing, deliberately: the `crypto` extra is not installed.
+#
+# Asymmetric signing buys key separation between the issuer and the verifier,
+# which matters when a third party has to check a token and the issuer must not
+# hold the ability to mint them. That is not this service -- it mints and verifies
+# its own tokens, so HS256 is sufficient, and key rotation is handled by the
+# key set in settings rather than by a new key pair.
+#
+# The saving is real: `cryptography` is a compiled wheel of a few megabytes that
+# would have to be audited and shipped for no capability actually in use.
+pyjwt
+
+# Password hashing. Argon2id needs a compiled extension, which was a genuine
+# operational cost when this project was designed and is not one now:
+# `argon2-cffi-bindings` publishes a single `abi3` wheel covering CPython 3.10
+# through 3.15 on manylinux x86_64 and aarch64, macOS arm64, and Windows.
+argon2-cffi
