@@ -78,9 +78,9 @@ class Rating(Base, TimestampMixin):
     #: than discarded with the rest of the rating.
     feedback_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    session: Mapped["Session"] = relationship(back_populates="ratings")
-    rater: Mapped["User"] = relationship(foreign_keys=[rater_id])
-    ratee: Mapped["User"] = relationship(foreign_keys=[ratee_id])
+    session: Mapped[Session] = relationship(back_populates="ratings")
+    rater: Mapped[User] = relationship(foreign_keys=[rater_id])
+    ratee: Mapped[User] = relationship(foreign_keys=[ratee_id])
 
     #: Public id of the user whose rating this is. A response that exposed
     #: `rater_id` straight from the column would leak an internal key, and a

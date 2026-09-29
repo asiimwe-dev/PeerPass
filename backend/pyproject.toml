@@ -2,7 +2,11 @@
 name = "peerpass-backend"
 version = "0.1.0"
 description = "FastAPI service for the PeerPass peer tutoring network"
-requires-python = ">=3.12"
+# 3.14, not 3.12. `app.core.security.new_uuid7` needs `uuid.uuid7`, and every
+# primary key in the database goes through it. Declaring a lower floor here let
+# the suite pass only because no test constructed a `User`; the first test that
+# does would have failed on CI while passing locally.
+requires-python = ">=3.14"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -13,7 +17,7 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [

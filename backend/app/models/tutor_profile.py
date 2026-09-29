@@ -96,7 +96,7 @@ class TutorProfile(Base, TimestampMixin):
     #: is explainable to the tutor and auditable later.
     suspended_reason: Mapped[str | None] = mapped_column(nullable=True)
 
-    user: Mapped["User"] = relationship(back_populates="tutor_profile")
+    user: Mapped[User] = relationship(back_populates="tutor_profile")
 
     @property
     def average_rating(self) -> Decimal | None:
