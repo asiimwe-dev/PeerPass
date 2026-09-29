@@ -11,9 +11,11 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
+    Integer,
     Select,
     String,
     Table,
@@ -36,7 +38,7 @@ from app.models.enums import UserRole
 
 if TYPE_CHECKING:
     from app.models.competency import Competency
-    from app.models.course_unit import University
+    from app.models.course_unit import Subject, University
     from app.models.tutor_profile import TutorProfile
 
 
@@ -63,6 +65,16 @@ class User(Base, TimestampMixin):
     """
 
     __tablename__ = "users"
+    __table_args__ = (
+        # A year of study outside 1-6 is a typo, not a student's year, and it
+        # would silently produce an empty cohort filter. The upper bound is 6
+        # because that is the longest a Ugandan undergraduate degree runs in
+        # practice; raise it here if that stops being true.
+        CheckConstraint(
+            "year_of_study IS NULL OR (year_of_study >= 1 AND year_of_study <= 6)",
+            name="year_of_study_in_range",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid7)
     public_id: Mapped[uuid.UUID] = public_id_column()
@@ -73,7 +85,38 @@ class User(Base, TimestampMixin):
         String(320), nullable=False, unique=True, index=True
     )
 
-    full_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    #: Nullable, and that is a deliberate product decision rather than an
+    #: oversight. Sign-up asks for an email and a password only; the name is
+    #: collected in the first step of the onboarding wizard, which is a
+    #: separate screen the student can abandon. Making the column NOT NULL
+    #: would mean either asking for the name on a form we have decided to keep
+    #: minimal, or inventing a placeholder that a display name would later read
+    #: out. An account with no name is a real, reachable state, and the client
+    #: derives a fallback greeting from it.
+    full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
+    #: Year of study, collected in the wizard's academic step. Nullable because
+    #: the wizard can be abandoned partway, and because a tutor's own year is not
+    #: the interesting thing about them. Not used by matching.
+    year_of_study: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    #: The faculty the student belongs to.
+    #:
+    #: This points at `subjects` rather than a dedicated faculties table, and
+    #: the reason is load-bearing rather than lazy: `subjects` already groups
+    #: course units, and the wizard needs exactly that grouping to offer a
+    #: student the course units in their own faculty. A second table would hold
+    #: the same names twice and the two would drift.
+    #:
+    #: The cost is `subjects.name` being globally unique, so two universities
+    #: with a "Faculty of Science" cannot both be seeded. That is acceptable
+    #: while the pilot is a single institution, and it is the first thing to
+    #: split when a second one is added.
+    faculty_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("subjects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
@@ -94,6 +137,7 @@ class User(Base, TimestampMixin):
     )
 
     university: Mapped[University | None] = relationship()
+    faculty: Mapped[Subject | None] = relationship()
     #: `foreign_keys` is required because `competencies` points at `users` twice
     #: -- the holder and the reviewer -- leaving the join otherwise ambiguous.
     competencies: Mapped[list[Competency]] = relationship(
@@ -115,6 +159,16 @@ class User(Base, TimestampMixin):
     def university_public_id(self) -> uuid.UUID | None:
         """`None` when the user has not chosen a university yet."""
         return self.university.public_id if self.university else None
+
+    @property
+    def faculty_public_id(self) -> uuid.UUID | None:
+        """`None` when the user has not chosen a faculty yet.
+
+        Read through the relationship for the same reason as
+        `university_public_id`: a response schema must not be able to pick up
+        the raw key column by accident.
+        """
+        return self.faculty.public_id if self.faculty else None
 
     def __repr__(self) -> str:
         return f"<User {self.email}>"
