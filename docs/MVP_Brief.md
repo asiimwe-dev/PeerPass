@@ -41,7 +41,8 @@ If this loop works reliably in a small pilot, the foundation for a scalable acad
 
 ### Tutee
 
-1. Creates an account and basic profile
+1. Creates an account (email and password) and completes the onboarding wizard:
+   name, then university / faculty / year of study and consent
 2. Submits a help request (course unit + specific topic)
 3. Sees a short list of eligible tutors
 4. Requests a session with one tutor
@@ -62,6 +63,15 @@ If this loop works reliably in a small pilot, the foundation for a scalable acad
 - Ranks eligible tutors simply
 - Logs sessions
 - Updates tutor verification status based on ratings
+
+### The home screen today
+
+The signed-in hub exists, and it is an honest empty state: it greets the student
+by name and shows "Find a tutor" and "Book a session" marked **Soon**. It does
+not offer a search box that returns nothing, a filter that filters an empty list,
+or a card that looks tappable and is not. A student who signs in and finds
+nothing works should be told plainly that the feature is not built yet, which is
+both more honest and less damaging to trust than a plausible-looking stub.
 
 ---
 
@@ -109,6 +119,30 @@ The product’s job is matching and quality control. Communication can stay on c
 
 **5. Keep the first pilot narrow**  
 One (or few) high-need course units, 10–20 tutors, and the students in those units. Depth before breadth.
+
+**6. Sign-up collects an email and a password, and nothing else**  
+The name, faculty, and year are asked for in an onboarding wizard immediately
+afterwards, and the account exists before the wizard runs. Registration is what
+grants the session, so anything that can be collected later is better collected
+later: a name is resumable — a student can leave the wizard and come back to it —
+whereas an abandoned sign-up form is simply a lost student, and four fields is
+enough to lose one.
+
+**7. Onboarding is two steps now, and deliberately not three**  
+The wizard asks for a name, then for university, faculty, and year together,
+gated on consent to store that academic context. The third step — the course units
+a student wants help with — is deferred to the phase where matching exists. The
+API has no matching to feed a declared unit into yet, so asking would collect an
+answer that nothing acts on, and an unused question teaches a student that the
+app does not do what it asks.
+
+**8. Consent is a gate, not a preference**  
+The wizard will not finish without it. Under the Uganda Data Protection and
+Privacy Act, grades and academic context are processed on the strength of
+consent, and a preference toggle that defaults to on is not consent. The grant is
+recorded once, server-side, with a timestamp, and cannot be withdrawn by sending
+the field back — withdrawal has to be as express as the grant and has to be
+logged, which is a separate flow.
 
 ---
 
