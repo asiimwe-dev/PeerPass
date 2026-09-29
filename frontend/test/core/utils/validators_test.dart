@@ -72,13 +72,20 @@ void main() {
   });
 
   group('Validators.password', () {
-    test('requires at least eight characters', () {
-      expect(Validators.password('short12'), isNotNull);
-      expect(Validators.password('longenough12'), isNull);
+    test('requires at least twelve characters, the API minimum', () {
+      // Pinned on the boundary rather than around it. A test that only checked
+      // a very short value would still pass if the minimum were dropped to four,
+      // and the value it used to accept would be a password the API refuses.
+      expect(Validators.password('a' * 11), isNotNull);
+      expect(Validators.password('a' * 12), isNull);
     });
 
     test('rejects an empty password', () {
       expect(Validators.password(''), isNotNull);
+    });
+
+    test('rejects a password of only whitespace', () {
+      expect(Validators.password(' ' * 12), isNotNull);
     });
   });
 

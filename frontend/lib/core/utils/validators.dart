@@ -59,11 +59,18 @@ abstract final class Validators {
 
   /// Requires a password strong enough to survive a reused-credential list.
   ///
+  /// Twelve characters, because that is what the API requires. The two numbers
+  /// are duplicated on purpose -- the server is the authority and this only
+  /// spares a round trip -- but they are duplicated, not chosen independently: a
+  /// client that accepted eight and the server twelve would fail every
+  /// password between the two, and the user would be told the field was wrong
+  /// without being told which rule they broke.
+  ///
   /// Length is the only requirement, because it is the only property that
   /// reliably matters. Composition rules push students towards predictable
   /// substitutions, and the API enforces the real rule regardless.
   static String? password(String? value) {
-    final lengthError = length(value, min: 8, max: null, field: 'Password');
+    final lengthError = length(value, min: 12, max: null, field: 'Password');
     if (lengthError != null) return lengthError;
     return null;
   }
