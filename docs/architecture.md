@@ -445,12 +445,163 @@ IncentiveService logs hours → certificate eligibility
 
 ## 9. Security & Compliance
 
-- **Authentication**: JWT for mobile sessions; designed for future University SSO (SAML/OAuth).
-- **Authorization**: Role-based access control via `user_roles`, plus the
-  competency and standing checks.
-- **Data Protection**: Compliant with the Uganda Data Protection and Privacy Act, 2019 (DPPA). Sensitive academic data (grades, transcripts) requires explicit consent and secure storage.
-- **Transport**: HTTPS only.
-- **Secrets**: Never committed; loaded from environment variables.
+The pilot's threat model is specific: an attacker holding a list of student email
+addresses, or a stolen copy of the database. Every choice below is aimed at one of
+those two, and the reasoning is recorded so a later change can be judged against
+it rather than re-argued from scratch.
+
+> **Status: the primitives are built; the endpoints that enforce them are not.**
+> Everything in 9.1–9.3 and 9.5 is implemented and unit-tested in
+> `app/core/security.py`, `app/core/password_policy.py` and
+> `app/core/config.py`. `app/api/v1/auth.py`, `app/services/auth_service.py` and
+> `app/api/deps.py` are still empty, so **none of it is on a request path yet.**
+> `denial_reason`, `hash_password`, `verify_password`, `create_token_pair` and
+> `decode_token` currently have no production caller. Read this section as the
+> contract those endpoints must satisfy, not as a description of live
+> enforcement. Until they exist, there is no sign-in and no stored credential.
+
+### 9.1 Secrets
+
+Three independent secrets, none with a default, all required at startup. The API
+refuses to boot without them, because an API that boots with no signing key will
+happily issue tokens that nobody can revoke, and one that boots with no pepper can
+be checked offline against a stolen database.
+
+| Setting                 | Protects                                     | Rotating it                              |
+| ----------------------- | -------------------------------------------- | ---------------------------------------- |
+| `JWT_SECRET`            | Signs access tokens                          | Invalidates every issued token unless the old key is in `JWT_PREVIOUS_SECRETS` |
+| `JWT_PREVIOUS_SECRETS`  | Verifies tokens signed by retired keys       | Removes the ability to verify old tokens |
+| `TOKEN_PEPPER`          | Server-side key for hashing opaque tokens    | Signs every user out; no stored hash matches |
+
+They are separate settings rather than one secret reused, because they protect
+different things and rotate for different reasons. Sharing a value would mean one
+compromise reaches all three, and rotating one would take the others out.
+
+Placeholder values (`changeme`, `secret`, `replace-me`) and values under 32
+characters are rejected. A committed placeholder reaches production more often
+than anyone expects, and a warning in a `.env.example` is not a control.
+
+### 9.2 Password storage
+
+Argon2id at the OWASP minimum: 19 456 KiB, 2 passes, 1 lane. The floor is enforced
+as a *validation bound in the settings model*, not only by a test, so it cannot be
+lowered by an environment variable. Lowering a constant is visible in review;
+lowering a config value in a deployment manifest is not.
+
+Raising the parameters is not a migration. Every stored hash encodes the
+parameters it was created with, and a successful sign-in transparently rewrites a
+hash made under weaker settings, so a raised floor reaches existing accounts
+gradually on their own.
+
+Two properties that the auth service must implement matter for an attacker with a
+stolen database. Both are available in `app/core/security.py` and neither is
+called yet:
+
+- **No PBKDF2 fallback.** A stored `pbkdf2_sha256$` hash is refused outright rather
+  than verified. There is no PBKDF2 data in production to preserve, so supporting
+  it would only create a weaker path to keep alive.
+- **Uniform cost per guess.** An unknown email runs a decoy Argon2 verification
+  against a random hash, so "no such user" and "wrong password" cost the same.
+  A stored value that is malformed — not a PHC string, or one that names the right
+  algorithm but cannot be parsed — is paid for explicitly, because those paths
+  fail *before* any Argon2 work happens and would otherwise return measurably
+  faster than a wrong password.
+
+### 9.3 Password acceptance
+
+Length-based, 12 to 128 code points, with no composition rules. Character-class
+requirements are well documented to produce `Passw0rd!` — a predictable
+substitution that satisfies the rule and is weaker than a passphrase of the same
+length. The 128 ceiling exists so that a future move to bcrypt, which truncates at
+72 bytes silently, cannot quietly reduce a long password to its first 72
+characters.
+
+A small static deny-list covers the passwords that would otherwise make the
+Argon2 cost affordable. It is checked at **registration and password change only,
+never at sign-in**: a student who chose a password that later lands on a breach
+list must still be able to get into their own account, or anyone could lock them
+out by reporting their password as common. That is the only place a deny-list is
+safe.
+
+The list is static and small on purpose, and is enforced by
+`app/core/password_policy.py`, which the registration endpoint must call. A live
+breach-API lookup would hand a third party a list of student addresses to check and
+would make account creation depend on someone else's uptime. Keeping it short
+enough to audit by eye is what makes it a control rather than decoration; it needs a
+manual refresh, and that is a known cost rather than an oversight.
+
+### 9.4 Tokens
+
+- **Access** — JWT, HS256. Carries `sub` (the `public_id`), `type`, `iat`, `exp`
+  and `jti`. Nothing else. Roles are **not** in the token; they are read per
+  request, so a role change takes effect immediately instead of at the next
+  token refresh.
+- **Refresh and email verification** — opaque random strings. Only a
+  peppered HMAC-SHA256 of the token is stored, so a stolen database yields no
+  usable token and no offline attack is possible, because the server-side pepper
+  is not in the database.
+- **No clock-skew leeway** is configured. A phone whose clock is a few seconds
+  behind is signed out rather than tolerated. With a 15 minute lifetime the
+  stricter failure is the one worth having, and a leeway setting is deliberately
+  absent until a real device demonstrates a need for it.
+
+Symmetric signing is deliberate. Asymmetric signing buys key separation between
+issuer and verifier, which matters when a third party must check a token the
+issuer cannot mint. That is not this service: it mints and verifies its own
+tokens, so rotation is handled by a key set rather than a new key pair. The
+saving is that `cryptography` — a compiled wheel of several megabytes — is not
+shipped for a capability not in use.
+
+`public_id` rather than the primary key is the `sub` because a UUIDv7 encodes its
+creation time, and a leaked primary key would otherwise date and help enumerate
+every other record.
+
+### 9.5 Logging
+
+- `database_echo` logs SQL **with its bound parameters**, which for this schema
+  means email addresses and password hashes. It is refused at startup unless
+  `environment` is `development`.
+- The frontend transport interceptor logs method, path, status and timing only.
+  Headers and bodies are suppressed: headers carry the bearer token, and every
+  body in this API is either a credential or a student's academic record.
+- Unhandled server errors log the path and a fixed client-facing message.
+  Interpolating an unexpected exception's message is how connection strings and
+  row contents end up in a student's error toast.
+
+### 9.6 Data protection
+
+- Compliant with the Uganda Data Protection and Privacy Act, 2019 (DPPA). Grades
+  and transcripts require explicit consent and secure storage.
+- Access tokens are held in memory only and are never written to
+  `shared_preferences`. The refresh token is the only secret persisted, and only
+  in platform secure storage.
+- The client never sees a row's primary key.
+
+### 9.7 Schema changes
+
+Alembic, with a naming convention applied to every constraint. Names matter here
+because a constraint whose name is generated afresh looks like a drop plus an add
+to Alembic, and dropping a unique index takes the guarantee away for the duration
+of the rebuild.
+
+`backend/alembic/versions/` is autogenerate output, so the formatter is kept away
+from it — reformatting generated files produces churn that hides the real changes
+on the next autogenerate run.
+
+### 9.8 Not yet in place
+
+Stated explicitly so nothing here is mistaken for a control that exists:
+
+- **HTTPS is not yet enforced** by the application, and HSTS is not set. It is a
+  deployment responsibility today.
+- **No certificate pinning.** Deferred: it breaks certificate rotation in ways
+  that lock a pilot out of its own API.
+- **CORS defaults to empty**, which is correct for a mobile client and means
+  browser origins are untrusted until deliberately configured.
+- **No rate limiting** on sign-in. The decoy verification makes enumeration
+  expensive per guess but does not bound the number of guesses.
+- **No structured audit log** of access to academic records. Required before any
+  institutional pilot.
 
 ---
 

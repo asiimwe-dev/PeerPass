@@ -178,6 +178,40 @@ A change is **not done** until all of the following are true:
 - [ ] Docs updated in the **same** change if a boundary or public behavior changed
 - [ ] No secrets, `.env`, or credentials committed
 
+### Definition of done (a full-stack feature slice)
+
+The list above is per-change. A feature that spans the API and the app — the auth
+screens, matching, sessions — is not done at "the backend tests pass". It is done
+when the slice works from a cold start with nothing stubbed. Concretely, **all** of:
+
+- [ ] Every layer the slice needs is real. A stub on the request path is not a
+      deferred task; it is an unfinished feature. No `...` bodies, no `pass` in a
+      service the UI calls, no fake datasource wired where the remote one belongs.
+- [ ] The wire contract is exercised end to end: a real request through the real
+      router, asserted on in a test. A unit test on a handler with a mocked
+      dependency does not prove the route, the dependency wiring, or the auth
+      guard work.
+- [ ] The client's failure states are handled as deliberately as its happy path:
+      validation, auth expiry, network loss, and a server error are all reachable
+      in the UI and none of them shows raw exception text.
+- [ ] No secret can reach a log. Checked by reading the diff for anything that
+      prints a request body, a response body, a header, or a token.
+- [ ] The database can be built from migrations alone on an empty database, and
+      `alembic check` reports no drift against the models.
+- [ ] Required settings have no defaults that make a missing secret survivable.
+- [ ] `docs/api-reference.md` covers the new endpoints, and
+      `docs/architecture.md` covers any decision a later contributor could
+      otherwise re-litigate.
+- [ ] Everything in section 9 of this guide runs green, not just `pytest`.
+
+### Reporting validation honestly
+
+Never state or imply that a check passed without running it. If a command could not
+be run — no database available, a tool missing, a lockfile still generating — say
+which one and why. "Tests pass" when only the SQLite suite ran against a service
+that runs on PostgreSQL is a false claim about a security-relevant system, and it
+is the exact class of defect the PostgreSQL job exists to catch.
+
 ### Explicitly forbidden
 
 - Implementing business rules (matching, grade gates, rating thresholds) only on the client
@@ -226,6 +260,8 @@ Run these before considering work complete.
 
 ```bash
 cd backend
+ruff check .
+ruff format --check .
 pytest
 ```
 
@@ -237,6 +273,37 @@ Schema-sensitive changes also need a real PostgreSQL run (never point this at pr
 cd backend
 PEERPASS_TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/scratch_db pytest
 ```
+
+The test suite builds its schema from the models with `create_all`, so it cannot
+detect a migration that disagrees with them. Migrations need their own check
+against an **empty** database:
+
+```bash
+cd backend
+alembic upgrade head   # from empty, not from a test database
+alembic check          # no drift between the migrations and the models
+alembic downgrade base && alembic upgrade head
+```
+
+`alembic check` against a database already carrying the schema is meaningless, and
+`upgrade head` against one is a no-op that hides a broken migration. Use a scratch
+database, drop it first, and read the output rather than the exit code alone.
+
+**Dependencies**
+
+`requirements.in` and `requirements-dev.in` are the source; the `.txt` files are
+generated and hash-pinned:
+
+```bash
+cd backend
+pip-compile --generate-hashes --strip-extras --output-file=requirements.txt requirements.in
+pip-compile --generate-hashes --strip-extras --output-file=requirements-dev.txt requirements-dev.in
+```
+
+Expect tens of minutes, not seconds — see the comment at the top of
+`requirements.in` for why. Do not hand-edit a generated `.txt`, and do not add a
+dependency to a `.txt` directly; a `pip install` that updates it by hand produces
+a file that no longer corresponds to the `.in` and silently drifts.
 
 **Frontend**
 
