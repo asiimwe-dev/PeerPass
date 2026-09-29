@@ -84,10 +84,10 @@ class HelpRequest(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
-    tutee: Mapped["User"] = relationship(foreign_keys=[tutee_id])
-    course_unit: Mapped["CourseUnit"] = relationship()
-    matched_tutor: Mapped["User | None"] = relationship(foreign_keys=[matched_tutor_id])
-    sessions: Mapped[list["Session"]] = relationship(back_populates="help_request")
+    tutee: Mapped[User] = relationship(foreign_keys=[tutee_id])
+    course_unit: Mapped[CourseUnit] = relationship()
+    matched_tutor: Mapped[User | None] = relationship(foreign_keys=[matched_tutor_id])
+    sessions: Mapped[list[Session]] = relationship(back_populates="help_request")
 
     def __repr__(self) -> str:
         return f"<HelpRequest {self.public_id} {self.status}>"
@@ -189,14 +189,14 @@ class Session(Base, TimestampMixin):
 
     cancellation_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    help_request: Mapped["HelpRequest | None"] = relationship(back_populates="sessions")
-    tutee: Mapped["User"] = relationship(foreign_keys=[tutee_id])
-    tutor: Mapped["User"] = relationship(foreign_keys=[tutor_id])
+    help_request: Mapped[HelpRequest | None] = relationship(back_populates="sessions")
+    tutee: Mapped[User] = relationship(foreign_keys=[tutee_id])
+    tutor: Mapped[User] = relationship(foreign_keys=[tutor_id])
     #: `passive_deletes` because the foreign key is already ON DELETE CASCADE.
     #: Without it the ORM loads every rating to delete it one at a time, which
     #: is both slower and a chance to lose a row the database would have removed
     #: anyway.
-    ratings: Mapped[list["Rating"]] = relationship(
+    ratings: Mapped[list[Rating]] = relationship(
         back_populates="session", passive_deletes=True
     )
 

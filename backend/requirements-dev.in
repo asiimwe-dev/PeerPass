@@ -1,0 +1,17 @@
+# Direct development dependencies, plus everything from runtime. Regenerate with:
+#
+#     pip-compile --generate-hashes \
+#       --output-file=requirements-dev.txt requirements-dev.in
+-r requirements.in
+
+pytest
+pytest-cov
+pytest-asyncio
+httpx
+aiosqlite
+
+# Pinned through the lockfile like everything else. The linter used to be
+# installed ad hoc in the CI lint step, unpinned, which meant a ruff release
+# could change the verdict on a merge without a single line of this repository
+# changing. A gate that can move on its own is not a gate.
+ruff

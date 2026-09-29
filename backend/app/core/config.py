@@ -2,15 +2,39 @@
 
 Every value that differs between a developer's machine, CI, and a deployment
 arrives from the environment. Nothing here has a default that would let the
-service start in a state nobody intended: a missing database URL or a missing
-signing key is a startup failure, not a warning, because an API that boots
-without a signing key will happily issue tokens nobody can revoke.
+service start in a state nobody intended: a missing database URL, a missing
+signing key, or a missing token pepper is a startup failure, not a warning,
+because an API that boots without a signing key will happily issue tokens
+nobody can revoke, and one that boots without a pepper can be checked offline
+against a stolen database.
+
+Three separate secrets, deliberately:
+
+- `jwt_secret` signs tokens. Rotating it signs every user out unless the old
+  key is kept in `jwt_previous_secrets`.
+- `token_pepper` hashes refresh and verification tokens. Rotating it also signs
+  every user out, because no stored hash matches afterwards.
+- `database_url` frequently embeds its own credentials.
+
+Collapsing any two of them into one would mean one rotation takes out two
+independent protections at the same time.
 """
 
 from functools import lru_cache
+from typing import Annotated, Literal
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+#: A list setting read from the environment as a plain string.
+#:
+#: `NoDecode` is what makes that work. By default pydantic-settings treats a
+#: `list[...]` environment variable as JSON and calls `json.loads` on it before
+#: any validator runs, so `CORS_ORIGINS=a,b` fails with a JSON parse error and
+#: an empty value fails with one too -- the parse happens first, so a
+#: `mode="before"` validator never gets the chance to accept the friendly form.
+#: `NoDecode` turns that off and hands the raw string to the validator below.
+PlainStringList = Annotated[list[str], NoDecode]
 
 
 class Settings(BaseSettings):
@@ -20,6 +44,19 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+    )
+
+    # --- Deployment ---------------------------------------------------------
+
+    environment: Literal["development", "staging", "production"] = Field(
+        default="development",
+        description=(
+            "Which deployment this process is. Exists so that the settings that "
+            "are only safe in development can be refused by construction rather "
+            "than by a comment asking nobody to set them. Defaults to "
+            "`development` so a fresh checkout runs locally without ceremony; a "
+            "real deployment has to say so."
+        ),
     )
 
     # --- Database -----------------------------------------------------------
@@ -33,20 +70,69 @@ class Settings(BaseSettings):
 
     database_echo: bool = Field(
         default=False,
-        description="Log every statement. Never enable outside development.",
+        description=(
+            "Log every SQL statement, with its bound parameters. Allowed only "
+            "when `environment` is `development`; refused otherwise."
+        ),
     )
+
+    @model_validator(mode="after")
+    def _refuse_development_only_settings(self) -> Settings:
+        """Make the dangerous knobs unrepresentable outside development.
+
+        `database_echo` logs statements *with their bound parameters*, so the
+        INSERT that creates an account is logged with the student's email
+        address and password hash in cleartext, and the SELECT that signs one in
+        is logged with the submitted address. On a platform that collects stdout
+        that is a durable copy of the credential database in whatever log store
+        the operator happens to use, with whatever retention and access policy
+        that store has.
+
+        A warning in the field description does not prevent it, because the
+        failure mode is a single `DATABASE_ECHO=true` in a deployment manifest
+        that nobody re-reads. Refusing to start is visible in the deploy log in
+        a way a comment never is.
+        """
+        if self.database_echo and self.environment != "development":
+            raise ValueError(
+                "database_echo logs SQL with bound parameters, including email "
+                f"addresses and password hashes, so it is refused when "
+                f"environment is {self.environment!r}. Set environment to "
+                "'development' to run with statement logging."
+            )
+        return self
 
     # --- Auth ---------------------------------------------------------------
 
     jwt_secret: str = Field(
         min_length=32,
         description=(
-            "Signing key for access and refresh tokens. Must be at least 32 "
-            "characters. Rotating it invalidates every issued token."
+            "Primary signing key for access and refresh tokens. Must be at "
+            "least 32 characters."
+        ),
+    )
+
+    jwt_previous_secrets: PlainStringList = Field(
+        default_factory=list,
+        description=(
+            "Retired signing keys, accepted for verification only. Rotating "
+            "`jwt_secret` without listing the old key here invalidates every "
+            "issued token; listing it lets existing tokens age out. Remove a "
+            "key from this list once nothing signed with it can still be valid."
         ),
     )
 
     jwt_algorithm: str = Field(default="HS256")
+
+    token_pepper: str = Field(
+        min_length=32,
+        description=(
+            "Server-side pepper for hashing refresh and email-verification "
+            "tokens. Distinct from the signing key so the two can be rotated "
+            "independently. Rotating this signs out every session, because no "
+            "stored token hash will match afterwards."
+        ),
+    )
 
     access_token_ttl: int = Field(
         default=15,
@@ -61,28 +147,74 @@ class Settings(BaseSettings):
         description="Refresh token lifetime in days.",
     )
 
+    # --- Password hashing ---------------------------------------------------
+
+    password_hash_memory_kib: int = Field(
+        default=19_456,
+        # The floor is enforced in configuration, not only in a test, so that it
+        # cannot be lowered by an environment variable. A config value is
+        # invisible in review; changing a constant here is not. Lowering this
+        # below the OWASP minimum removes the memory-hardness that is the entire
+        # reason for using Argon2, and it has to be a deliberate edit to code.
+        ge=19_456,
+        description=(
+            "Argon2id memory cost in KiB. 19456 is the OWASP floor. Raising it "
+            "is not a migration: every stored hash records the parameters it "
+            "was made with, and a successful sign-in rewrites any hash made "
+            "under weaker settings."
+        ),
+    )
+
+    password_hash_time_cost: int = Field(
+        default=2,
+        ge=2,
+        description="Argon2id passes over memory. The OWASP floor is 2.",
+    )
+
+    password_hash_parallelism: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Argon2id lanes. One lane is the OWASP floor and is the right choice "
+            "on a small instance: every additional lane multiplies peak memory "
+            "per concurrent verification."
+        ),
+    )
+
     # --- Transport ----------------------------------------------------------
 
-    cors_origins: list[str] = Field(
+    cors_origins: PlainStringList = Field(
         default_factory=list,
         description="Allowed browser origins. Empty by default: the pilot is a "
         "mobile client, and an accidental wildcard here would expose the API "
         "to any site a student visits.",
     )
 
-    @field_validator("cors_origins", mode="before")
+    @property
+    def jwt_verification_secrets(self) -> list[str]:
+        """Every key a presented token is allowed to have been signed with.
+
+        The primary key first, because it is the one new tokens are signed
+        with. The rest are verification-only, which is what makes a rotation a
+        configuration change rather than an outage.
+        """
+        return [self.jwt_secret, *self.jwt_previous_secrets]
+
+    @field_validator("cors_origins", "jwt_previous_secrets", mode="before")
     @classmethod
-    def _split_origins(cls, value: object) -> object:
+    def _split_string_lists(cls, value: object) -> object:
         """Accept a comma-separated string as well as a JSON list.
 
-        `CORS_ORIGINS` is friendlier to set as a plain string in a shell or a
-        container manifest than as embedded JSON.
+        `CORS_ORIGINS` and `JWT_PREVIOUS_SECRETS` are both friendlier to set as a
+        plain string in a shell or a container manifest than as embedded JSON.
+        An empty or blank value means "none", so that a single-key deployment
+        does not have to write `[]`.
         """
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @field_validator("jwt_secret")
+    @field_validator("jwt_secret", "token_pepper")
     @classmethod
     def _reject_placeholder_secret(cls, value: str) -> str:
         """Refuse a secret that is obviously a placeholder.
@@ -98,7 +230,7 @@ class Settings(BaseSettings):
         lowered = value.lower()
         if any(lowered.startswith(placeholder) for placeholder in _PLACEHOLDER_SECRETS):
             raise ValueError(
-                f"jwt_secret starts with a placeholder ({lowered[:16]}...); "
+                f"secret starts with a placeholder ({lowered[:16]}...); "
                 "supply a real key"
             )
         return value

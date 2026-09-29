@@ -93,21 +93,21 @@ class User(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
 
-    university: Mapped["University | None"] = relationship()
+    university: Mapped[University | None] = relationship()
     #: `foreign_keys` is required because `competencies` points at `users` twice
     #: -- the holder and the reviewer -- leaving the join otherwise ambiguous.
-    competencies: Mapped[list["Competency"]] = relationship(
+    competencies: Mapped[list[Competency]] = relationship(
         back_populates="user",
         foreign_keys="Competency.user_id",
         passive_deletes=True,
     )
-    tutor_profile: Mapped["TutorProfile | None"] = relationship(
+    tutor_profile: Mapped[TutorProfile | None] = relationship(
         back_populates="user", uselist=False, passive_deletes=True
     )
     #: Revoked tokens are deleted rather than orphaned, so the ORM is told to
     #: let the cascade do it. `delete-orphan` alone would make the ORM unlink
     #: them one by one and issue the DELETEs itself.
-    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         back_populates="user", passive_deletes=True
     )
 
@@ -160,8 +160,8 @@ class RefreshToken(Base):
         ForeignKey("refresh_tokens.id", ondelete="SET NULL"), nullable=True
     )
 
-    user: Mapped["User"] = relationship(back_populates="refresh_tokens")
-    replaced_by: Mapped["RefreshToken | None"] = relationship(
+    user: Mapped[User] = relationship(back_populates="refresh_tokens")
+    replaced_by: Mapped[RefreshToken | None] = relationship(
         remote_side="RefreshToken.id"
     )
 

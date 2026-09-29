@@ -66,10 +66,10 @@ class GradingScale(Base, TimestampMixin):
         Numeric(6, 2), nullable=False
     )
 
-    universities: Mapped[list["University"]] = relationship(
+    universities: Mapped[list[University]] = relationship(
         back_populates="grading_scale"
     )
-    grades: Mapped[list["Grade"]] = relationship(back_populates="grading_scale")
+    grades: Mapped[list[Grade]] = relationship(back_populates="grading_scale")
 
     def __repr__(self) -> str:
         return f"<GradingScale {self.name} max={self.max_points}>"
@@ -122,8 +122,8 @@ class Grade(Base, TimestampMixin):
     #: `max_points` here as write-once after the scale is seeded.
     max_points: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
 
-    course_units: Mapped[list["CourseUnit"]] = relationship(back_populates="grade")
-    grading_scale: Mapped["GradingScale"] = relationship(back_populates="grades")
+    course_units: Mapped[list[CourseUnit]] = relationship(back_populates="grade")
+    grading_scale: Mapped[GradingScale] = relationship(back_populates="grades")
 
     #: Public ids of referenced resources, for response schemas. See the note in
     #: `app.schemas.base` for why these exist rather than the raw key columns.

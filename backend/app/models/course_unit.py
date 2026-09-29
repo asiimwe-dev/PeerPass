@@ -40,8 +40,8 @@ class University(Base, TimestampMixin):
         index=True,
     )
 
-    course_units: Mapped[list["CourseUnit"]] = relationship(back_populates="university")
-    grading_scale: Mapped["GradingScale | None"] = relationship(
+    course_units: Mapped[list[CourseUnit]] = relationship(back_populates="university")
+    grading_scale: Mapped[GradingScale | None] = relationship(
         back_populates="universities"
     )
 
@@ -73,7 +73,7 @@ class Subject(Base, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
 
-    course_units: Mapped[list["CourseUnit"]] = relationship(back_populates="subject")
+    course_units: Mapped[list[CourseUnit]] = relationship(back_populates="subject")
 
     def __repr__(self) -> str:
         return f"<Subject {self.name}>"
@@ -136,12 +136,12 @@ class CourseUnit(Base, TimestampMixin):
         index=True,
     )
 
-    subject: Mapped["Subject | None"] = relationship(back_populates="course_units")
-    university: Mapped["University"] = relationship(back_populates="course_units")
-    grade: Mapped["Grade | None"] = relationship(back_populates="course_units")
+    subject: Mapped[Subject | None] = relationship(back_populates="course_units")
+    university: Mapped[University] = relationship(back_populates="course_units")
+    grade: Mapped[Grade | None] = relationship(back_populates="course_units")
     #: `passive_deletes` because the foreign key is already ON DELETE CASCADE,
     #: so the database will remove these without the ORM loading them first.
-    competencies: Mapped[list["Competency"]] = relationship(
+    competencies: Mapped[list[Competency]] = relationship(
         back_populates="course_unit", passive_deletes=True
     )
 

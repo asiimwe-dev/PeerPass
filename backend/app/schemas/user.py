@@ -10,6 +10,7 @@ from datetime import datetime
 
 from pydantic import EmailStr, Field, field_validator
 
+from app.core.password_policy import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 from app.models.enums import UserRole
 from app.schemas.base import OrmSchema, RequestSchema, Trimmed
 
@@ -19,8 +20,11 @@ from app.schemas.base import OrmSchema, RequestSchema, Trimmed
 MIN_FULL_NAME_LENGTH = 2
 MAX_FULL_NAME_LENGTH = 160
 
-MIN_PASSWORD_LENGTH = 12
-MAX_PASSWORD_LENGTH = 128
+# `MIN_PASSWORD_LENGTH` and `MAX_PASSWORD_LENGTH` are imported from
+# `app.core.password_policy` rather than declared here. They used to be defined
+# in both places, which is two places to update when the policy changes and one
+# place that silently keeps the old value. The policy owns the rule, so the
+# schema that enforces it reads the same number.
 
 
 class RegisterRequest(RequestSchema):

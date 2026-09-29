@@ -105,16 +105,16 @@ class Competency(Base, TimestampMixin):
     #: `foreign_keys` is required, not decorative: this table has two foreign
     #: keys to `users` -- the holder and the reviewer -- so without it SQLAlchemy
     #: cannot tell which one the relationship follows.
-    user: Mapped["User"] = relationship(
+    user: Mapped[User] = relationship(
         back_populates="competencies",
         foreign_keys=[user_id],
         passive_deletes=True,
     )
-    course_unit: Mapped["CourseUnit"] = relationship(
+    course_unit: Mapped[CourseUnit] = relationship(
         back_populates="competencies", passive_deletes=True
     )
-    grade: Mapped["Grade"] = relationship()
-    reviewed_by: Mapped["User | None"] = relationship(foreign_keys=[reviewed_by_id])
+    grade: Mapped[Grade] = relationship()
+    reviewed_by: Mapped[User | None] = relationship(foreign_keys=[reviewed_by_id])
 
     @property
     def is_verified(self) -> bool:
