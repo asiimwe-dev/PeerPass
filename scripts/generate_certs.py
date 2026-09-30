@@ -1,0 +1,1 @@
+"""Generate tutor certificate data."""

@@ -1,0 +1,143 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Pinned to 3.14 in every job because `app.core.security.new_uuid7` uses
+# `uuid.uuid7`, which is 3.14+. The floor is load-bearing: on an older
+# interpreter that function raises `AttributeError` the first time anything
+# constructs a `User`, so the suite fails at runtime rather than at install.
+env:
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # No database service. The domain tests use in-memory SQLite, so the suite
+    # has to stay runnable with nothing but Python. This job stays fast; the
+    # `postgres` job below is the one that decides whether the schema is
+    # actually valid.
+    env:
+      DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+      JWT_SECRET: peerpass-ci-suite-signing-key-0123456789abcdef
+      JWT_ALGORITHM: HS256
+      TOKEN_PEPPER: peerpass-ci-suite-token-pepper-0123456789abcdef
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Lint
+        working-directory: backend
+        # Ruff comes from requirements-dev.txt rather than being installed here,
+        # so the version that decides whether a merge is clean is the one in the
+        # lockfile and the one that was reviewed.
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Test
+        working-directory: backend
+        run: python -m pytest --cov=app --cov-report=term-missing
+
+  postgres:
+    runs-on: ubuntu-latest
+
+    # The same suite against the database the service actually runs on.
+    #
+    # This is not belt-and-braces. SQLite does not enforce `numeric(6,2)`, does
+    # not apply the constraint naming convention, and reports an enum column as
+    # a plain VARCHAR. A green SQLite run therefore proves nothing about the
+    # schema, and it hid a real defect: `tutor_profiles.standing` accepted the
+    # string 'wizard' because SQLAlchemy's `Enum` emits its CHECK constraint
+    # only when `create_constraint=True`, which does not default to true.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: peerpass
+          POSTGRES_PASSWORD: peerpass
+          POSTGRES_DB: peerpass_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U peerpass"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "postgresql+psycopg://peerpass:peerpass@localhost:5432/peerpass_test"
+      PEERPASS_TEST_DATABASE_URL: "postgresql+psycopg://peerpass:peerpass@localhost:5432/peerpass_test"
+      JWT_SECRET: peerpass-ci-suite-signing-key-0123456789abcdef
+      JWT_ALGORITHM: HS256
+      TOKEN_PEPPER: peerpass-ci-suite-token-pepper-0123456789abcdef
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      # The suite below builds its schema with `create_all`, straight from the
+      # models. That means it cannot see a migration that disagrees with them:
+      # the models are always right by construction, and a migration that omits
+      # a column would ship green and only fail once applied to a real database.
+      #
+      # These three steps close that gap, and they run before the suite for a
+      # reason that is not cosmetic. `create_all` leaves the tables in place, so
+      # a migration checked afterwards finds `grading_scales` already there and
+      # dies on a duplicate table. The first draft of this job was written in the
+      # other order and failed that way, which is a fine way to find out.
+      #
+      # Ordering also decides what `check` is comparing. Run against a database
+      # that only the migrations have touched, it answers the question that
+      # matters: does the migration history build exactly the schema the models
+      # describe? Run after `create_all`, it would compare the models against a
+      # database the models themselves produced, which is true by construction
+      # and proves nothing.
+      #
+      # `upgrade head` is not a formality either. The first draft of the initial
+      # migration failed here by declaring every enum CHECK constraint twice,
+      # once from the column and once as a table constraint, and nothing else in
+      # the toolchain noticed.
+      - name: Apply migrations
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Verify migrations match the models
+        working-directory: backend
+        run: alembic check
+
+      - name: Migrations are reversible
+        working-directory: backend
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Test against PostgreSQL
+        working-directory: backend
+        run: python -m pytest

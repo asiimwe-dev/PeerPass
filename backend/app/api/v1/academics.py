@@ -1,0 +1,186 @@
+"""Read-only reference data the onboarding wizard needs to populate its pickers.
+
+No create, update, or delete. Universities, faculties, and course units are
+administrator-loaded, and a student who could invent a course unit their own
+transcript never mentioned could manufacture a match for it.
+"""
+
+import uuid
+
+from fastapi import APIRouter
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.api.deps import DatabaseSession
+from app.models.course_unit import CourseUnit, Subject, University
+from app.models.grading_scale import Grade, GradingScale
+from app.schemas.academic import (
+    CourseUnitResponse,
+    GradeResponse,
+    GradingScaleResponse,
+    SubjectResponse,
+    UniversityResponse,
+)
+
+router = APIRouter(prefix="/academics", tags=["academics"])
+
+
+@router.get(
+    "/universities",
+    response_model=list[UniversityResponse],
+    summary="List institutions",
+)
+async def list_universities(db: DatabaseSession) -> list[UniversityResponse]:
+    """Every institution, alphabetically.
+
+    Unauthenticated on purpose. The sign-up form shows the student where they
+    study before they have an account, and the data is public: a published
+    faculty list leaks nothing a prospectus does not.
+    """
+    result = await db.execute(
+        select(University)
+        .options(selectinload(University.grading_scale))
+        .order_by(University.name)
+    )
+    return [UniversityResponse.model_validate(row) for row in result.scalars()]
+
+
+@router.get(
+    "/grading-scales",
+    response_model=list[GradingScaleResponse],
+    summary="List grading scales",
+)
+async def list_grading_scales(db: DatabaseSession) -> list[GradingScaleResponse]:
+    """Every institution's published grade scale."""
+    result = await db.execute(select(GradingScale).order_by(GradingScale.name))
+    return [GradingScaleResponse.model_validate(row) for row in result.scalars()]
+
+
+@router.get(
+    "/grades",
+    response_model=list[GradeResponse],
+    summary="List grades",
+)
+async def list_grades(
+    db: DatabaseSession,
+    university_id: uuid.UUID | None = None,
+    grading_scale_id: uuid.UUID | None = None,
+) -> list[GradeResponse]:
+    """Grades for a university or scale.
+
+    The tutor verification flow chooses a grade from the institution's published
+    scale, and the app needs a first-class endpoint to list those choices.
+    """
+    query = select(Grade).options(selectinload(Grade.grading_scale))
+
+    if university_id is not None:
+        university = await db.scalar(
+            select(University.grading_scale_id).where(
+                University.public_id == university_id,
+            )
+        )
+        if university is None:
+            return []
+        query = query.where(Grade.grading_scale_id == university)
+
+    if grading_scale_id is not None:
+        scale_uuid = await _grading_scale_uuid(db, grading_scale_id)
+        if scale_uuid is None:
+            return []
+        query = query.where(Grade.grading_scale_id == scale_uuid)
+
+    result = await db.execute(query.order_by(Grade.grading_scale_id, Grade.label))
+    return [GradeResponse.model_validate(row) for row in result.scalars()]
+
+
+@router.get(
+    "/faculties",
+    response_model=list[SubjectResponse],
+    summary="List faculties and departments",
+)
+async def list_faculties(db: DatabaseSession) -> list[SubjectResponse]:
+    """Every faculty, alphabetically.
+
+    Not filtered by university, and that is a consequence of pointing
+    `users.faculty_id` at `subjects`: a faculty is a property of a course unit,
+    not of an institution, so the list is global while the pilot is a single
+    institution. When a second university is seeded this becomes a per-university
+    query and `subjects` needs a `university_id` of its own.
+    """
+    result = await db.execute(select(Subject).order_by(Subject.name))
+    return [SubjectResponse.model_validate(row) for row in result.scalars()]
+
+
+@router.get(
+    "/course-units",
+    response_model=list[CourseUnitResponse],
+    summary="List course units",
+)
+async def list_course_units(
+    db: DatabaseSession,
+    subject_id: uuid.UUID | None = None,
+    university_id: uuid.UUID | None = None,
+) -> list[CourseUnitResponse]:
+    """Course units, optionally narrowed to one faculty and/or university.
+
+    The `subject_id` filter is the wizard's second-step usage: a student who has
+    named their faculty is offered only the units belonging to it.
+
+    The `university_id` filter is the wizard's third step: a student who has
+    chosen their university sees only that institution's units to declare as their
+    primary modules. Both filters may be combined.
+
+    Ordered by code, because a student scanning for `BIT 221` is looking for a
+    code, not for alphabetical position.
+    """
+    query = select(CourseUnit).options(
+        selectinload(CourseUnit.university),
+        selectinload(CourseUnit.subject),
+        selectinload(CourseUnit.grade),
+    )
+    if subject_id is not None:
+        subject_uuid = await _subject_uuid(db, subject_id)
+        if subject_uuid is None:
+            return []
+        query = query.where(CourseUnit.subject_id == subject_uuid)
+
+    if university_id is not None:
+        uni_uuid = await _university_uuid(db, university_id)
+        if uni_uuid is None:
+            return []
+        query = query.where(CourseUnit.university_id == uni_uuid)
+
+    result = await db.execute(query.order_by(CourseUnit.university_id, CourseUnit.code))
+    return [CourseUnitResponse.model_validate(row) for row in result.scalars()]
+
+
+async def _subject_uuid(db: AsyncSession, public_id: uuid.UUID) -> uuid.UUID | None:
+    """The primary key for a faculty public id, or `None`.
+
+    An unrecognised filter returns an empty list rather than a 404. The client
+    filtered on a value it believes exists, so the honest answer to "units in
+    this faculty" is "none" -- a 404 would put the wizard into an error state for
+    something the student did not do.
+    """
+    result = await db.execute(select(Subject.id).where(Subject.public_id == public_id))
+    return result.scalar_one_or_none()
+
+
+async def _university_uuid(db: AsyncSession, public_id: uuid.UUID) -> uuid.UUID | None:
+    """The primary key for a university public id, or `None`."""
+    result = await db.execute(
+        select(University.id).where(University.public_id == public_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _grading_scale_uuid(
+    db: AsyncSession,
+    public_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """The primary key for a grading scale public id, or `None`."""
+    result = await db.execute(
+        select(GradingScale.id).where(GradingScale.public_id == public_id)
+    )
+    return result.scalar_one_or_none()

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Reject a commit message that adds an AI agent as an author.
+#
+# AGENTS.md forbids Co-Authored-By and other attribution trailers, and that rule
+# was broken twice: an agent review added itself to a commit and GitHub then
+# counted it as a contributor on the repository. A rule in a document only helps
+# whoever reads it, and the agent that broke it was not going to.
+#
+# Scoped to agent identities rather than every co-author, because attributing a
+# human collaborator is legitimate and this hook must not become the reason a
+# credit is withheld. A tool that can amend a message can also amend this hook,
+# so it is a speed bump and an audit trail, not a guarantee.
+set -euo pipefail
+
+message_file="${1:-}"
+[ -n "$message_file" ] && [ -f "$message_file" ] || exit 0
+
+offending="$(grep -nEi '^[[:space:]]*(co-authored-by|signed-off-by):.*(copilot|claude|chatgpt|openai|gpt-|gemini|cursor|codex|devin|agent)' "$message_file" || true)"
+
+if [ -n "$offending" ]; then
+  echo "commit rejected: an AI agent is listed as a co-author" >&2
+  echo >&2
+  echo "$offending" | sed 's/^/  /' >&2
+  echo >&2
+  echo "This repository counts co-author trailers as GitHub contributors, and" >&2
+  echo "an agent on the commit becomes an entry in the contributors graph." >&2
+  echo "See AGENTS.md. To credit a human, keep the line; to drop the line, amend" >&2
+  echo "the message. To proceed deliberately, bypass with --no-verify and say why" >&2
+  echo "in the pull request." >&2
+  exit 1
+fi
+
+exit 0

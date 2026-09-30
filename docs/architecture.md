@@ -1,8 +1,16 @@
+<<<<<<< HEAD
 # Ulearn Architecture
 
 **System Design & Technical Blueprint**
 
 > This document describes the high-level architecture, core components, data model, matching engine, and validation protocol of Ulearn — a peer-to-peer academic support network for university students.
+=======
+# PeerPass Architecture
+
+**System Design & Technical Blueprint**
+
+> This document describes the high-level architecture, core components, data model, matching engine, and validation protocol of PeerPass — a peer-to-peer academic support network for university students.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 **Last Updated**: September 2026 | **Status**: Active
 
@@ -10,7 +18,11 @@
 
 ## 1. Vision & Design Goals
 
+<<<<<<< HEAD
 Ulearn exists to replace the “attend lectures and fight for your life” model with a reliable, stigma-free micro-intervention safety net. The architecture is shaped by the following goals:
+=======
+PeerPass exists to replace the “attend lectures and fight for your life” model with a reliable, stigma-free micro-intervention safety net. The architecture is shaped by the following goals:
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 | Goal                        | Architectural Implication                                                           |
 | --------------------------- | ----------------------------------------------------------------------------------- |
@@ -45,7 +57,12 @@ Ulearn exists to replace the “attend lectures and fight for your life” model
                                                   │  Users               │
                                                   │  Course_Units        │
                                                   │  Competencies        │
+<<<<<<< HEAD
                                                   │  Session_Logs        │
+=======
+                                                  │  Help_Requests       │
+                                                  │  Sessions            │
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
                                                   │  Ratings             │
                                                   └──────────────────────┘
 ```
@@ -78,6 +95,7 @@ Ulearn exists to replace the “attend lectures and fight for your life” model
 
 Organized in a **feature-first** structure:
 
+<<<<<<< HEAD
 - `auth` — Login, registration, SSO hand-off
 - `profile` — Student / tutor profile & role management
 - `matching` — Create topic requests, view matches, accept/reject
@@ -91,6 +109,79 @@ Shared layers:
 - Riverpod (or similar) for state management
 - Core theme, constants, and reusable widgets
 
+=======
+- `auth` — Registration, sign-in, and the onboarding wizard
+- `home` — The signed-in hub. Phase 2 ships it as an honest empty state
+- `profile` — Student / tutor profile & role management _(planned)_
+- `matching` — Create topic requests, view matches, accept/reject _(planned)_
+- `sessions` — Schedule, join, and complete micro-sessions _(planned)_
+- `tutor_validation` — Upload transcript / link portfolio, view verification status _(planned)_
+- `incentives` — View logged hours and certificate status _(planned)_
+
+Shared layers:
+
+- Network client (Dio), failures, and RFC 9457 translation
+- Riverpod for state management
+- Core theme, constants, and reusable widgets
+
+#### Session state lives in `core/`, not in `auth`
+
+`frontend/lib/core/state/session.dart` holds the one source of truth for who is
+signed in. This is not a layering preference, it is forced by two rules in
+`AGENTS.md`: a feature must never import another feature's `presentation/`, and
+`core/` must never import from `features/`.
+
+Home has to know who is signed in, and the router has to decide where a session
+belongs. If the session lived in `auth`'s presentation layer, both would be
+either an illegal import or a rule exception. Promoting it to `core/` gives one
+place that auth writes and that the router and every feature can read, with no
+rule changed. `UserProfile` moved to `core/models/` for the same reason — it is
+consumed by several features, so a feature-local home for it was always going to
+be wrong.
+
+The consequence worth stating: `AuthController` no longer holds state. It
+performs repository calls and records the outcome in the core session, so there
+is exactly one `SessionState` and no second copy to fall out of step.
+
+#### The repository provider is declared with the contract
+
+`authRepositoryProvider` is declared in
+`frontend/lib/features/auth/data/repositories/auth_repository.dart`, not in the
+feature's presentation layer. A provider declared in `presentation/` could not be
+imported by a sibling feature without dragging that feature's screens along, so
+the handle has to sit beside the interface it hands out.
+
+This is the one cross-feature import the architecture permits, and home's
+sign-out uses it (`features/home/presentation/providers/sign_out_controller.dart`):
+it calls the auth repository contract and records the outcome in the core
+session. `test/architecture/dependency_rules_test.dart` enforces exactly this
+line — another feature's `presentation/` is forbidden, its repository contract
+is not.
+
+#### Composition happens in `main.dart`, once
+
+`lib/main.dart` is a real composition root: `AppConfig`, `SecureTokenStore`,
+`RemoteAuthRepository`, and the remote datasources are built there and overridden
+into `ProviderScope`. There is no in-memory default on the request path, so a
+stub cannot hide behind a working screen.
+
+#### Validation is deliberately duplicated
+
+`frontend/lib/core/utils/validators.dart` repeats the server's rules rather than
+the server being the only enforcer. The server stays the authority; the client
+checks only to spare a round trip and to put a message under the input that
+caused it. A client-side rule that drifts from the server is a cosmetic bug, not
+a security hole.
+
+#### Animations are native and finite
+
+Splash, sign-in, sign-up, and the consent tick are custom-painted. No Rive, no
+animation package, no image assets. They are also finite rather than looping, so
+`pumpAndSettle()` terminates in a widget test and the app is not burning a
+timeline forever behind a static screen. All of them respect
+`MediaQuery.disableAnimations`.
+
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 ### 4.2 Backend (FastAPI)
 
 Layered structure:
@@ -107,13 +198,28 @@ core/         → Config, security, database session, exceptions
 
 - `MatchingService` — Core algorithm that pairs tutee requests with eligible tutors
 - `ValidationService` — Implements the three-tier tutor quality gate
+<<<<<<< HEAD
 - `SessionService` — Lifecycle of a tutoring session + logging
 - `IncentiveService` — Aggregates hours and prepares certificate data
 
+=======
+- `TutorService` — The discovery rail and one tutor's public profile
+- `SessionService` — Lifecycle of a tutoring session + logging
+- `IncentiveService` — Aggregates hours and prepares certificate data
+
+`app/services/` is a package of public functions, and a route calls one of them.
+No router reaches for a `_`-prefixed name: reaching into another module's internals
+works until the thing it points at is renamed, and the matching router was doing it
+for two of them. The ownership check and the response shape of a help request are
+one decision, which is why they are one public function rather than two internals
+a route could mix and match.
+
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 ### 4.3 Database (PostgreSQL)
 
 Primary tables (see Section 5 for details):
 
+<<<<<<< HEAD
 | Table          | Responsibility                                                  |
 | -------------- | --------------------------------------------------------------- |
 | `users`        | Identity, role (`tutee`, `provisional_tutor`, `verified_tutor`) |
@@ -121,6 +227,83 @@ Primary tables (see Section 5 for details):
 | `competencies` | Tutor eligibility per course unit (grade + verification status) |
 | `session_logs` | Record of every completed or cancelled session                  |
 | `ratings`      | Post-session feedback that drives tutor promotion / demotion    |
+=======
+| Table               | Responsibility                                                   |
+| ------------------- | ---------------------------------------------------------------- |
+| `users`             | Identity and contact details; roles live in the `user_roles` join |
+| `user_roles`        | A user's roles, which may be several (`student` and `tutor`)      |
+| `refresh_tokens`    | Hashed refresh-token handles, for rotation and reuse detection    |
+| `universities`      | Institution a user and course unit belong to                       |
+| `grading_scales`    | An institution's scale and its competency threshold               |
+| `grades`            | The grade catalogue for a scale                                   |
+| `subjects`          | Faculty or department grouping for course units                   |
+| `course_units`      | University curriculum mapping                                     |
+| `competencies`      | Tutor eligibility per course unit (grade + verification status)   |
+| `tutor_profiles`    | A tutor's standing and the counters it is derived from            |
+| `help_requests`     | What a student asked for, before any tutor was matched            |
+| `sessions`          | A tutoring session that actually took place                       |
+| `ratings`           | Post-session feedback that drives tutor promotion / demotion     |
+
+### 4.4 Transport Schemas (`backend/app/schemas/`)
+
+Pydantic v2 models, separated from the ORM, so the wire contract can change
+without a migration and the tables can change without a client release.
+
+Two base types carry the whole policy:
+
+- `RequestSchema` — `extra="forbid"`. A misspelled field is an error rather than
+  a silent drop, because a `rating` sent as `score` would otherwise create a
+  rating with no score.
+- `OrmSchema` — `from_attributes`, `frozen`, `populate_by_name`.
+
+**Internal keys never reach the wire.** A response field named `id` is populated
+from the model's `public_id` through `validation_alias`, and a referenced
+resource is named the same way:
+
+| Response field          | Read from                      |
+| ----------------------- | ------------------------------ |
+| `id`                    | `public_id`                    |
+| `course_unit_id`        | `course_unit_public_id`        |
+| `university_id`         | `university_public_id`         |
+| `grading_scale_id`      | `grading_scale_public_id`      |
+| `user_id` (tutor)       | `user.public_id`               |
+
+This is not a convention to remember, it is a test:
+`backend/tests/schemas/test_public_id_projection.py` resolves every alias
+against the real mapped class and fails on a `*_id` field that has no alias —
+which is the shape of a primary key quietly shipping to a client.
+
+**Not every response can be built straight from a query.** These fields need a
+service, and the test file lists them so each one is a deliberate edit:
+
+| Field                  | Why                                                        |
+| ---------------------- | ---------------------------------------------------------- |
+| `UserResponse.roles`   | `user_roles` is an association table, not a relationship   |
+| `SessionResponse.is_rated` | `Session.is_rated(db)` is an async query hook           |
+| `CompetencyResponse.meets_threshold` | A method taking the threshold, not a field |
+| `CompetencyResponse.grade_points`    | Computed in the service                 |
+| `TutorRailEntry.user_id` / `TutorProfileSummary` in a rail row | No model carries a tutor's user id as its *public* id, so an unaliased field handed a `TutorProfile` would quietly become its primary key. Both are built by keyword by the service from `User.public_id`. |
+
+**Decimals cross the wire as JSON strings.** Pydantic's default, kept
+deliberately: a JSON number is a double in Dart, and a double cannot represent
+every `numeric(6,2)` value, so `rating_total` is `"18.00"` and not `18.0`. The
+client parses it for display; every threshold comparison happens server-side
+against the `Decimal`.
+
+**A mean is rounded at the edge, and only at the edge.**
+`app.schemas.base.MeanRating` rounds `average_rating` half-up to the two decimal
+places the schemas declare. A mean need not fit in two places — eight ratings
+totalling 33 average 4.125 — and Pydantic v2 validates rather than rounds, so the
+exact value raised a validation error and the endpoint answered 500 for any tutor
+whose ratings did not divide evenly. `TutorProfile.average_rating` stays exact on
+purpose: promotion is an equality test on it, and rounding there would promote a
+tutor averaging 3.999 and demote one averaging 4.004. Rounding is a wire
+decision, never a product one.
+
+**Trimming is per field, not per model.** `app.schemas.base.Trimmed` is applied
+to names, topics, and feedback, and deliberately *not* to passwords, whose
+leading and trailing spaces are part of the secret.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 ---
 
@@ -129,6 +312,7 @@ Primary tables (see Section 5 for details):
 ### 5.1 Entity Relationships (Conceptual)
 
 ```
+<<<<<<< HEAD
 Users 1 ─────── * Competencies * ─────── 1 Course_Units
   │
   │ 1
@@ -193,11 +377,195 @@ Users 1 ─────── * Competencies * ─────── 1 Course_Un
 - `feedback_text`
 - Used by the validation engine to promote or demote tutors
 
+=======
+Universities 1 ─── * Grading_Scales 1 ─── * Grades
+      │ 1                │ 1
+      │                  │
+      │ *                │
+Course_Units * ─────────┘ (grade)
+      │ *
+      │ 1
+      │
+Users 1 ─── * Competencies
+  │ 1
+  │
+  ├── 1 Tutor_Profiles
+  ├── * Help_Requests * ─── * Sessions * ─── * Ratings
+  └── * Refresh_Tokens
+```
+
+`help_requests` and `sessions` are separate tables on purpose. A request that is
+never matched must not leave a session row behind, or every tutor workload query
+carries a filter for sessions that never happened.
+
+### 5.2 Schema Highlights
+
+| Table             | Core Attributes                                                | Purpose                                                                                |
+| ----------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Users**         | `id`, `public_id`, `email`, `full_name`, `university_id`, `faculty_id`, `year_of_study` | Identity. Roles live in `user_roles`, because one user may be both student and tutor. `full_name` is **nullable**: an account exists between sign-up and the end of onboarding, and requiring a name at registration would put four fields on the sign-up form to get the same result — the first one lost is a student who abandons it |
+| **User_Roles**    | `user_id`, `role`                                              | Join table; composite primary key stops a role being held twice                         |
+| **Tutor_Profiles**| `user_id`, `standing`, `rating_total`, `rating_count`, `certified_minutes` | Aggregate standing, stored rather than recomputed per matching query          |
+| **Grading_Scales**| `max_points`, `competency_min_points`                          | The B+ bar as data, since pilot institutions disagree on what B+ means                 |
+| **Grades**        | `label`, `grade_points`, `grading_scale_id`                    | Grade catalogue; one label per scale                                                    |
+| **Course_Units**  | `code`, `name`, `university_id`, `subject_id`, `grade_id`      | Maps the exact university curriculum                                                    |
+| **Competencies**  | `user_id`, `course_unit_id`, `grade_id`, `status`, `source`    | Validation gate requiring a verified grade at or above the scale's threshold            |
+| **Refresh_Tokens** | `id` (PK), `user_id` (FK → users), `token_hash` (unique), `expires_at`, `revoked_at`, `replaced_by_id` (FK → refresh_tokens, optional) | The handle is a JWT; only its peppered hash is stored, so a database disclosure yields no usable token. `replaced_by_id` forms the chain that makes reuse of an already-rotated token detectable. Every row is deleted on user deletion |
+
+##### A known limitation: `subjects` is global
+
+`users.faculty_id` points at `subjects`, because a faculty is a property of a
+course unit rather than of an institution. The consequence is that
+`subjects.name` is **globally unique** and `subjects` carries no
+`university_id`. So `GET /v1/academics/faculties` is a global list, and two
+universities cannot have a subject with the same name.
+
+A single-institution pilot hides this. A multi-institution deployment will not,
+and it will be discovered by a seed failure rather than by reading this. Lifting
+it: give `subjects` a nullable `university_id`, change the unique constraint to
+`(university_id, name)`, and add a `university_id` filter to `/faculties`.
+
+**Help_Requests** | `tutee_id`, `course_unit_id`, `topic`, `status`                | What was asked for, before a tutor was matched                                          |
+| **Sessions**      | `tutee_id`, `tutor_id`, `course_unit_id`, `status`, `duration_minutes`, `session_pin`, `meeting_link` | A session that happened; the source for tutor hours and certificates. Includes PIN for handshake and copyable meeting link |
+| **Ratings**       | `session_id`, `rater_id`, `ratee_id`, `score`, `feedback_text` | Post-session feedback; low ratings reduce matching priority. `rater_id` and `ratee_id` are both set, because either party may rate a completed session, but only the session's **tutor** has a `Tutor_Profile` to update — see 8.2 |
+| **Unit_Endorsements** | `session_id`, `rater_id`, `ratee_id`, `course_unit_id` | "This tutor knows this unit", scoped to the session's own course unit. Separate from `ratings` so subject coverage never moves promotion. Unique on `(session_id, rater_id, course_unit_id)` so a corrected submission replaces rather than accumulates |
+
+### 5.3 Detailed Table Definitions
+
+Every table uses a UUIDv7 `id` primary key and a separate UUIDv4 `public_id` for
+the wire. The primary key is time-ordered so inserts land at the end of the write
+index; the public id is random so it encodes nothing about creation time.
+
+**Users**
+
+- `id` (PK), `public_id` (unique)
+- `email` (unique), `full_name`, `password_hash`
+- `university_id` (FK → universities, optional)
+- `is_active`
+- `academic_data_consented_at` — records the academic-data consent the Uganda
+  Data Protection and Privacy Act requires before a transcript is processed
+- Roles are **not** a column. See `user_roles`.
+
+**User_Roles**
+
+- `user_id` (FK → users), `role` — `student` | `tutor`
+- Composite primary key on (`user_id`, `role`)
+
+There is deliberately no `admin` role. Administrator access is not modelled yet,
+and a role that grants it would need audit logging attached before it is worth
+having; adding the string to the enum now would make it look implemented.
+
+**Universities**
+
+- `id` (PK), `name` (unique)
+- `grading_scale_id` (FK → grading_scales) — required before a tutor at this
+  institution can be matched
+
+**Grading_Scales**
+
+- `id` (PK), `name` (unique), `max_points`
+- `competency_min_points` — the lowest grade that makes a tutor eligible, in
+  this scale's points
+- CHECK: `0 < competency_min_points <= max_points`
+
+**Grades**
+
+- `id` (PK), `label`, `grade_points`, `max_points`
+- `grading_scale_id` (FK → grading_scales)
+- Unique on (`grading_scale_id`, `label`)
+- CHECK: `0 < grade_points <= max_points`
+- `max_points` is denormalised from the scale so the CHECK above can be enforced
+  by the database, which cannot compare across tables. Rescaling a published
+  scale must rescale its grades in the same transaction.
+
+**Subjects**
+
+- `id` (PK), `name` (unique)
+- A faculty or department grouping. Distinct from a course unit: matching widens
+  from a unit to its subject, so a tutor can be competent across several units.
+
+**Course_Units**
+
+- `id` (PK), `code`, `name`, `description`
+- `university_id` (FK → universities) — **required**
+- `subject_id` (FK → subjects), `grade_id` (FK → grades), both optional
+- Unique on (`university_id`, `code`)
+
+`university_id` is required because a composite unique index treats NULLs as
+distinct, so a nullable university would let two unscoped units share a code. It
+is also required by matching, which only pairs people at one institution.
+Scoping the code is what lets `MAT 221` exist at two universities as two
+different courses, graded on two different scales.
+
+**Competencies**
+
+- `id` (PK)
+- `user_id` (FK → users), `course_unit_id` (FK → course_units)
+- `grade_id` (FK → grades)
+- `status` — `pending` | `verified` | `rejected`
+- `source` — `transcript` | `portfolio` | `manual`
+- `reviewed_by_id` (FK → users), `verified_at`, `rejection_reason`,
+  `evidence_reference`
+- Unique on (`user_id`, `course_unit_id`)
+
+Both `user_id` and `reviewed_by_id` point at `users`, so the ORM relationships
+must name their foreign key explicitly. A pending competency never meets the
+threshold, whatever grade it carries: a grade is a claim until checked.
+
+**Tutor_Profiles**
+
+- `id` (PK), `user_id` (FK → users, unique)
+- `standing` — `probationary` | `verified` | `reduced` | `suspended`
+- `completed_sessions`, `certified_minutes`
+- `rating_total`, `rating_count` — a running total and a count, not a stored
+  average, so promotion does not accumulate rounding error on an equality test
+- `suspended_reason`
+
+**Help_Requests**
+
+- `id` (PK)
+- `tutee_id` (FK → users), `course_unit_id` (FK → course_units)
+- `topic`, `description`
+- `status` — `open` | `matched` | `withdrawn` | `expired`
+- `matched_tutor_id` (FK → users, optional)
+
+**Sessions**
+
+- `id` (PK)
+- `tutee_id`, `tutor_id` (FK → users) — CHECK: `tutee_id <> tutor_id`
+- `course_unit_id` (FK → course_units), `help_request_id` (FK → help_requests,
+  optional and unique)
+- `topic`, `scheduled_start`, `started_at`, `ended_at`, `duration_minutes`
+- `status` — `scheduled` | `in_progress` | `completed` | `cancelled` | `no_show`
+- `cancelled_by_id` (FK → users), `cancellation_reason`
+- CHECK: `duration_minutes >= 0`
+- CHECK: a `completed` session has both `started_at` and `ended_at`, since
+  otherwise the hours it contributes to a certificate are unknowable
+
+**Ratings**
+
+- `id` (PK)
+- `session_id` (FK → sessions), `rater_id`, `ratee_id` (FK → users)
+- `score` — CHECK: `1 <= score <= 5`
+- `feedback_text`
+- Unique on (`session_id`, `rater_id`), so a retried submit updates rather than
+  averaging a second score in
+- Used by the validation engine to promote or demote tutors
+
+The rule that a completed session requires a rating spans two tables and cannot
+be a CHECK constraint, which may only reference its own row. It is enforced in
+the session service, and `Session.is_rated(db)` is the check it is written
+against.
+
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 ---
 
 ## 6. Multi-Tiered Tutor Validation Protocol
 
+<<<<<<< HEAD
 A peer-to-peer system is only useful if tutors are competent. Ulearn enforces quality through three sequential gates:
+=======
+A peer-to-peer system is only useful if tutors are competent. PeerPass enforces quality through three sequential gates:
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 ### Tier 1 — Academic Data Gate (Hard Gate)
 
@@ -213,10 +581,24 @@ A peer-to-peer system is only useful if tutors are competent. Ulearn enforces qu
 
 ### Tier 3 — Probationary Feedback Loop (Community Gate)
 
+<<<<<<< HEAD
 - New tutors start as `provisional_tutor`.
 - Every completed session requires a rating from the tutee.
 - High average rating → promotion to `verified_tutor` + leadership credits.
 - Low average rating → reduced matching priority or revocation of tutor status for that unit.
+=======
+- New tutors start at standing `probationary`.
+- Every completed session requires a rating from the tutee.
+- High average rating → standing `verified` + leadership credits.
+- Low average rating → standing `reduced` (lower matching priority) or
+  `suspended` (revoked for that unit).
+
+Standing lives in `tutor_profiles.standing`, not in the user's role. The role says
+what a person may do; the standing says how much they are trusted. Collapsing the
+two into one column, as the earlier draft did with `role_type`, would make a
+suspension indistinguishable from a role change and would lose the per-unit
+revocation this tier exists to express.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 This logic lives in `ValidationService` and is consulted by `MatchingService` before any match is proposed.
 
@@ -226,6 +608,7 @@ This logic lives in `ValidationService` and is consulted by `MatchingService` be
 
 ### High-Level Flow
 
+<<<<<<< HEAD
 1. Tutee submits a **topic request** (course unit + specific concept).
 2. System queries `Competencies` for tutors who:
    - Have verified (or provisional) status for that unit
@@ -240,6 +623,119 @@ This logic lives in `ValidationService` and is consulted by `MatchingService` be
 5. Once accepted, a `Session_Log` is created and the scheduling flow begins.
 
 The matching service is deliberately kept pure (no UI concerns) so it can later be exposed to institutional dashboards or LMS plugins.
+=======
+1. A tutee submits a **topic request** (course unit + specific concept), or asks
+   for tutors for a course unit directly.
+2. One query runs over `competencies` joined to `user_roles`, keeping tutors who:
+   - hold a **verified** competency for that course unit, at or above the
+     university's `competency_min_points`
+   - are at the caller's own university
+   - are not `suspended`
+   - have a `tutor_profiles` row to rank on
+3. Ranking is by score: the competency's grade points, plus a tenth of the
+   tutor's mean rating, plus `+2` for `verified` and `-1` for `reduced` standing.
+4. Ties break on grade, then the tutor's displayed name, then the course unit's
+   **code**. The code rather than the unit's public id, because a UUID is random:
+   ordering by it is deterministic and meaningless, and it would stop a tutor in
+   two units of one subject from ever holding the alphabetically first one.
+5. The top candidates are presented to the tutee, who chooses. Nothing is
+   auto-matched, and there is no availability model: nothing stops a tutor holding
+   two sessions at once, which is why `already_booked` was removed from the
+   exclusion codes rather than implemented.
+
+The matching service is deliberately kept pure (no UI concerns) so it can later be
+exposed to institutional dashboards or LMS plugins.
+
+### 7.1 One query, two entry points
+
+A help request and a course unit are the same question asked from two screens, so
+there is one search and two routes over it: `/matching/suggestions` for a
+course unit, and `/matching/help-requests/{id}/matches` for a request. A second
+copy of the eligibility rules is a second copy to drift, and the two answers would
+diverge exactly where a student is deciding.
+
+The request in the path is the subject of the query, not a check in front of an
+unrelated one. It used to load the request and then match whatever the body
+carried, so a client asking "who can take *this* request" was answered about a
+different course. A body naming a different unit is now a 422 rather than a
+silent preference for one of the two: quietly choosing would leave a client
+displaying results for a unit it did not ask about.
+
+`MatchResponse.request_id` is `null` for the unit-only query and the request's own
+public id for the request-backed one. The field names a help request the client
+could go and open, so an id minted by a query that no request backs would be a
+link to a 404.
+
+### 7.2 A rule out is a code, not a silence
+
+`MatchExclusion.reason` is a stable code drawn from `MATCH_EXCLUSION_REASONS`, and
+the set is generated from that one constant, so the list a client is told it may
+branch on cannot drift from what the engine emits. Drift is not cosmetic: an
+advertised reason nothing produces leaves a client with a branch that never fires
+and a tutor with a real, fixable problem told the platform has no reason.
+
+Codes: `unverified`, `same_university_only`, `suspended`, `below_threshold`,
+`not_the_tutor`. The order of the checks is the order above, and it is not
+arbitrary: `unverified` is reported before any number is compared, so a tutor
+with an unverified A is not told their problem was the grade. Pending
+competencies are therefore read rather than filtered out — dropping the row
+silently made the commonest reason for a tutor's absence unanswerable.
+
+The caller is never a candidate for their own request, and is filtered in the
+query rather than reported as an exclusion: they were never considered, so
+"ruled out" would be a statement about them rather than about the rule.
+
+### 7.3 One row per tutor, and one round trip
+
+A widened search returns one candidate per tutor rather than one per competency,
+keeping their strongest qualifying unit. A tutor competent in three units is one
+suggestion, and listing them three times pushes three weaker tutors off a page the
+student is choosing from.
+
+The tutor role is resolved by joining `user_roles` in the same query. It was one
+query per competency, so a widened search across a large subject cost a round trip
+per row before producing the answer a single join gives. The result set cannot
+reveal that — both versions return the same tutors — so
+`tests/test_matching.py` asserts on the statement count with one tutor and then
+with four, and requires it to be unchanged.
+
+### 7.4 Tutor discovery is not matching
+
+`GET /v1/tutors/top` and `GET /v1/tutors/{user_id}` answer "who is strong here",
+which is a different question from "who may take this request". They share exactly
+one rule — a verified grade at or above `competency_min_points` — and deliberately
+nothing else:
+
+- The rail **does not widen**. A discovery list that quietly substitutes a tutor
+  from a different course is answering a question the student did not ask.
+- The rail **ranks by endorsement count**, then mean rating, then completed
+  sessions, then the displayed name. The name tiebreak is what makes the order
+  stable rather than a function of the query plan.
+- The rail is scoped to the caller's university and excludes the caller; the
+  detail screen is scoped to neither, so a link a classmate shares still opens.
+- A `suspended` tutor is excluded from the rail **in the query**, not filtered out
+  afterwards, so a later filter added above it cannot leak one. The detail screen
+  is the deliberate exception and shows the standing: a student who booked them
+  has to be able to find out.
+- Neither endpoint creates a `tutor_profiles` row. The row is created when the
+  tutor role is granted; a browse that minted one would hand every signed-in
+  student a `probationary` standing on every cold start.
+- The competency bar applies on **both** paths, filtered and unfiltered. Every
+  unit at one university is graded on that university's single scale, so applying
+  it only when a unit was named would mean the same tutor passes in one query and
+  fails in the other depending on which screen asked.
+
+A well-formed `course_unit_id` that is unknown, or belongs to another university,
+returns `[]` rather than an error. Same reasoning as
+`GET /v1/academics/course-units`: the client filtered on a value it believed
+existed, and a refusal would put a student's discovery screen into an error state
+over a stale picker value.
+
+The rail's endorsed-unit list is capped at `RAIL_ENDORSED_UNITS` and the full
+total travels beside it. A tutor endorsed in fourteen units is not summarised by
+any five of them, and the number shown has to be the whole truth for the sample
+next to it to mean anything.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 ---
 
@@ -258,6 +754,12 @@ Tutor Accepts / Declines
 Session Scheduled (in-app)
       │
       ▼
+<<<<<<< HEAD
+=======
+PIN Handshake: tutor reveals a 2-digit PIN, tutee submits it
+      │   (a missing PIN fails closed — never treated as a match)
+      ▼
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 Session Completed
       │
       ▼
@@ -267,15 +769,265 @@ Rating Submitted → ValidationService updates tutor status
 IncentiveService logs hours → certificate eligibility
 ```
 
+<<<<<<< HEAD
+=======
+### 8.1 The PIN handshake is attendance evidence
+
+A two-digit PIN is weak as a secret and is not one. It exists to make attendance
+a *mutual* claim rather than the tutee's word alone: the tutor shows a code
+generated at acceptance, the tutee types it in to confirm they met. A tutee who
+fabricates attendance needs the tutor's code, not just a `completed` transition.
+
+The consequence is that the code is compared for **presence**, not for
+authenticity, so verification fails closed when `sessions.session_pin` is null.
+A row that never received a PIN cannot be verified by an empty submission, and
+the transition and verification paths both refuse it. The column is
+`VARCHAR(2)` with a length check constraint rather than a 4-digit code, because
+a peer reads the number aloud across a table and a longer one gets mistyped.
+
+### 8.2 Unit endorsements are not ratings
+
+A rating answers "how was the tutor". An endorsement answers "the tutor knows
+this course unit". They are separate rows in `unit_endorsements` rather than
+extra columns on `ratings`, because they are consulted by different questions:
+standing is computed from `ratings`, and unit coverage is consulted when matching
+picks a tutor for a unit. Folding the second into the first would make a claim
+about subject knowledge silently move someone's promotion.
+
+An endorsement is scoped to the **session's own** `course_unit_id` and capped at
+`MAX_ENDORSEMENTS_PER_RATING`. A corrected submission replaces the rater's
+previous endorsements for that session rather than appending to them, so a
+mistake is retractable. The unique constraint on
+`(session_id, rater_id, course_unit_id)` is what makes that replacement safe
+under concurrent retries, and it is a database constraint rather than a service
+check because two simultaneous requests would both pass the check.
+
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 ---
 
 ## 9. Security & Compliance
 
+<<<<<<< HEAD
 - **Authentication**: JWT for mobile sessions; designed for future University SSO (SAML/OAuth).
 - **Authorization**: Role-based access control via `role_type` and competency checks.
 - **Data Protection**: Compliant with the Uganda Data Protection and Privacy Act, 2019 (DPPA). Sensitive academic data (grades, transcripts) requires explicit consent and secure storage.
 - **Transport**: HTTPS only.
 - **Secrets**: Never committed; loaded from environment variables.
+=======
+The pilot's threat model is specific: an attacker holding a list of student email
+addresses, or a stolen copy of the database. Every choice below is aimed at one of
+those two, and the reasoning is recorded so a later change can be judged against
+it rather than re-argued from scratch.
+
+> **Status: the primitives are built; the endpoints that enforce them are not.**
+> Everything in 9.1–9.3 and 9.5 is implemented and unit-tested in
+> `app/core/security.py`, `app/core/password_policy.py` and
+> `app/core/config.py`. `app/api/v1/auth.py`, `app/services/auth_service.py` and
+> `app/api/deps.py` are still empty, so **none of it is on a request path yet.**
+> `denial_reason`, `hash_password`, `verify_password`, `create_token_pair` and
+> `decode_token` currently have no production caller. Read this section as the
+> contract those endpoints must satisfy, not as a description of live
+> enforcement. Until they exist, there is no sign-in and no stored credential.
+
+### 9.1 Secrets
+
+Three independent secrets, none with a default, all required at startup. The API
+refuses to boot without them, because an API that boots with no signing key will
+happily issue tokens that nobody can revoke, and one that boots with no pepper can
+be checked offline against a stolen database.
+
+| Setting                 | Protects                                     | Rotating it                              |
+| ----------------------- | -------------------------------------------- | ---------------------------------------- |
+| `JWT_SECRET`            | Signs access tokens                          | Invalidates every issued token unless the old key is in `JWT_PREVIOUS_SECRETS` |
+| `JWT_PREVIOUS_SECRETS`  | Verifies tokens signed by retired keys       | Removes the ability to verify old tokens |
+| `TOKEN_PEPPER`          | Server-side key for hashing opaque tokens    | Signs every user out; no stored hash matches |
+
+They are separate settings rather than one secret reused, because they protect
+different things and rotate for different reasons. Sharing a value would mean one
+compromise reaches all three, and rotating one would take the others out.
+
+Placeholder values (`changeme`, `secret`, `replace-me`) and values under 32
+characters are rejected. A committed placeholder reaches production more often
+than anyone expects, and a warning in a `.env.example` is not a control.
+
+### 9.2 Password storage
+
+Argon2id at the OWASP minimum: 19 456 KiB, 2 passes, 1 lane. The floor is enforced
+as a *validation bound in the settings model*, not only by a test, so it cannot be
+lowered by an environment variable. Lowering a constant is visible in review;
+lowering a config value in a deployment manifest is not.
+
+Raising the parameters is not a migration. Every stored hash encodes the
+parameters it was created with, and a successful sign-in transparently rewrites a
+hash made under weaker settings, so a raised floor reaches existing accounts
+gradually on their own.
+
+Two properties that the auth service must implement matter for an attacker with a
+stolen database. Both are available in `app/core/security.py` and neither is
+called yet:
+
+- **No PBKDF2 fallback.** A stored `pbkdf2_sha256$` hash is refused outright rather
+  than verified. There is no PBKDF2 data in production to preserve, so supporting
+  it would only create a weaker path to keep alive.
+- **Uniform cost per guess.** An unknown email runs a decoy Argon2 verification
+  against a random hash, so "no such user" and "wrong password" cost the same.
+  A stored value that is malformed — not a PHC string, or one that names the right
+  algorithm but cannot be parsed — is paid for explicitly, because those paths
+  fail *before* any Argon2 work happens and would otherwise return measurably
+  faster than a wrong password.
+
+### 9.3 Password acceptance
+
+Length-based, **8 to 128** code points, with no composition rules. Character-class
+requirements are well documented to produce `Passw0rd!` — a predictable
+substitution that satisfies the rule and is weaker than a passphrase of the same
+length. The 128 ceiling exists so that a future move to bcrypt, which truncates at
+72 bytes silently, cannot quietly reduce a long password to its first 72
+characters.
+
+**The floor was twelve and is now eight.** The reasoning matters, because a long
+floor looks like the safer choice and is not. Past about eight characters students
+stop inventing and start satisfying — they write `Password1!` and forget it, or
+abandon the form. A longer floor therefore rejects honest students without
+rejecting attackers, because every guess worth making is short: nobody
+brute-forces a twelve character space when the useful guesses are eight characters
+and known. The deny-list, not the floor, is what rejects attacker guesses, and
+Argon2id's 19 MiB cost is what makes each one expensive.
+
+**The residual risk is that there is no rate limiting on sign-in** (see 9.8), so
+the number of guesses is unbounded and the deny-list is the only thing between a
+leaked student address and a guessed password. This is a pre-existing gap that a
+short floor makes load-bearing rather than theoretical. Rate limiting on
+`/v1/auth/login` and `/v1/auth/register` is the correct next control, and it is
+preferable to raising the floor back, because it addresses the actual threat
+without the cost to the student.
+
+A small static deny-list covers the passwords that would otherwise make the
+Argon2 cost affordable. It is checked at **registration and password change only,
+never at sign-in**: a student who chose a password that later lands on a breach
+list must still be able to get into their own account, or anyone could lock them
+out by reporting their password as common. That is the only place a deny-list is
+safe.
+
+The list is static and small on purpose, and is enforced by
+`app/core/password_policy.py`, which the registration endpoint must call. A live
+breach-API lookup would hand a third party a list of student addresses to check and
+would make account creation depend on someone else's uptime. Keeping it short
+enough to audit by eye is what makes it a control rather than decoration; it needs a
+manual refresh, and that is a known cost rather than an oversight.
+
+The cost of a static list is that it only covers what someone thought to add, and
+at a floor of eight a student can reach a keyboard run the list never anticipated.
+Entries are therefore listed in **base form**, because `denial_reason` strips
+trailing digits and punctuation before the lookup: listing `asshole` refuses
+`asshole1` and `asshole!` without naming either, and listing `1q2w3e4r` already
+covers the trailing digits of its own longer variants. The list still has holes —
+`tests/core/test_password_policy.py` pins the ones found so far, and a new one is
+found by trying one, not by a control failing. That is the argument for rate
+limiting.
+
+### 9.4 Tokens
+
+- **Access** — JWT, HS256. Carries `sub` (the `public_id`), `type`, `iat`, `exp`
+  and `jti`. Nothing else. Roles are **not** in the token; they are read per
+  request, so a role change takes effect immediately instead of at the next
+  token refresh.
+- **Refresh and email verification** — opaque random strings. Only a
+  peppered HMAC-SHA256 of the token is stored, so a stolen database yields no
+  usable token and no offline attack is possible, because the server-side pepper
+  is not in the database.
+- **No clock-skew leeway** is configured. A phone whose clock is a few seconds
+  behind is signed out rather than tolerated. With a 15 minute lifetime the
+  stricter failure is the one worth having, and a leeway setting is deliberately
+  absent until a real device demonstrates a need for it.
+
+Symmetric signing is deliberate. Asymmetric signing buys key separation between
+issuer and verifier, which matters when a third party must check a token the
+issuer cannot mint. That is not this service: it mints and verifies its own
+tokens, so rotation is handled by a key set rather than a new key pair. The
+saving is that `cryptography` — a compiled wheel of several megabytes — is not
+shipped for a capability not in use.
+
+`public_id` rather than the primary key is the `sub` because a UUIDv7 encodes its
+creation time, and a leaked primary key would otherwise date and help enumerate
+every other record.
+
+Refresh tokens **rotate on every use**. Each exchange issues a new token and
+records `replaced_by_id` on the one presented, so the table holds a chain.
+Presenting a token that has already been replaced is treated as theft and
+revokes the whole family, which signs out the attacker's device and the
+legitimate one together. The cost is real: a client that retries a refresh
+without storing the new token revokes its own session. That is the correct
+trade, because the alternative — tolerating reuse — makes a stolen 30-day token
+indefinitely renewable.
+
+The consequence for the client is that **`/v1/auth/refresh` must replace the
+stored refresh token with the one in its response.** The token just sent stops
+working the moment the response returns.
+
+#### Cold start
+
+The access token lives in memory only, so a cold start has no access token and
+must hold the splash screen until it has one. The order matters and is fixed:
+
+1. Read the refresh token from secure storage. Nothing there → the session is
+   simply unauthenticated, and this is not an error.
+2. Exchange it for a pair, replacing the stored refresh token.
+3. `GET /v1/auth/me` for the profile.
+
+A network failure at step 2 or 3 keeps the user on the splash screen **with a
+retry**; it does not report them as signed out, because "we could not reach the
+network" and "your session ended" are different facts and only one of them is
+true. A refresh that is *refused* does clear the token and routes to sign-in.
+
+### 9.5 Logging
+
+- `database_echo` logs SQL **with its bound parameters**, which for this schema
+  means email addresses and password hashes. It is refused at startup unless
+  `environment` is `development`.
+- The frontend transport interceptor logs method, path, status and timing only.
+  Headers and bodies are suppressed: headers carry the bearer token, and every
+  body in this API is either a credential or a student's academic record.
+- Unhandled server errors log the path and a fixed client-facing message.
+  Interpolating an unexpected exception's message is how connection strings and
+  row contents end up in a student's error toast.
+
+### 9.6 Data protection
+
+- Compliant with the Uganda Data Protection and Privacy Act, 2019 (DPPA). Grades
+  and transcripts require explicit consent and secure storage.
+- Access tokens are held in memory only and are never written to
+  `shared_preferences`. The refresh token is the only secret persisted, and only
+  in platform secure storage.
+- The client never sees a row's primary key.
+- **Transcript storage**: Uploaded verification proofs (Tier 1) are stored securely on the local filesystem of the backend. Only authorized admins and the system can access the raw paths stored in the database.
+
+### 9.7 Schema changes
+
+Alembic, with a naming convention applied to every constraint. Names matter here
+because a constraint whose name is generated afresh looks like a drop plus an add
+to Alembic, and dropping a unique index takes the guarantee away for the duration
+of the rebuild.
+
+`backend/alembic/versions/` is autogenerate output, so the formatter is kept away
+from it — reformatting generated files produces churn that hides the real changes
+on the next autogenerate run.
+
+### 9.8 Not yet in place
+
+Stated explicitly so nothing here is mistaken for a control that exists:
+
+- **HTTPS is not yet enforced** by the application, and HSTS is not set. It is a
+  deployment responsibility today.
+- **No certificate pinning.** Deferred: it breaks certificate rotation in ways
+  that lock a pilot out of its own API.
+- **CORS defaults to empty**, which is correct for a mobile client and means
+  browser origins are untrusted until deliberately configured.
+- **No rate limiting** on sign-in. The decoy verification makes enumeration
+  expensive per guess but does not bound the number of guesses.
+- **No structured audit log** of access to academic records. Required before any
+  institutional pilot.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 ---
 
@@ -303,8 +1055,15 @@ IncentiveService logs hours → certificate eligibility
 
 ## 12. Related Documents
 
+<<<<<<< HEAD
 - [CONTRIBUTING.md](./Contribution.md) — Contribution guidelines and Code of Conduct
 - [README.md](../README.md) — Project overview and local setup
+=======
+- [Contribution Guide](./Contribution.md) — Contribution guidelines and Code of Conduct
+- [Project Structure](./project-structure.md) — Repository layout and dependency direction
+- [README.md](../README.md) — Project overview and local setup
+- [MVP Brief](./MVP_Brief.md) - MVP Brief, covers what is in scope for the MVP and what is not and also future improvements.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 - Pilot roadmap and research proposal (project root / docs)
 
 ---

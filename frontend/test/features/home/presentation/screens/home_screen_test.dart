@@ -1,0 +1,257 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:peerpass/app/router.dart';
+import 'package:peerpass/core/models/user_profile.dart';
+import 'package:peerpass/core/models/user_role.dart';
+import 'package:peerpass/core/state/session.dart';
+import 'package:peerpass/core/theme/app_theme.dart';
+import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
+import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
+import 'package:peerpass/features/home/presentation/screens/home_screen.dart';
+
+/// A student who has finished onboarding, so the router would let them stay here.
+const UserProfile _enrolled = UserProfile(
+  publicId: 'user-1',
+  email: 'student@must.ac.ug',
+  fullName: 'Achieng Okello',
+  roles: <UserRole>{UserRole.student},
+  universityId: 'university-1',
+  facultyId: 'subject-1',
+  yearOfStudy: 2,
+);
+
+/// The greeting the screen builds from the first name alone.
+const String _greeting = 'Hello, Achieng';
+
+/// A container to read the session through, plus the repository behind it.
+typedef _Harness = ({
+  ProviderContainer container,
+  FakeAuthRepository repository,
+});
+
+Future<void> _settle(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(seconds: 3));
+  await tester.pumpAndSettle();
+}
+
+/// Pumps home over a container holding [profile] as the signed-in account.
+_Harness _harness(UserProfile profile) {
+  final repository = FakeAuthRepository(
+    session: profile,
+    refreshToken: 'refresh',
+  );
+  final container = ProviderContainer(
+    overrides: [authRepositoryProvider.overrideWithValue(repository)],
+  );
+  addTearDown(container.dispose);
+  container.read(sessionControllerProvider.notifier).signedIn(profile);
+  return (container: container, repository: repository);
+}
+
+Future<void> _pumpHome(WidgetTester tester, _Harness harness) async {
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: harness.container,
+      child: MaterialApp(theme: AppTheme.light, home: const HomeScreen()),
+    ),
+  );
+  await _settle(tester);
+}
+
+void main() {
+  testWidgets('greets the student by the first name on their profile', (
+    tester,
+  ) async {
+    await _pumpHome(tester, _harness(_enrolled));
+
+    expect(find.text(_greeting), findsOneWidget);
+    // The avatar is derived from the stored name rather than an upload: the
+    // pilot stores no images, and a client-side upload would put a face in a
+    // bucket the API does not describe.
+    expect(
+      find.descendant(of: find.byType(CircleAvatar), matching: find.text('AO')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows which account is signed in', (tester) async {
+    await _pumpHome(tester, _harness(_enrolled));
+
+    expect(find.text('Signed in as ${_enrolled.email}'), findsOneWidget);
+  });
+
+  testWidgets('the booking tile is the only promise left on the dashboard', (
+    tester,
+  ) async {
+    // There is no booking screen in this release, so a tile that navigated would
+    // take a student somewhere that does not exist. The claim is checked by
+    // pressing it: the screen stays mounted, the greeting stays, and the session
+    // is untouched. This test runs without a router, so a tile that reached for
+    // `context.go` would have nothing to go with and the press would throw rather
+    // than pass quietly.
+    final harness = _harness(_enrolled);
+    await _pumpHome(tester, harness);
+
+    expect(find.text('Book a session'), findsOneWidget);
+    expect(
+      find.text('Soon'),
+      findsOneWidget,
+      reason: 'booking is the one thing on this screen that is not built',
+    );
+
+    await tester.tap(find.text('Book a session'));
+    await _settle(tester);
+
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.text(_greeting), findsOneWidget);
+    expect(
+      harness.container.read(sessionControllerProvider).status,
+      SessionStatus.authenticated,
+    );
+  });
+
+  testWidgets('tapping sign out in the app bar ends the session', (
+    tester,
+  ) async {
+    // Regression. `onPressed` is a `VoidCallback`, so a handler of
+    // `() => ref.read(signOutControllerProvider)` evaluated the read, discarded
+    // the function it returned, and signed nobody out while still looking like
+    // it worked. The button has to be the thing under test, not the provider.
+    final harness = _harness(_enrolled);
+    await _pumpHome(tester, harness);
+    expect(
+      harness.container.read(sessionControllerProvider).status,
+      SessionStatus.authenticated,
+    );
+
+    await tester.tap(find.byTooltip('Sign out'));
+    await _settle(tester);
+
+    final session = harness.container.read(sessionControllerProvider);
+    expect(session.status, SessionStatus.unauthenticated);
+    expect(session.profile, isNull);
+    // The token is discarded on the device before the session is recorded as
+    // ended, so a request that never reaches the server still leaves this device
+    // signed out.
+    expect(harness.repository.session, isNull);
+    expect(harness.repository.refreshToken, isNull);
+  });
+
+  testWidgets('the sessions entry is live, not a promise', (tester) async {
+    // Sessions are built, so the landing screen has to offer a way in. Marked
+    // Soon, or hidden among the pending tiles, a working feature looks absent.
+    final harness = _harness(_enrolled);
+    await _pumpHome(tester, harness);
+
+    expect(find.text('My sessions'), findsOneWidget);
+    // One pending tile carries the chip; this entry must not add a second, or it
+    // is making the same "not built yet" claim as the tile below it.
+    expect(
+      find.text('Soon'),
+      findsNWidgets(1),
+      reason: 'the sessions entry is live and must not claim otherwise',
+    );
+  });
+
+  testWidgets('tapping the sessions entry opens the sessions list', (
+    tester,
+  ) async {
+    // Asserted through a real router, because the claim under test is a
+    // navigation and a test without one would pass against a handler that
+    // pushes nothing at all.
+    final harness = _harness(_enrolled);
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+        GoRoute(
+          path: AppRoutes.sessions,
+          builder: (_, _) => const Scaffold(body: Text('Sessions list here')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await _settle(tester);
+
+    await tester.tap(find.text('My sessions'));
+    await _settle(tester);
+
+    expect(find.text('Sessions list here'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
+  });
+
+  testWidgets('tapping the tutor entry opens the course unit picker', (
+    tester,
+  ) async {
+    // Asserted through a real router, because the claim under test is a
+    // navigation and a test without one would pass against a handler that pushes
+    // nothing at all. Matching is built, so this entry is no longer a promise --
+    // a working feature marked Soon is a working feature nobody can find.
+    final harness = _harness(_enrolled);
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+        GoRoute(
+          path: AppRoutes.matching,
+          builder: (_, _) => const Scaffold(body: Text('Course units here')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await _settle(tester);
+
+    await tester.tap(find.text('Find a tutor'));
+    await _settle(tester);
+
+    expect(find.text('Course units here'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
+  });
+
+  testWidgets('the rail the shell supplies is shown, and its absence is silent', (
+    tester,
+  ) async {
+    // The rail belongs to the tutors feature and reaches home as a widget, so
+    // home's only job is to place it. Supplied, it appears; not supplied, there is
+    // no gap and no placeholder, which is the state home's own tests are in.
+    final harness = _harness(_enrolled);
+    await _pumpHome(tester, harness);
+
+    expect(find.text('Tutors at your university'), findsNothing);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const HomeScreen(
+            // A bare marker, not a Scaffold: the rail is placed inside a
+            // scrolling column, and a Scaffold there would ask for the height it
+            // cannot have. The real rail sizes its own cards.
+            tutorRail: Text('Tutors at your university'),
+          ),
+        ),
+      ),
+    );
+    await _settle(tester);
+
+    expect(find.text('Tutors at your university'), findsOneWidget);
+  });
+}

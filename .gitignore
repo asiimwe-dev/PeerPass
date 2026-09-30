@@ -1,6 +1,16 @@
 # =========================
+<<<<<<< HEAD
 # Ulearn - Root .gitignore
 # =========================
+=======
+# PeerPass - Root .gitignore
+# =========================
+# ---------- Reference-only trees ----------
+# legacy/ is a pre-Flutter-scaffold layout sketch. It has no pubspec.yaml and
+# cannot be built, so it is intentionally never tracked. Declared explicitly so
+# the exclusion does not depend on the Python `lib/` rule further down.
+legacy/
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 # ---------- OS generated ----------
 .DS_Store
@@ -45,7 +55,13 @@ dist/
 downloads/
 eggs/
 .eggs/
+<<<<<<< HEAD
 lib/
+=======
+# Anchored to the repository root. An unanchored `lib/` also matched the Dart
+# client directories, which is why the `!frontend/lib` negations below exist.
+/lib/
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 lib64/
 parts/
 sdist/
@@ -101,6 +117,11 @@ build/
 **/ios/Flutter/.last_build_id
 .flutter-plugins
 .flutter-plugins-dependencies
+<<<<<<< HEAD
+=======
+!frontend/lib
+!frontend/lib/**
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 # Symbolication and obfuscation
 app.*.symbols

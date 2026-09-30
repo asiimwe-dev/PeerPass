@@ -1,0 +1,60 @@
+name: peerpass
+description: "Peer-to-peer academic support for university students."
+publish_to: 'none'
+
+# versionName on Android, CFBundleShortVersionString on iOS. The build number
+# (+1) is the trailing integer and is what store listings require to increase.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.1
+  # Pinned so a contributor on an older Flutter fails at `pub get` with a clear
+  # message instead of failing later on a missing API. Bump deliberately.
+  flutter: '>=3.47.0'
+
+dependencies:
+  cupertino_icons: ^1.0.8
+
+  # HTTP client. Chosen over `package:http` for interceptors, which is how the
+  # auth header and token refresh are attached without touching call sites.
+  dio: ^5.11.1
+
+  flutter:
+    sdk: flutter
+
+  # State management. Providers are written by hand rather than generated: the
+  # repository contract is the seam that matters for testing, and build_runner
+  # in the inner loop costs more than it saves at this feature count.
+  flutter_riverpod: ^3.4.3
+
+  # JWT storage. Access and refresh tokens are credentials, so they never go in
+  # shared_preferences, which is unencrypted on disk.
+  flutter_secure_storage: ^11.2.0
+
+  # Declarative routing with a redirect-based auth guard.
+  go_router: ^18.0.1
+
+  # Date and number formatting for session times and rating aggregates.
+  intl: ^0.20.3
+
+  # Non-sensitive preferences only: theme mode, last-viewed unit, onboarding.
+  shared_preferences: ^2.5.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Hand-written stubs for repository fakes. Preferred over mockito, which
+  # requires generated mocks.
+  mocktail: ^1.0.5
+
+  # Replaces flutter_lints as the lint source. very_good_analysis depends on
+  # flutter_lints and re-exports it, so it is not needed directly.
+  very_good_analysis: ^11.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/

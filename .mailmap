@@ -1,0 +1,15 @@
+# Collapse agent identities onto the human maintainer.
+#
+# A `Co-authored-by` trailer naming an agent is parsed by GitHub as a
+# contribution, which is how an AI agent came to appear in this repository's
+# contributors graph. `.mailmap` is the belt to the commit-msg hook's braces: it
+# rewrites the identity in the commit itself, so even a trailer that arrives by
+# merge or by someone who never installed the hook is attributed to the person
+# who actually wrote the work.
+#
+# Removing the trailer with a history rewrite fixed the two commits that were
+# already published. These lines stop it being counted again if one returns.
+#
+# Only agent identities are listed. Mapping a real collaborator here would steal
+# their credit, which is the opposite of what this file is for.
+Gilbert Asiimwe <226837924+asiimwe-dev@users.noreply.github.com> <223556219+Copilot@users.noreply.github.com>
