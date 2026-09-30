@@ -70,7 +70,10 @@ async def transition_session(
 ) -> SessionResponse:
     """Advance or cancel a session, with server-side validation controls."""
     return await session_service.transition_session(
-        db, caller.user, session_id, payload
+        db,
+        caller.user,
+        session_id,
+        payload,
     )
 
 

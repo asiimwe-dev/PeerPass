@@ -27,6 +27,7 @@ from app.schemas.session import (
     SessionResponse,
     SessionTransitionRequest,
 )
+from app.services import rating_service
 
 
 def _utc(dt: datetime) -> datetime:
@@ -183,6 +184,8 @@ async def transition_session(
             (_utc(session.ended_at) - _utc(session.started_at)).total_seconds() // 60
         )
         session.duration_minutes = max(1, elapsed)
+        if session.status is not SessionStatus.COMPLETED:
+            await rating_service.record_completion(db, session)
 
     if payload.status is SessionStatus.CANCELLED:
         session.cancelled_by_id = user.id
