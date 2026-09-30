@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/state/session.dart';
+import 'package:peerpass/features/auth/data/datasources/remote_academics_datasource.dart';
 import 'package:peerpass/features/auth/data/models/university_option.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 
@@ -62,6 +63,7 @@ class AuthController {
     String? facultyId,
     int? yearOfStudy,
     bool? academicDataConsented,
+    List<String>? primaryCourseUnitIds,
   }) async {
     final profile = await _repository.updateProfile(
       fullName: fullName,
@@ -69,8 +71,25 @@ class AuthController {
       facultyId: facultyId,
       yearOfStudy: yearOfStudy,
       academicDataConsented: academicDataConsented,
+      primaryCourseUnitIds: primaryCourseUnitIds,
     );
     _session.signedIn(profile);
+  }
+
+  Future<void> submitTutorProof({
+    required String courseUnitId,
+    required String gradeId,
+    required String source,
+    String? evidenceReference,
+    String? notes,
+  }) async {
+    await _repository.submitCompetency(
+      courseUnitId: courseUnitId,
+      gradeId: gradeId,
+      source: source,
+      evidenceReference: evidenceReference,
+      notes: notes,
+    );
   }
 
   /// Ends the session and returns to the signed-out state.
@@ -119,4 +138,28 @@ final universitiesProvider = FutureProvider<List<UniversityOption>>(
 /// The faculties the wizard offers.
 final facultiesProvider = FutureProvider<List<Subject>>(
   (ref) => ref.read(authRepositoryProvider).faculties(),
+);
+
+/// Course units scoped to the selected university.
+// Riverpod infers the family provider type from the generic parameters, and the
+// analyzer does not surface that type in a way it can prove without the
+// explicit ignore.
+// ignore: specify_nonobvious_property_types
+final courseUnitsProvider = FutureProvider.family<List<CourseUnitOption>, String>(
+  (ref, universityId) {
+    if (universityId.isEmpty) return Future.value(const []);
+    return ref
+        .read(authRepositoryProvider)
+        .courseUnits(universityId: universityId);
+  },
+);
+
+// The family provider's generic arguments are explicit enough for the API call,
+// but the analyzer does not expose that as a concrete type for this property.
+// ignore: specify_nonobvious_property_types
+final gradesProvider = FutureProvider.family<List<GradeOption>, String>(
+  (ref, universityId) {
+    if (universityId.isEmpty) return Future.value(const []);
+    return ref.read(authRepositoryProvider).grades(universityId: universityId);
+  },
 );

@@ -113,6 +113,10 @@ class UpdateProfileRequest(RequestSchema):
             "express as the original grant and to be logged."
         ),
     )
+    primary_course_unit_ids: list[uuid.UUID] | None = Field(
+        default=None,
+        description="The course units a student anticipates needing help with.",
+    )
 
 
 class UserResponse(OrmSchema):
@@ -166,6 +170,7 @@ class CurrentUserResponse(OrmSchema):
     )
     year_of_study: int | None = None
     academic_data_consented_at: datetime | None = None
+    primary_course_unit_ids: list[uuid.UUID] = Field(default_factory=list)
     created_at: datetime
 
 

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/constants/app_dimens.dart';
 import 'package:peerpass/core/models/user_profile.dart';
+import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/widgets/content_width_limiter.dart';
 import 'package:peerpass/features/home/presentation/providers/sign_out_controller.dart';
@@ -63,6 +66,13 @@ class HomeScreen extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: AppDimens.xxl),
+                    if (!(profile?.hasRole(UserRole.tutor) ?? false))
+                      FilledButton.icon(
+                        onPressed: () => context.push(AppRoutes.tutorVerification),
+                        icon: const Icon(Icons.verified_user_outlined),
+                        label: const Text('Become a tutor'),
+                      ),
+                    const SizedBox(height: AppDimens.md),
                     const _PendingCard(
                       icon: Icons.school_outlined,
                       title: 'Find a tutor',

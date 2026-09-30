@@ -50,9 +50,7 @@ class RemoteAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) {
-    return _establish(
-      () => auth.register(email: email, password: password),
-    );
+    return _establish(() => auth.register(email: email, password: password));
   }
 
   @override
@@ -112,12 +110,39 @@ class RemoteAuthRepository implements AuthRepository {
   Future<List<Subject>> faculties() => _guard(academics.faculties);
 
   @override
+  Future<List<CourseUnitOption>> courseUnits({String? universityId}) =>
+      _guard(() => academics.courseUnits(universityId: universityId));
+
+  @override
+  Future<List<GradeOption>> grades({String? universityId}) =>
+      _guard(() => academics.grades(universityId: universityId));
+
+  @override
+  Future<void> submitCompetency({
+    required String courseUnitId,
+    required String gradeId,
+    required String source,
+    String? evidenceReference,
+    String? notes,
+  }) =>
+      _guard(
+        () => auth.submitCompetency(
+          courseUnitId: courseUnitId,
+          gradeId: gradeId,
+          source: source,
+          evidenceReference: evidenceReference,
+          notes: notes,
+        ),
+      );
+
+  @override
   Future<UserProfile> updateProfile({
     String? fullName,
     String? universityId,
     String? facultyId,
     int? yearOfStudy,
     bool? academicDataConsented,
+    List<String>? primaryCourseUnitIds,
   }) {
     // The same reason as `_establish`: the parse belongs inside the guard.
     return _guard(
@@ -128,6 +153,7 @@ class RemoteAuthRepository implements AuthRepository {
             facultyId: facultyId,
             yearOfStudy: yearOfStudy,
             academicDataConsented: academicDataConsented,
+            primaryCourseUnitIds: primaryCourseUnitIds,
           )
           .then(UserProfile.fromJson),
     );
@@ -184,7 +210,9 @@ class RemoteAuthRepository implements AuthRepository {
       // The API answered with something that is not the shape it documents.
       // Reported as a server fault rather than an unknown one, because that is
       // what it is, and a student cannot act on it either way.
-      return const ServerFailure('The server sent something we could not read.');
+      return const ServerFailure(
+        'The server sent something we could not read.',
+      );
     }
     if (error is DioException) return mapDioException(error);
     return const UnknownFailure();

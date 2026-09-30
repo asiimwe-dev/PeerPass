@@ -105,17 +105,21 @@ both more honest and less damaging to trust than a plausible-looking stub.
 
 ## 6. Key Design Decisions
 
-**1. Self-declared grades + community ratings (instead of instant transcript verification)**  
-Institutional data access takes time. Self-declaration with a hard grade gate, combined with mandatory ratings, gives us speed and quality control for the pilot.
+**1. Transcript / Portal verification (Tier 1 Proof Upload)**  
+To enforce a hard gate for competency, tutors must upload a screenshot of their transcript or portal showing their grade. This replaces pure self-declaration and provides a stronger layer of trust for the pilot. The file is securely stored on the backend local file system.
 
 **2. Provisional → Verified promotion path**  
 New tutors are not hidden, but they are clearly labelled. Consistent positive ratings unlock the Verified badge. This creates a fair, transparent reputation system.
+
+The thresholds are **3 completed sessions and a running average of 4.10 or above**. Both must hold; a tutor with a 5.00 average across two sessions stays Provisional, and so does one with three sessions and a 4.00 average. Below the bar a tutor is marked **Reduced** rather than hidden, so a tutor who improves recovers on the next rating without re-applying.
+
+The numbers live in `app/services/rating_service.py` as `PROMOTION_MIN_SESSIONS` and `PROMOTION_MIN_AVERAGE`. They are recorded here because a promotion rule that exists only in code cannot be reviewed by a product owner, and changing them is a product decision rather than a refactor.
 
 **3. Student chooses from a short list (instead of pure auto-match)**  
 Giving the tutee final choice increases trust and reduces the feeling of being “assigned” a stranger.
 
 **4. No in-app communication tools in MVP**  
-The product’s job is matching and quality control. Communication can stay on channels students already trust.
+The product’s job is matching and quality control. Building a full real-time chat adds too much complexity for the MVP. Instead, tutors can provide a copyable meeting link (e.g. Google Meet, Zoom) or contact info upon accepting a match. This ensures safe and immediate coordination without the overhead of maintaining an in-app messaging system.
 
 **5. Keep the first pilot narrow**  
 One (or few) high-need course units, 10–20 tutors, and the students in those units. Depth before breadth.
@@ -128,13 +132,11 @@ later: a name is resumable — a student can leave the wizard and come back to i
 whereas an abandoned sign-up form is simply a lost student, and four fields is
 enough to lose one.
 
-**7. Onboarding is two steps now, and deliberately not three**  
+**7. Onboarding is a three-step wizard**  
 The wizard asks for a name, then for university, faculty, and year together,
-gated on consent to store that academic context. The third step — the course units
-a student wants help with — is deferred to the phase where matching exists. The
-API has no matching to feed a declared unit into yet, so asking would collect an
-answer that nothing acts on, and an unused question teaches a student that the
-app does not do what it asks.
+gated on consent to store that academic context. The third step asks for the
+primary course modules the student anticipates needing help with. This seeds
+their profile for the matching phase.
 
 **8. Consent is a gate, not a preference**  
 The wizard will not finish without it. Under the Uganda Data Protection and

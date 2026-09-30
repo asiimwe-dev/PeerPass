@@ -9,11 +9,7 @@ import 'package:peerpass/features/auth/presentation/providers/auth_providers.dar
 import 'package:peerpass/features/auth/presentation/providers/onboarding_providers.dart';
 import 'package:peerpass/features/auth/presentation/widgets/selection_check.dart';
 
-/// The two steps a new account has to complete before it can be used.
-///
-/// Name, then academic context and consent. A third step, the units the student
-/// wants help with, is deliberately absent: the API cannot match against units
-/// yet, so asking for them would collect an answer nothing acts on.
+/// The three steps a new account has to complete before it can be used.
 ///
 /// The wizard is a wizard and not one long form because the parts save
 /// independently. A student who force-quits after the name step comes back to a
@@ -46,9 +42,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         leading: state.step == OnboardingStep.name
             ? null
             : BackButton(
-                onPressed: ref
-                    .read(onboardingControllerProvider.notifier)
-                    .back,
+                onPressed: ref.read(onboardingControllerProvider.notifier).back,
               ),
       ),
       body: SafeArea(
@@ -63,7 +57,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       padding: const EdgeInsets.all(AppDimens.xl),
                       child: switch (state.step) {
                         OnboardingStep.name => const _NameStep(),
-                        OnboardingStep.academicContext => const _AcademicContextStep(),
+                        OnboardingStep.academicContext =>
+                          const _AcademicContextStep(),
+                        OnboardingStep.primaryModules =>
+                          const _PrimaryModulesStep(),
                       },
                     ),
                   ),
@@ -99,7 +96,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : Text(
-                              state.step == OnboardingStep.name
+                              state.step != OnboardingStep.primaryModules
                                   ? 'Continue'
                                   : 'Finish',
                             ),
@@ -131,7 +128,7 @@ String _messageFor(Failure failure) => switch (failure) {
   _ => 'Could not save. Try again.',
 };
 
-/// Two pips, the second filled once the first is done.
+/// Three pips, filled progressively.
 class _Progress extends StatelessWidget {
   const _Progress({required this.step});
 
@@ -139,7 +136,10 @@ class _Progress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final done = step == OnboardingStep.academicContext;
+    final done1 =
+        step == OnboardingStep.academicContext ||
+        step == OnboardingStep.primaryModules;
+    final done2 = step == OnboardingStep.primaryModules;
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimens.xl,
@@ -149,7 +149,9 @@ class _Progress extends StatelessWidget {
         children: [
           Expanded(child: _pip(context, filled: true)),
           const SizedBox(width: AppDimens.sm),
-          Expanded(child: _pip(context, filled: done)),
+          Expanded(child: _pip(context, filled: done1)),
+          const SizedBox(width: AppDimens.sm),
+          Expanded(child: _pip(context, filled: done2)),
         ],
       ),
     );
@@ -218,7 +220,9 @@ class _NameStepState extends ConsumerState<_NameStep> {
             labelText: 'Full name',
             prefixIcon: Icon(Icons.person_outline),
           ),
-          onChanged: ref.read(onboardingControllerProvider.notifier).setFullName,
+          onChanged: ref
+              .read(onboardingControllerProvider.notifier)
+              .setFullName,
         ),
       ],
     );
@@ -246,25 +250,29 @@ class _AcademicContextStep extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: AppDimens.xl),
-        ref.watch(universitiesProvider).when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Text(
-            'Could not load universities. Check your connection and try again.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
+        ref
+            .watch(universitiesProvider)
+            .when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Text(
+                'Could not load universities. Check your connection and try again.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+              data: (_) => const _UniversityPicker(),
             ),
-          ),
-          data: (_) => const _UniversityPicker(),
-        ),
         const SizedBox(height: AppDimens.lg),
-        ref.watch(facultiesProvider).when(
-          loading: () => const SizedBox.shrink(),
-          // A faculty list that failed is not shown as an error. The student can
-          // do nothing about it without their university, and an error where
-          // there is not yet a control to need is just noise.
-          error: (error, _) => const SizedBox.shrink(),
-          data: (_) => const _FacultyPicker(),
-        ),
+        ref
+            .watch(facultiesProvider)
+            .when(
+              loading: () => const SizedBox.shrink(),
+              // A faculty list that failed is not shown as an error. The student can
+              // do nothing about it without their university, and an error where
+              // there is not yet a control to need is just noise.
+              error: (error, _) => const SizedBox.shrink(),
+              data: (_) => const _FacultyPicker(),
+            ),
         const SizedBox(height: AppDimens.lg),
         _YearPicker(),
         const SizedBox(height: AppDimens.xl),
@@ -309,10 +317,7 @@ class _UniversityPicker extends ConsumerWidget {
         for (final university in catalogue)
           DropdownMenuItem(
             value: university.publicId,
-            child: Text(
-              university.name,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: Text(university.name, overflow: TextOverflow.ellipsis),
           ),
       ],
       onChanged: ref.read(onboardingControllerProvider.notifier).setUniversity,
@@ -338,7 +343,8 @@ class _FacultyPicker extends ConsumerWidget {
     // over from the old catalogue must not be handed back to a dropdown that no
     // longer contains it.
     final selectionIsValid =
-        faculties?.any((faculty) => faculty.publicId == state.facultyId) ?? false;
+        faculties?.any((faculty) => faculty.publicId == state.facultyId) ??
+        false;
 
     return DropdownButtonFormField<String>(
       initialValue: selectionIsValid ? state.facultyId : null,
@@ -421,6 +427,70 @@ class _ConsentBox extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Step three: the course units the student expects to need help with.
+class _PrimaryModulesStep extends ConsumerWidget {
+  const _PrimaryModulesStep();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final state = ref.watch(onboardingControllerProvider);
+    final universityId = state.universityId;
+
+    if (universityId == null) {
+      return Text(
+        'Choose a university first.',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.error,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Which units might you need help with?',
+          style: theme.textTheme.headlineSmall,
+        ),
+        const SizedBox(height: AppDimens.sm),
+        Text(
+          'Choose at least one. You can change these later.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: AppDimens.xl),
+        ref
+            .watch(courseUnitsProvider(universityId))
+            .when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stackTrace) => Text(
+                'Could not load course units. Check your connection and try again.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+              data: (units) => Wrap(
+                spacing: AppDimens.sm,
+                runSpacing: AppDimens.sm,
+                children: [
+                  for (final unit in units)
+                    FilterChip(
+                      label: Text('${unit.code} - ${unit.name}'),
+                      selected: state.primaryModuleIds.contains(unit.publicId),
+                      onSelected: (_) => ref
+                          .read(onboardingControllerProvider.notifier)
+                          .togglePrimaryModule(unit.publicId),
+                    ),
+                ],
+              ),
+            ),
+      ],
     );
   }
 }

@@ -31,6 +31,7 @@ const UserProfile _enrolled = UserProfile(
   universityId: 'university-1',
   facultyId: 'subject-1',
   yearOfStudy: 2,
+  primaryCourseUnitIds: ['unit-1'],
 );
 
 /// A student who has signed up but has not run the wizard.

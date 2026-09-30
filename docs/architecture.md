@@ -292,7 +292,7 @@ it: give `subjects` a nullable `university_id`, change the unique constraint to
 `(university_id, name)`, and add a `university_id` filter to `/faculties`.
 
 **Help_Requests** | `tutee_id`, `course_unit_id`, `topic`, `status`                | What was asked for, before a tutor was matched                                          |
-| **Sessions**      | `tutee_id`, `tutor_id`, `course_unit_id`, `status`, `duration_minutes` | A session that happened; the source for tutor hours and certificates          |
+| **Sessions**      | `tutee_id`, `tutor_id`, `course_unit_id`, `status`, `duration_minutes`, `session_pin`, `meeting_link` | A session that happened; the source for tutor hours and certificates. Includes PIN for handshake and copyable meeting link |
 | **Ratings**       | `session_id`, `rater_id`, `ratee_id`, `score`, `feedback_text` | Post-session feedback; low ratings reduce matching priority                           |
 
 ### 5.3 Detailed Table Definitions
@@ -693,6 +693,7 @@ true. A refresh that is *refused* does clear the token and routes to sign-in.
   `shared_preferences`. The refresh token is the only secret persisted, and only
   in platform secure storage.
 - The client never sees a row's primary key.
+- **Transcript storage**: Uploaded verification proofs (Tier 1) are stored securely on the local filesystem of the backend. Only authorized admins and the system can access the raw paths stored in the database.
 
 ### 9.7 Schema changes
 

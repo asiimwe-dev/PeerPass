@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/user_profile.dart';
+import 'package:peerpass/features/auth/data/datasources/remote_academics_datasource.dart';
 import 'package:peerpass/features/auth/data/models/university_option.dart';
 
 /// The authentication and own-profile contract the rest of the client depends
@@ -13,10 +14,7 @@ import 'package:peerpass/features/auth/data/models/university_option.dart';
 /// the API answered with a socket error or a problem document.
 abstract interface class AuthRepository {
   /// Signs in with an address and a password, and stores the returned tokens.
-  Future<UserProfile> signIn({
-    required String email,
-    required String password,
-  });
+  Future<UserProfile> signIn({required String email, required String password});
 
   /// Creates the account and signs it in.
   ///
@@ -48,6 +46,21 @@ abstract interface class AuthRepository {
   /// The faculties the picker offers.
   Future<List<Subject>> faculties();
 
+  /// Course units for the given university, for the primary modules step.
+  Future<List<CourseUnitOption>> courseUnits({String? universityId});
+
+  /// Every grade on the university's published scale.
+  Future<List<GradeOption>> grades({String? universityId});
+
+  /// Submits transcript or portfolio evidence for a unit the user claims to know.
+  Future<void> submitCompetency({
+    required String courseUnitId,
+    required String gradeId,
+    required String source,
+    String? evidenceReference,
+    String? notes,
+  });
+
   /// Updates the caller's own profile, returning the stored record.
   ///
   /// Partial by design. The wizard saves one step at a time, so a step that sent
@@ -58,6 +71,7 @@ abstract interface class AuthRepository {
     String? facultyId,
     int? yearOfStudy,
     bool? academicDataConsented,
+    List<String>? primaryCourseUnitIds,
   });
 
   /// Discards the stored session on this device.

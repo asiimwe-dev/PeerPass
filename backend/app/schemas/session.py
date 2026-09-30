@@ -80,6 +80,11 @@ class SessionCreate(RequestSchema):
     topic: Trimmed = Field(min_length=MIN_TOPIC_LENGTH, max_length=MAX_TOPIC_LENGTH)
     duration_minutes: int = Field(ge=MIN_DURATION_MINUTES, le=MAX_DURATION_MINUTES)
     scheduled_start: datetime | None = None
+    meeting_link: Trimmed | None = Field(
+        default=None,
+        max_length=500,
+        description="Optional Google Meet / Zoom link the tutor shares.",
+    )
 
     @model_validator(mode="after")
     def start_is_in_the_future(self) -> Self:
@@ -112,6 +117,11 @@ class SessionTransitionRequest(RequestSchema):
     status: SessionStatus
     cancellation_reason: Trimmed | None = Field(
         default=None, max_length=MAX_CANCELLATION_REASON_LENGTH
+    )
+    pin: Trimmed | None = Field(
+        default=None,
+        max_length=2,
+        description="Two-digit PIN shown by the tutee to verify a session start.",
     )
 
     @model_validator(mode="after")
@@ -162,6 +172,12 @@ class SessionResponse(OrmSchema):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     duration_minutes: int = Field(ge=0)
+    session_pin: str | None = Field(
+        default=None, description="Backend-generated handshake pin."
+    )
+    meeting_link: str | None = Field(
+        default=None, description="Shared meeting link for the session."
+    )
     is_rated: bool = Field(
         description=(
             "Whether a rating exists yet. The client needs this to decide whether "

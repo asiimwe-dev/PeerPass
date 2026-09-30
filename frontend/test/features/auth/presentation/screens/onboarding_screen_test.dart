@@ -7,6 +7,7 @@ import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/theme/app_theme.dart';
+import 'package:peerpass/features/auth/data/datasources/remote_academics_datasource.dart';
 import 'package:peerpass/features/auth/data/models/university_option.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
@@ -46,7 +47,8 @@ const List<Subject> _faculties = <Subject>[
   Subject(publicId: 'subject-1', name: 'School of Business and Management'),
   Subject(
     publicId: 'subject-2',
-    name: 'School of Computing, Information Technology and Software Engineering',
+    name:
+        'School of Computing, Information Technology and Software Engineering',
   ),
 ];
 
@@ -56,6 +58,13 @@ const String _refusedUniversity =
 
 const String _consentText =
     'I agree that PeerPass may store my name, university, faculty and year';
+const List<CourseUnitOption> _courseUnits = <CourseUnitOption>[
+  CourseUnitOption(
+    publicId: 'unit-1',
+    code: 'BIT 221',
+    name: 'Database Programming',
+  ),
+];
 
 /// A repository that refuses the second step, the way a validation error arrives.
 ///
@@ -69,6 +78,7 @@ class _RefusingAuthRepository extends FakeAuthRepository {
         refreshToken: 'refresh',
         universityOptions: _universities,
         facultyOptions: _faculties,
+        courseUnitOptions: _courseUnits,
       );
 
   @override
@@ -78,16 +88,18 @@ class _RefusingAuthRepository extends FakeAuthRepository {
     String? facultyId,
     int? yearOfStudy,
     bool? academicDataConsented,
+    List<String>? primaryCourseUnitIds,
   }) {
     if (universityId != null) {
       throw const ValidationFailure(
         'Some of the details you entered are not valid.',
-        fieldErrors: <String, String>{
-          'university_id': _refusedUniversity,
-        },
+        fieldErrors: <String, String>{'university_id': _refusedUniversity},
       );
     }
-    return super.updateProfile(fullName: fullName);
+    return super.updateProfile(
+      fullName: fullName,
+      primaryCourseUnitIds: primaryCourseUnitIds,
+    );
   }
 }
 
@@ -95,7 +107,10 @@ class _RefusingAuthRepository extends FakeAuthRepository {
 ///
 /// Typed as the fake rather than as the contract because a test here is often
 /// asserting on what the wizard actually sent, which only the fake records.
-typedef _Harness = ({ProviderContainer container, FakeAuthRepository repository});
+typedef _Harness = ({
+  ProviderContainer container,
+  FakeAuthRepository repository,
+});
 
 /// The fake the wizard is normally driven against.
 FakeAuthRepository _fake() => FakeAuthRepository(
@@ -103,6 +118,7 @@ FakeAuthRepository _fake() => FakeAuthRepository(
   refreshToken: 'refresh',
   universityOptions: _universities,
   facultyOptions: _faculties,
+  courseUnitOptions: _courseUnits,
 );
 
 Future<void> _settle(WidgetTester tester) async {
@@ -136,8 +152,7 @@ Future<void> _pumpWizard(WidgetTester tester, _Harness harness) async {
   await _settle(tester);
 }
 
-/// The button under the wizard, which reads Continue on one step and Finish on
-/// the other.
+/// The button under the wizard, which reads Continue until the final step.
 Finder _advanceButton(String label) => find.widgetWithText(FilledButton, label);
 
 /// Whether the wizard's own button would accept a press.
@@ -220,7 +235,10 @@ void main() {
     await _pumpWizard(tester, harness);
 
     expect(find.text('What is your name?'), findsOneWidget);
-    expect(find.text('Tutors and other students will see this.'), findsOneWidget);
+    expect(
+      find.text('Tutors and other students will see this.'),
+      findsOneWidget,
+    );
     expect(find.widgetWithText(TextField, 'Full name'), findsOneWidget);
     expect(
       _canAdvance(tester, 'Continue'),
@@ -241,8 +259,8 @@ void main() {
 
     expect(find.text('What is your name?'), findsNothing);
     expect(find.text('Where do you study?'), findsOneWidget);
-    expect(find.text('Continue'), findsNothing);
-    expect(find.text('Finish'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Finish'), findsNothing);
     // The name is stored, and nothing else went with it: the API's profile
     // update is a partial merge, so a step that sent the whole record would
     // blank whatever the next step is about to collect.
@@ -273,15 +291,18 @@ void main() {
     // who never agreed to it.
     await _atFilledSecondStep(tester);
 
-    expect(
-      _canAdvance(tester, 'Finish'),
-      isFalse,
-      reason: 'university, faculty and year are all chosen; consent is not',
-    );
+    expect(_canAdvance(tester, 'Continue'), isFalse);
     expect(_hasConsented(tester), isFalse);
 
     await _tapConsent(tester);
 
+    expect(_canAdvance(tester, 'Continue'), isTrue);
+    await tester.tap(_advanceButton('Continue'));
+    await _settle(tester);
+    expect(find.text('Which units might you need help with?'), findsOneWidget);
+    expect(_canAdvance(tester, 'Finish'), isFalse);
+    await tester.tap(find.text('BIT 221 - Database Programming'));
+    await tester.pump();
     expect(_canAdvance(tester, 'Finish'), isTrue);
   });
 
@@ -294,19 +315,25 @@ void main() {
     // unset, which the API would read as a request to record the absence of
     // consent.
     final harness = await _atFilledSecondStep(tester);
-    harness.repository.profileUpdates.clear();
-
     await _tapConsent(tester);
-    await tester.tap(_advanceButton('Finish'));
+    await tester.tap(_advanceButton('Continue'));
     await _settle(tester);
 
-    final sent = harness.repository.profileUpdates.single;
+    final sent = harness.repository.profileUpdates[1];
     expect(sent['university_id'], _university);
     expect(sent['faculty_id'], _faculties.first.publicId);
     expect(sent['year_of_study'], 2);
     expect(sent['academic_data_consented'], isTrue);
     // The name was stored on the previous step, and is not re-sent.
     expect(sent.containsKey('full_name'), isFalse);
+    await tester.tap(find.text('BIT 221 - Database Programming'));
+    await tester.pump();
+    await tester.tap(_advanceButton('Finish'));
+    await _settle(tester);
+    expect(
+      harness.repository.profileUpdates.last['primary_course_unit_ids'],
+      <String>['unit-1'],
+    );
   });
 
   testWidgets('tapping the consent row toggles the mark', (tester) async {
@@ -337,7 +364,9 @@ void main() {
     await _completeNameStep(tester, harness);
 
     expect(
-      tester.widget<DropdownButtonFormField<String>>(_facultyDropdown).onChanged,
+      tester
+          .widget<DropdownButtonFormField<String>>(_facultyDropdown)
+          .onChanged,
       isNull,
     );
 
@@ -362,7 +391,7 @@ void main() {
     await _chooseFacultyAndYear(tester);
     await _tapConsent(tester);
 
-    await tester.tap(_advanceButton('Finish'));
+    await tester.tap(_advanceButton('Continue'));
     await _settle(tester);
 
     // The per-field message, not the summary: the summary does not say which
@@ -373,7 +402,7 @@ void main() {
     expect(find.text('Where do you study?'), findsOneWidget);
     expect(find.text('What is your name?'), findsNothing);
     expect(
-      _canAdvance(tester, 'Finish'),
+      _canAdvance(tester, 'Continue'),
       isTrue,
       reason: 'a refused save must be retryable rather than a dead end',
     );

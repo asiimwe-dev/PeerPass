@@ -55,6 +55,17 @@ user_roles = Table(
     Column("role", enum_column(UserRole, name="user_role"), primary_key=True),
 )
 
+user_primary_course_units = Table(
+    "user_primary_course_units",
+    Base.metadata,
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "course_unit_id",
+        ForeignKey("course_units.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
 
 class User(Base, TimestampMixin):
     """A person with an account.
@@ -262,3 +273,43 @@ async def set_roles(db: AsyncSession, user_id: uuid.UUID, roles: set[UserRole]) 
 def has_role(roles: set[UserRole], role: UserRole) -> bool:
     """Whether a loaded role set contains `role`."""
     return role in roles
+
+
+def select_primary_course_unit_public_ids(
+    user_id: uuid.UUID,
+) -> Select[tuple[uuid.UUID]]:
+    """Every primary course unit public ID a user holds."""
+    from app.models.course_unit import CourseUnit
+
+    return (
+        select(CourseUnit.public_id)
+        .join(
+            user_primary_course_units,
+            CourseUnit.id == user_primary_course_units.c.course_unit_id,
+        )
+        .where(user_primary_course_units.c.user_id == user_id)
+    )
+
+
+async def load_primary_course_unit_public_ids(
+    db: AsyncSession, user_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """The user's primary course units public IDs as a list."""
+    result = await db.execute(select_primary_course_unit_public_ids(user_id))
+    return list(result.scalars())
+
+
+async def set_primary_course_units(
+    db: AsyncSession, user_id: uuid.UUID, course_unit_ids: list[uuid.UUID]
+) -> None:
+    """Replace a user's primary course units outright."""
+    await db.execute(
+        delete(user_primary_course_units).where(
+            user_primary_course_units.c.user_id == user_id
+        )
+    )
+    if course_unit_ids:
+        await db.execute(
+            insert(user_primary_course_units),
+            [{"user_id": user_id, "course_unit_id": uid} for uid in course_unit_ids],
+        )

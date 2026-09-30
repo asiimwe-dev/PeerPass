@@ -12,11 +12,13 @@ import 'package:peerpass/features/auth/presentation/providers/auth_providers.dar
 /// against has been told something untrue.
 enum OnboardingStep {
   name,
-  academicContext;
+  academicContext,
+  primaryModules;
 
   OnboardingStep? get next => switch (this) {
     OnboardingStep.name => OnboardingStep.academicContext,
-    OnboardingStep.academicContext => null,
+    OnboardingStep.academicContext => OnboardingStep.primaryModules,
+    OnboardingStep.primaryModules => null,
   };
 }
 
@@ -35,6 +37,7 @@ class OnboardingState {
     this.facultyId,
     this.yearOfStudy,
     this.academicDataConsented = false,
+    this.primaryModuleIds = const [],
     this.saving = false,
     this.failure,
   });
@@ -50,6 +53,8 @@ class OnboardingState {
   final int? yearOfStudy;
 
   final bool academicDataConsented;
+
+  final List<String> primaryModuleIds;
 
   /// Whether a save is in flight.
   ///
@@ -77,6 +82,7 @@ class OnboardingState {
       facultyId != null &&
       yearOfStudy != null &&
       academicDataConsented,
+    OnboardingStep.primaryModules => primaryModuleIds.isNotEmpty,
   };
 
   OnboardingState copyWith({
@@ -86,6 +92,7 @@ class OnboardingState {
     String? facultyId,
     int? yearOfStudy,
     bool? academicDataConsented,
+    List<String>? primaryModuleIds,
     bool? saving,
     Failure? failure,
     bool clearFaculty = false,
@@ -102,6 +109,7 @@ class OnboardingState {
       yearOfStudy: yearOfStudy ?? this.yearOfStudy,
       academicDataConsented:
           academicDataConsented ?? this.academicDataConsented,
+      primaryModuleIds: primaryModuleIds ?? this.primaryModuleIds,
       saving: saving ?? this.saving,
       // An explicit clear, for the same reason `clearFaculty` exists: a save that
       // starts must not leave the previous save's complaint on screen.
@@ -119,6 +127,7 @@ class OnboardingState {
           other.facultyId == facultyId &&
           other.yearOfStudy == yearOfStudy &&
           other.academicDataConsented == academicDataConsented &&
+          other.primaryModuleIds == primaryModuleIds &&
           other.saving == saving &&
           other.failure == failure;
 
@@ -130,6 +139,7 @@ class OnboardingState {
     facultyId,
     yearOfStudy,
     academicDataConsented,
+    primaryModuleIds,
     saving,
     failure,
   );
@@ -154,6 +164,8 @@ class OnboardingController extends Notifier<OnboardingState> {
       universityId: profile?.universityId,
       facultyId: profile?.facultyId,
       yearOfStudy: profile?.yearOfStudy,
+      academicDataConsented: profile?.hasConsentedToAcademicData ?? false,
+      primaryModuleIds: profile?.primaryCourseUnitIds ?? const [],
     );
   }
 
@@ -181,10 +193,21 @@ class OnboardingController extends Notifier<OnboardingState> {
   void setConsent({required bool value}) =>
       state = state.copyWith(academicDataConsented: value);
 
+  void togglePrimaryModule(String id) {
+    final current = List<String>.from(state.primaryModuleIds);
+    if (current.contains(id)) {
+      current.remove(id);
+    } else {
+      current.add(id);
+    }
+    state = state.copyWith(primaryModuleIds: current);
+  }
+
   void back() {
     final previous = switch (state.step) {
       OnboardingStep.name => null,
       OnboardingStep.academicContext => OnboardingStep.name,
+      OnboardingStep.primaryModules => OnboardingStep.academicContext,
     };
     if (previous != null) state = state.copyWith(step: previous);
   }
@@ -214,6 +237,9 @@ class OnboardingController extends Notifier<OnboardingState> {
             // API's field means.
             academicDataConsented: true,
           );
+        case OnboardingStep.primaryModules:
+          // We will update the authController to accept primaryModuleIds soon
+          await controller.updateProfile(primaryCourseUnitIds: state.primaryModuleIds);
       }
     } on Failure catch (failure) {
       // The wizard does not advance, and the reason is kept so the screen can

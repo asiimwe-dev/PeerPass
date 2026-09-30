@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/features/auth/data/models/university_option.dart';
 
@@ -13,7 +14,9 @@ class RemoteAcademicsDatasource {
   final Dio _dio;
 
   Future<List<UniversityOption>> universities() async {
-    final response = await _dio.get<List<dynamic>>('/v1/academics/universities');
+    final response = await _dio.get<List<dynamic>>(
+      '/v1/academics/universities',
+    );
     return [
       for (final row in response.data!)
         UniversityOption.fromJson(row as Map<String, dynamic>),
@@ -40,4 +43,72 @@ class RemoteAcademicsDatasource {
         ),
     ];
   }
+
+  /// Course units for the given university, for the primary modules step.
+  ///
+  /// Filtered by university so a student only sees units from their own
+  /// institution. The API accepts an optional `university_id` query param.
+  Future<List<CourseUnitOption>> courseUnits({String? universityId}) async {
+    final response = await _dio.get<List<dynamic>>(
+      '/v1/academics/course-units',
+      queryParameters: {'university_id': universityId},
+    );
+    return [
+      for (final row in response.data!)
+        CourseUnitOption.fromJson(row as Map<String, dynamic>),
+    ];
+  }
+
+  /// Grades for the selected university's published scale.
+  Future<List<GradeOption>> grades({String? universityId}) async {
+    final response = await _dio.get<List<dynamic>>(
+      '/v1/academics/grades',
+      queryParameters: {'university_id': universityId},
+    );
+    return [
+      for (final row in response.data!)
+        GradeOption.fromJson(row as Map<String, dynamic>),
+    ];
+  }
+}
+
+/// A course unit as returned from the academics reference endpoint.
+@immutable
+class CourseUnitOption {
+  const CourseUnitOption({
+    required this.publicId,
+    required this.code,
+    required this.name,
+  });
+
+  factory CourseUnitOption.fromJson(Map<String, dynamic> json) =>
+      CourseUnitOption(
+        publicId: json['id'] as String,
+        code: json['code'] as String,
+        name: json['name'] as String,
+      );
+
+  final String publicId;
+  final String code;
+  final String name;
+}
+
+/// A grade on a university's published scale.
+@immutable
+class GradeOption {
+  const GradeOption({
+    required this.publicId,
+    required this.label,
+    required this.gradePoints,
+  });
+
+  factory GradeOption.fromJson(Map<String, dynamic> json) => GradeOption(
+    publicId: json['id'] as String,
+    label: json['label'] as String,
+    gradePoints: (json['grade_points'] as num).toDouble(),
+  );
+
+  final String publicId;
+  final String label;
+  final double gradePoints;
 }
