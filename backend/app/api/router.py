@@ -7,7 +7,15 @@ between modules and a future `/v2` is a single added line.
 
 from fastapi import APIRouter
 
-from app.api.v1 import academics, auth, competencies, matching, ratings, sessions, users
+from app.api.v1 import (
+    academics,
+    auth,
+    competencies,
+    matching,
+    ratings,
+    sessions,
+    users,
+)
 
 #: The version prefix is set here rather than at each `include_router` call, so
 #: a new module cannot be added without it and the client has one place to look
@@ -20,5 +28,4 @@ api_router.include_router(academics.router)
 api_router.include_router(competencies.router)
 api_router.include_router(matching.router)
 api_router.include_router(ratings.router)
-api_router.include_router(ratings.session_router)
 api_router.include_router(sessions.router)
