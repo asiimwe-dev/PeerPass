@@ -13,6 +13,7 @@ keeps the module free of a circular dependency: `University` points back here
 for its scale, and here it points back for the universities using it.
 """
 
+from __future__ import annotations
 import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING

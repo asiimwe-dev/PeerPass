@@ -27,7 +27,7 @@ Nothing here computes a per-unit score, and that is not an omission. A weighted
 model, a minimum-sample rule and a display attached to it; it belongs in a change
 that makes it deliberately, not as a byproduct of storing the counts.
 """
-
+from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
