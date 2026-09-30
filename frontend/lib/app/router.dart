@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:peerpass/app/splash_screen.dart';
+import 'package:peerpass/core/constants/app_dimens.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
@@ -10,6 +11,10 @@ import 'package:peerpass/features/auth/presentation/screens/onboarding_screen.da
 import 'package:peerpass/features/auth/presentation/screens/sign_in_screen.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
 import 'package:peerpass/features/home/presentation/screens/home_screen.dart';
+import 'package:peerpass/features/sessions/presentation/screens/rate_session_screen.dart';
+import 'package:peerpass/features/sessions/presentation/screens/session_detail_screen.dart';
+import 'package:peerpass/features/sessions/presentation/screens/sessions_list_screen.dart';
+import 'package:peerpass/features/sessions/presentation/widgets/active_session_card.dart';
 
 /// Every location the shell can be at.
 abstract final class AppRoutes {
@@ -19,6 +24,52 @@ abstract final class AppRoutes {
   static const String onboarding = '/onboarding';
   static const String tutorVerification = '/tutor-verification';
   static const String home = '/home';
+  static const String sessions = '/sessions';
+
+  /// The list, a session, and that session's rating form.
+  ///
+  /// Written as helpers rather than string-concatenated at the call site, because
+  /// the rating form is a *sibling* of the session it is about and both are
+  /// children of the list. A path built by hand at the call site is one missing
+  /// segment away from a route that exists and a screen that does not.
+  static String sessionDetailPath(String sessionId) => '$sessions/$sessionId';
+
+  static String rateSessionPath(String sessionId) => '$sessions/$sessionId/rate';
+}
+
+/// The session id out of a matched route, or the honest answer that there isn't one.
+///
+/// `/sessions` with a trailing slash matches the detail route with an empty
+/// parameter. That is a link a person can type and a client can be handed, and
+/// indexing an absent id would take the app down over a URL.
+String? _sessionIdOf(GoRouterState state) {
+  final sessionId = state.pathParameters['sessionId'];
+  if (sessionId == null || sessionId.isEmpty) return null;
+  return sessionId;
+}
+
+/// What a link with no session in it gets.
+class _MissingSessionRoute extends StatelessWidget {
+  const _MissingSessionRoute();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Session')),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppDimens.lg),
+            child: Text(
+              'That link does not name a session.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -52,7 +103,28 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.home,
-        builder: (context, state) => const HomeScreen(),
+        builder: (context, state) =>
+            const HomeScreen(activeSessionCard: ActiveSessionCard()),
+      ),
+      GoRoute(
+        path: AppRoutes.sessions,
+        builder: (context, state) => const SessionsListScreen(),
+      ),
+      GoRoute(
+        path: '${AppRoutes.sessions}/:sessionId',
+        builder: (context, state) {
+          final sessionId = _sessionIdOf(state);
+          if (sessionId == null) return const _MissingSessionRoute();
+          return SessionDetailScreen(sessionId: sessionId);
+        },
+      ),
+      GoRoute(
+        path: '${AppRoutes.sessions}/:sessionId/rate',
+        builder: (context, state) {
+          final sessionId = _sessionIdOf(state);
+          if (sessionId == null) return const _MissingSessionRoute();
+          return RateSessionScreen(sessionId: sessionId);
+        },
       ),
     ],
     // go_router re-evaluates this on every navigation and whenever the
@@ -122,11 +194,24 @@ String? _redirectForSignedIn(UserProfile? profile, String location) {
     return null;
   }
 
+  // The whole sessions subtree, not just its two screens. A signed-in student who
+  // follows a link to a session, or who is on the rating form for one, is exactly
+  // as allowed to be there as one who walked there from home, and the guard that
+  // bounced them to the dashboard mid-flow was a redirect with no reason to exist.
+  if (_isSessionRoute(location)) {
+    return null;
+  }
+
   // Onboarding is not a place a complete account can remain: once the profile
   // is finished the guard moves it home, which is also what ends the wizard
   // after its last step.
   return location == AppRoutes.home ? null : AppRoutes.home;
 }
+
+/// Whether a location is inside the sessions subtree.
+bool _isSessionRoute(String location) =>
+    location == AppRoutes.sessions ||
+    location.startsWith('${AppRoutes.sessions}/');
 
 String _landingFor(UserProfile? profile) =>
     (profile?.needsOnboarding ?? true) ? AppRoutes.onboarding : AppRoutes.home;

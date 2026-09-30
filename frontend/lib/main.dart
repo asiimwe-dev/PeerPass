@@ -8,6 +8,9 @@ import 'package:peerpass/features/auth/data/datasources/remote_academics_datasou
 import 'package:peerpass/features/auth/data/datasources/remote_auth_datasource.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/remote_auth_repository.dart';
+import 'package:peerpass/features/sessions/data/datasources/remote_sessions_datasource.dart';
+import 'package:peerpass/features/sessions/data/repositories/remote_sessions_repository.dart';
+import 'package:peerpass/features/sessions/data/repositories/sessions_repository.dart';
 
 void main() {
   final config = AppConfig.fromEnvironment();
@@ -39,12 +42,23 @@ void main() {
     tokenStore: tokenStore,
   );
 
+  final sessionsRepository = RemoteSessionsRepository(
+    RemoteSessionsDatasource(dio),
+  );
+
   runApp(
     ProviderScope(
       // The composition root. Choosing implementations here, rather than
       // defaulting them in the providers, is what makes a test swap the whole
       // data layer for a fake in one line.
-      overrides: [authRepositoryProvider.overrideWithValue(repository)],
+      //
+      // `sessionsRepositoryProvider` throws unless it is overridden, so leaving
+      // it out does not degrade to a fake that quietly reports no sessions: the
+      // failure is immediate and names the missing override.
+      overrides: [
+        authRepositoryProvider.overrideWithValue(repository),
+        sessionsRepositoryProvider.overrideWithValue(sessionsRepository),
+      ],
       child: const PeerPassApp(),
     ),
   );
