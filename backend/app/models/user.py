@@ -5,7 +5,6 @@ a student to be both, and a single `role_type` column would force one of those
 to be false.
 """
 
-from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
