@@ -4,6 +4,7 @@ import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/storage/token_store.dart';
+import 'package:peerpass/features/auth/data/datasources/remote_academics_datasource.dart';
 import 'package:peerpass/features/auth/data/models/university_option.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 
@@ -24,6 +25,8 @@ class FakeAuthRepository implements AuthRepository {
     this.refreshToken,
     this.universityOptions = const [],
     this.facultyOptions = const [],
+    this.courseUnitOptions = const [],
+    this.gradeOptions = const [],
     this._pendingRestore,
     TokenStore? tokenStore,
   }) : _tokenStore = tokenStore ?? InMemoryTokenStore();
@@ -41,8 +44,16 @@ class FakeAuthRepository implements AuthRepository {
   /// The faculties [faculties] hands back.
   List<Subject> facultyOptions;
 
+  /// The course units [courseUnits] hands back.
+  List<CourseUnitOption> courseUnitOptions;
+
+  /// The grades [grades] hands back.
+  List<GradeOption> gradeOptions;
+
   final Completer<UserProfile?>? _pendingRestore;
   final TokenStore _tokenStore;
+
+  final List<Map<String, Object?>> submittedCompetencies = [];
 
   /// Every [updateProfile] call, in order.
   ///
@@ -94,20 +105,50 @@ class FakeAuthRepository implements AuthRepository {
   Future<List<Subject>> faculties() async => facultyOptions;
 
   @override
+  Future<List<CourseUnitOption>> courseUnits({String? universityId}) async =>
+      courseUnitOptions;
+
+  @override
+  Future<List<GradeOption>> grades({String? universityId}) async => gradeOptions;
+
+  @override
+  Future<void> submitCompetency({
+    required String courseUnitId,
+    required String gradeId,
+    required String source,
+    String? evidenceReference,
+    String? notes,
+  }) async {
+    submittedCompetencies.add({
+      'course_unit_id': courseUnitId,
+      'grade_id': gradeId,
+      'source': source,
+      'evidence_reference': evidenceReference,
+      'notes': notes,
+    });
+  }
+
+  @override
   Future<UserProfile> updateProfile({
     String? fullName,
     String? universityId,
     String? facultyId,
     int? yearOfStudy,
     bool? academicDataConsented,
+    List<String>? primaryCourseUnitIds,
   }) async {
-    profileUpdates.add({
-      'full_name': ?fullName,
-      'university_id': ?universityId,
-      'faculty_id': ?facultyId,
-      'year_of_study': ?yearOfStudy,
-      'academic_data_consented': ?academicDataConsented,
-    });
+    final payload = <String, Object?>{};
+    if (fullName != null) payload['full_name'] = fullName;
+    if (universityId != null) payload['university_id'] = universityId;
+    if (facultyId != null) payload['faculty_id'] = facultyId;
+    if (yearOfStudy != null) payload['year_of_study'] = yearOfStudy;
+    if (academicDataConsented != null) {
+      payload['academic_data_consented'] = academicDataConsented;
+    }
+    if (primaryCourseUnitIds != null) {
+      payload['primary_course_unit_ids'] = primaryCourseUnitIds;
+    }
+    profileUpdates.add(payload);
 
     session = session?.copyWith(
       fullName: fullName,
@@ -117,6 +158,7 @@ class FakeAuthRepository implements AuthRepository {
       academicDataConsentedAt: academicDataConsented == true
           ? DateTime.utc(2026, 1, 15)
           : null,
+      primaryCourseUnitIds: primaryCourseUnitIds,
     );
     return session!;
   }

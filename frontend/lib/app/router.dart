@@ -5,6 +5,7 @@ import 'package:peerpass/app/splash_screen.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
+import 'package:peerpass/features/auth/presentation/screens/become_tutor_screen.dart';
 import 'package:peerpass/features/auth/presentation/screens/onboarding_screen.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_in_screen.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
@@ -16,6 +17,7 @@ abstract final class AppRoutes {
   static const String signIn = '/sign-in';
   static const String signUp = '/sign-up';
   static const String onboarding = '/onboarding';
+  static const String tutorVerification = '/tutor-verification';
   static const String home = '/home';
 }
 
@@ -43,6 +45,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.onboarding,
         builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.tutorVerification,
+        builder: (context, state) => const BecomeTutorScreen(),
       ),
       GoRoute(
         path: AppRoutes.home,
@@ -110,6 +116,10 @@ String? _redirectForSignedIn(UserProfile? profile, String location) {
 
   if (needsOnboarding) {
     return location == AppRoutes.onboarding ? null : AppRoutes.onboarding;
+  }
+
+  if (location == AppRoutes.tutorVerification) {
+    return null;
   }
 
   // Onboarding is not a place a complete account can remain: once the profile

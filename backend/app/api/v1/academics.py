@@ -14,7 +14,14 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import DatabaseSession
 from app.models.course_unit import CourseUnit, Subject, University
-from app.schemas.academic import CourseUnitResponse, SubjectResponse, UniversityResponse
+from app.models.grading_scale import Grade, GradingScale
+from app.schemas.academic import (
+    CourseUnitResponse,
+    GradeResponse,
+    GradingScaleResponse,
+    SubjectResponse,
+    UniversityResponse,
+)
 
 router = APIRouter(prefix="/academics", tags=["academics"])
 
@@ -37,6 +44,54 @@ async def list_universities(db: DatabaseSession) -> list[UniversityResponse]:
         .order_by(University.name)
     )
     return [UniversityResponse.model_validate(row) for row in result.scalars()]
+
+
+@router.get(
+    "/grading-scales",
+    response_model=list[GradingScaleResponse],
+    summary="List grading scales",
+)
+async def list_grading_scales(db: DatabaseSession) -> list[GradingScaleResponse]:
+    """Every institution's published grade scale."""
+    result = await db.execute(select(GradingScale).order_by(GradingScale.name))
+    return [GradingScaleResponse.model_validate(row) for row in result.scalars()]
+
+
+@router.get(
+    "/grades",
+    response_model=list[GradeResponse],
+    summary="List grades",
+)
+async def list_grades(
+    db: DatabaseSession,
+    university_id: uuid.UUID | None = None,
+    grading_scale_id: uuid.UUID | None = None,
+) -> list[GradeResponse]:
+    """Grades for a university or scale.
+
+    The tutor verification flow chooses a grade from the institution's published
+    scale, and the app needs a first-class endpoint to list those choices.
+    """
+    query = select(Grade).options(selectinload(Grade.grading_scale))
+
+    if university_id is not None:
+        university = await db.scalar(
+            select(University.grading_scale_id).where(
+                University.public_id == university_id,
+            )
+        )
+        if university is None:
+            return []
+        query = query.where(Grade.grading_scale_id == university)
+
+    if grading_scale_id is not None:
+        scale_uuid = await _grading_scale_uuid(db, grading_scale_id)
+        if scale_uuid is None:
+            return []
+        query = query.where(Grade.grading_scale_id == scale_uuid)
+
+    result = await db.execute(query.order_by(Grade.grading_scale_id, Grade.label))
+    return [GradeResponse.model_validate(row) for row in result.scalars()]
 
 
 @router.get(
@@ -65,13 +120,16 @@ async def list_faculties(db: DatabaseSession) -> list[SubjectResponse]:
 async def list_course_units(
     db: DatabaseSession,
     subject_id: uuid.UUID | None = None,
+    university_id: uuid.UUID | None = None,
 ) -> list[CourseUnitResponse]:
-    """Course units, optionally narrowed to one faculty.
+    """Course units, optionally narrowed to one faculty and/or university.
 
-    The filter is the wizard's third step: a student who has named their faculty
-    is offered the units belonging to it. The query parameter is the faculty's
-    *public* id, like every other identifier the client handles, and a malformed
-    one is a 422 from FastAPI rather than a silently empty list.
+    The `subject_id` filter is the wizard's second-step usage: a student who has
+    named their faculty is offered only the units belonging to it.
+
+    The `university_id` filter is the wizard's third step: a student who has
+    chosen their university sees only that institution's units to declare as their
+    primary modules. Both filters may be combined.
 
     Ordered by code, because a student scanning for `BIT 221` is looking for a
     code, not for alphabetical position.
@@ -87,6 +145,12 @@ async def list_course_units(
             return []
         query = query.where(CourseUnit.subject_id == subject_uuid)
 
+    if university_id is not None:
+        uni_uuid = await _university_uuid(db, university_id)
+        if uni_uuid is None:
+            return []
+        query = query.where(CourseUnit.university_id == uni_uuid)
+
     result = await db.execute(query.order_by(CourseUnit.university_id, CourseUnit.code))
     return [CourseUnitResponse.model_validate(row) for row in result.scalars()]
 
@@ -100,4 +164,23 @@ async def _subject_uuid(db: AsyncSession, public_id: uuid.UUID) -> uuid.UUID | N
     something the student did not do.
     """
     result = await db.execute(select(Subject.id).where(Subject.public_id == public_id))
+    return result.scalar_one_or_none()
+
+
+async def _university_uuid(db: AsyncSession, public_id: uuid.UUID) -> uuid.UUID | None:
+    """The primary key for a university public id, or `None`."""
+    result = await db.execute(
+        select(University.id).where(University.public_id == public_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _grading_scale_uuid(
+    db: AsyncSession,
+    public_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """The primary key for a grading scale public id, or `None`."""
+    result = await db.execute(
+        select(GradingScale.id).where(GradingScale.public_id == public_id)
+    )
     return result.scalar_one_or_none()

@@ -13,6 +13,7 @@ const Map<String, dynamic> _completeBody = <String, dynamic>{
   'faculty_id': 'subject-1',
   'year_of_study': 2,
   'academic_data_consented_at': '2026-01-15T09:30:00+00:00',
+  'primary_course_unit_ids': <String>['unit-1'],
 };
 
 /// The complete body with one field swapped, as a test that varies a single
@@ -41,6 +42,7 @@ void main() {
         profile.academicDataConsentedAt,
         DateTime.utc(2026, 1, 15, 9, 30),
       );
+      expect(profile.primaryCourseUnitIds, <String>['unit-1']);
     });
 
     test('reads the roles as a set, not as a wire list', () {
@@ -105,6 +107,7 @@ void main() {
         roles: const <UserRole>{UserRole.student},
         fullName: fullName,
         universityId: universityId,
+        primaryCourseUnitIds: const <String>['unit-1'],
       );
     }
 

@@ -8,7 +8,11 @@ import 'package:flutter/foundation.dart';
 /// here would mean two fields that must be kept in step for no gain.
 @immutable
 class AuthPayload {
-  const AuthPayload({required this.accessToken, required this.refreshToken, required this.user});
+  const AuthPayload({
+    required this.accessToken,
+    required this.refreshToken,
+    required this.user,
+  });
 
   /// Reads the wire form.
   ///
@@ -120,18 +124,44 @@ class RemoteAuthDatasource {
     String? facultyId,
     int? yearOfStudy,
     bool? academicDataConsented,
+    List<String>? primaryCourseUnitIds,
   }) async {
-    final data = <String, dynamic>{
-      'full_name': ?fullName,
-      'university_id': ?universityId,
-      'faculty_id': ?facultyId,
-      'year_of_study': ?yearOfStudy,
-      'academic_data_consented': ?academicDataConsented,
-    };
+    final data = <String, dynamic>{};
+    if (fullName != null) data['full_name'] = fullName;
+    if (universityId != null) data['university_id'] = universityId;
+    if (facultyId != null) data['faculty_id'] = facultyId;
+    if (yearOfStudy != null) data['year_of_study'] = yearOfStudy;
+    if (academicDataConsented != null) {
+      data['academic_data_consented'] = academicDataConsented;
+    }
+    if (primaryCourseUnitIds != null) {
+      data['primary_course_unit_ids'] = primaryCourseUnitIds;
+    }
 
     final response = await _dio.patch<Map<String, dynamic>>(
       '/v1/users/me',
       data: data,
+    );
+    return response.data!;
+  }
+
+  /// Submits a tutor capability claim for one course unit.
+  Future<Map<String, dynamic>> submitCompetency({
+    required String courseUnitId,
+    required String gradeId,
+    required String source,
+    String? evidenceReference,
+    String? notes,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v1/competencies',
+      data: {
+        'course_unit_id': courseUnitId,
+        'grade_id': gradeId,
+        'source': source,
+        'evidence_reference': evidenceReference,
+        'notes': notes,
+      },
     );
     return response.data!;
   }

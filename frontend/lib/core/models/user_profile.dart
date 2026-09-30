@@ -19,6 +19,7 @@ class UserProfile {
     this.facultyId,
     this.yearOfStudy,
     this.academicDataConsentedAt,
+    this.primaryCourseUnitIds = const [],
   });
 
   /// Builds a profile from an auth or profile response body.
@@ -64,6 +65,9 @@ class UserProfile {
       academicDataConsentedAt: json['academic_data_consented_at'] == null
           ? null
           : DateTime.parse(json['academic_data_consented_at'] as String),
+      primaryCourseUnitIds: (json['primary_course_unit_ids'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(),
     );
   }
 
@@ -93,19 +97,25 @@ class UserProfile {
   /// records when the student agreed, not how many times the app asked.
   final DateTime? academicDataConsentedAt;
 
+  /// The course units the student flagged as ones they will need help with.
+  ///
+  /// Seeded in the third step of the onboarding wizard. Empty for accounts that
+  /// have not completed that step yet.
+  final List<String> primaryCourseUnitIds;
+
   bool hasRole(UserRole role) => roles.contains(role);
 
   bool get hasConsentedToAcademicData => academicDataConsentedAt != null;
 
   /// Whether the wizard still has to run.
   ///
-  /// Deliberately two conditions and not "is the name null". A user can clear
-  /// their name after registering and land back here, and one who has a name but
-  /// no university still cannot be matched, because matching is scoped to a
-  /// university and its grading scale. Either being missing means the account is
-  /// not usable yet.
+  /// Three conditions now: name, university (matching requires a grading scale),
+  /// and at least one primary course unit declared (matching has nothing to act
+  /// on without a declared unit).
   bool get needsOnboarding =>
-      (fullName == null || fullName!.trim().isEmpty) || universityId == null;
+      (fullName == null || fullName!.trim().isEmpty) ||
+      universityId == null ||
+      primaryCourseUnitIds.isEmpty;
 
   /// The part of the name a greeting uses, or null when there is no name.
   ///
@@ -139,6 +149,7 @@ class UserProfile {
     String? facultyId,
     int? yearOfStudy,
     DateTime? academicDataConsentedAt,
+    List<String>? primaryCourseUnitIds,
   }) {
     return UserProfile(
       publicId: publicId,
@@ -150,6 +161,7 @@ class UserProfile {
       yearOfStudy: yearOfStudy ?? this.yearOfStudy,
       academicDataConsentedAt:
           academicDataConsentedAt ?? this.academicDataConsentedAt,
+      primaryCourseUnitIds: primaryCourseUnitIds ?? this.primaryCourseUnitIds,
     );
   }
 
@@ -164,7 +176,8 @@ class UserProfile {
           other.facultyId == facultyId &&
           other.yearOfStudy == yearOfStudy &&
           other.academicDataConsentedAt == academicDataConsentedAt &&
-          setEquals(other.roles, roles);
+          setEquals(other.roles, roles) &&
+          listEquals(other.primaryCourseUnitIds, primaryCourseUnitIds);
 
   @override
   int get hashCode => Object.hash(
@@ -176,6 +189,7 @@ class UserProfile {
     yearOfStudy,
     academicDataConsentedAt,
     Object.hashAllUnordered(roles),
+    Object.hashAll(primaryCourseUnitIds),
   );
 
   @override

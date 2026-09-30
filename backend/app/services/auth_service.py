@@ -163,7 +163,16 @@ async def _current_user(db: AsyncSession, user: User) -> CurrentUserResponse:
     value replaced is a set of enums read from our own column.
     """
     validated = CurrentUserResponse.model_validate(user)
-    return validated.model_copy(update={"roles": sorted(await load_roles(db, user.id))})
+    from app.models.user import load_primary_course_unit_public_ids
+
+    return validated.model_copy(
+        update={
+            "roles": sorted(await load_roles(db, user.id)),
+            "primary_course_unit_ids": await load_primary_course_unit_public_ids(
+                db, user.id
+            ),
+        }
+    )
 
 
 async def load_current_user(db: AsyncSession, user: User) -> CurrentUserResponse:
@@ -482,6 +491,12 @@ async def update_profile(
     if sent.get("academic_data_consented") and user.academic_data_consented_at is None:
         user.academic_data_consented_at = _utcnow()
 
+    if "primary_course_unit_ids" in sent:
+        from app.models.user import set_primary_course_units
+
+        internal_ids = await _resolve_course_units(db, sent["primary_course_unit_ids"])
+        await set_primary_course_units(db, user.id, internal_ids)
+
     await db.commit()
     # The relationships are stale after writing to the foreign keys, and a
     # lazy load would raise on an async session, so they are refreshed from the
@@ -520,6 +535,23 @@ async def _resolve_subject(
     if row is None:
         raise NotFoundProblem("That faculty could not be found.")
     return row
+
+
+async def _resolve_course_units(
+    db: AsyncSession, public_ids: list[uuid.UUID] | None
+) -> list[uuid.UUID]:
+    """The primary keys for the course units."""
+    if not public_ids:
+        return []
+    from app.models.course_unit import CourseUnit
+
+    result = await db.execute(
+        select(CourseUnit.id).where(CourseUnit.public_id.in_(public_ids))
+    )
+    rows = list(result.scalars())
+    if len(rows) != len(public_ids):
+        raise NotFoundProblem("One or more course units could not be found.")
+    return rows
 
 
 __all__ = [
