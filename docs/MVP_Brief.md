@@ -105,8 +105,10 @@ both more honest and less damaging to trust than a plausible-looking stub.
 
 ## 6. Key Design Decisions
 
-**1. Transcript / Portal verification (Tier 1 Proof Upload)**  
-To enforce a hard gate for competency, tutors must upload a screenshot of their transcript or portal showing their grade. This replaces pure self-declaration and provides a stronger layer of trust for the pilot. The file is securely stored on the backend local file system.
+**1. Competency evidence (self-declaration with a reference, not a file upload)**  
+A tutor declares a B+ or above and supplies an `evidence_reference`: a string pointing at whatever the university already publishes, a portal record, or a document held offline. The pilot stores the **reference only**. No transcript image is uploaded, because a public API for them does not exist and a local-file upload on the backend would put academic records in a directory no backup, retention, or access policy covers.
+
+This is a weaker trust signal than reading a transcript, and it is a deliberate, dated trade: it buys a real competency gate for the pilot at the cost of a manual check. Hard verification against a transcript is listed under Deferred, and when it is built the reference becomes the handle to a stored object rather than the whole of the evidence. What does **not** change is the grade gate itself — a declared grade below B+ is refused regardless of what reference is supplied, so a weak signal never becomes a way around the rule.
 
 **2. Provisional → Verified promotion path**  
 New tutors are not hidden, but they are clearly labelled. Consistent positive ratings unlock the Verified badge. This creates a fair, transparent reputation system.

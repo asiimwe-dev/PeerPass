@@ -293,7 +293,8 @@ it: give `subjects` a nullable `university_id`, change the unique constraint to
 
 **Help_Requests** | `tutee_id`, `course_unit_id`, `topic`, `status`                | What was asked for, before a tutor was matched                                          |
 | **Sessions**      | `tutee_id`, `tutor_id`, `course_unit_id`, `status`, `duration_minutes`, `session_pin`, `meeting_link` | A session that happened; the source for tutor hours and certificates. Includes PIN for handshake and copyable meeting link |
-| **Ratings**       | `session_id`, `rater_id`, `ratee_id`, `score`, `feedback_text` | Post-session feedback; low ratings reduce matching priority                           |
+| **Ratings**       | `session_id`, `rater_id`, `ratee_id`, `score`, `feedback_text` | Post-session feedback; low ratings reduce matching priority. `rater_id` and `ratee_id` are both set, because either party may rate a completed session, but only the session's **tutor** has a `Tutor_Profile` to update — see 8.2 |
+| **Unit_Endorsements** | `session_id`, `rater_id`, `ratee_id`, `course_unit_id` | "This tutor knows this unit", scoped to the session's own course unit. Separate from `ratings` so subject coverage never moves promotion. Unique on `(session_id, rater_id, course_unit_id)` so a corrected submission replaces rather than accumulates |
 
 ### 5.3 Detailed Table Definitions
 
@@ -494,6 +495,9 @@ Tutor Accepts / Declines
 Session Scheduled (in-app)
       │
       ▼
+PIN Handshake: tutor reveals a 2-digit PIN, tutee submits it
+      │   (a missing PIN fails closed — never treated as a match)
+      ▼
 Session Completed
       │
       ▼
@@ -502,6 +506,37 @@ Rating Submitted → ValidationService updates tutor status
       ▼
 IncentiveService logs hours → certificate eligibility
 ```
+
+### 8.1 The PIN handshake is attendance evidence
+
+A two-digit PIN is weak as a secret and is not one. It exists to make attendance
+a *mutual* claim rather than the tutee's word alone: the tutor shows a code
+generated at acceptance, the tutee types it in to confirm they met. A tutee who
+fabricates attendance needs the tutor's code, not just a `completed` transition.
+
+The consequence is that the code is compared for **presence**, not for
+authenticity, so verification fails closed when `sessions.session_pin` is null.
+A row that never received a PIN cannot be verified by an empty submission, and
+the transition and verification paths both refuse it. The column is
+`VARCHAR(2)` with a length check constraint rather than a 4-digit code, because
+a peer reads the number aloud across a table and a longer one gets mistyped.
+
+### 8.2 Unit endorsements are not ratings
+
+A rating answers "how was the tutor". An endorsement answers "the tutor knows
+this course unit". They are separate rows in `unit_endorsements` rather than
+extra columns on `ratings`, because they are consulted by different questions:
+standing is computed from `ratings`, and unit coverage is consulted when matching
+picks a tutor for a unit. Folding the second into the first would make a claim
+about subject knowledge silently move someone's promotion.
+
+An endorsement is scoped to the **session's own** `course_unit_id` and capped at
+`MAX_ENDORSEMENTS_PER_RATING`. A corrected submission replaces the rater's
+previous endorsements for that session rather than appending to them, so a
+mistake is retractable. The unique constraint on
+`(session_id, rater_id, course_unit_id)` is what makes that replacement safe
+under concurrent retries, and it is a database constraint rather than a service
+check because two simultaneous requests would both pass the check.
 
 ---
 

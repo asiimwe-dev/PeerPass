@@ -263,9 +263,83 @@ unrecognised but well-formed one returns `[]`: the client filtered on a value it
 believed exists, and the honest answer to "units in this faculty" is "none". A
 404 would put the wizard into an error state for something the student did not do.
 
-This is the endpoint onboarding's **third** step will use. The step is not built:
-matching cannot act on a declared unit yet, and the API has nothing to match
-against until the matching slice lands.
+This is the endpoint onboarding's **third** step uses, to record the units a
+student takes. It is not matching: a declared unit is a preference, and nothing
+is matched against it until the matching slice lands.
+
+## Sessions
+
+All five routes require a signed-in user and are scoped to the caller's own
+sessions; a session the caller is not part of is a 404, not a 403, so the
+response does not confirm that someone else's session exists.
+
+### `POST /v1/sessions`
+
+Accepts a matched request and creates the live session. 201 with the session.
+
+### `GET /v1/sessions/me`
+
+Every session the caller is part of, newest first. The route is `/me` rather
+than `""` so it cannot collide with `GET /v1/sessions/{session_id}`.
+
+### `GET /v1/sessions/{session_id}`
+
+One session, by public id.
+
+### `POST /v1/sessions/{session_id}/transition`
+
+`{"status": "..."}` to advance or cancel. The legal moves are enforced in the
+service, not here: requested → accepted → completed, and cancellation from
+anything that has not completed. An illegal move is a 409.
+
+### `POST /v1/sessions/{session_id}/verify-pin`
+
+`{"pin": "42"}` — the tutee submits the code the tutor showed. Moves the session
+to `completed` when the code matches.
+
+Two-digit, and compared for presence rather than authenticity: it is attendance
+evidence that both parties were there, not a secret. A **missing stored PIN is
+refused**, never treated as a match, so a session that never received a code
+cannot be completed by submitting an empty one. A wrong code is a 400.
+
+## Ratings
+
+One rating per (rater, session). A second submission from the same rater
+**updates** the existing row and adjusts the tutor's running total rather than
+counting the change twice, so the route returns 201 either way and the body is
+the rating that now stands. Ratings exist only for `completed` sessions.
+
+### `GET /v1/ratings/me`
+
+The caller's own aggregate: average, total, count, recent ratings, and per-unit
+endorsement counts. Returns zeroed counters for a user with no profile and
+**does not create one** — a `GET` must not change state, or a student who merely
+opened the screen would be handed a tutor standing.
+
+### `GET /v1/ratings/me/recent`
+
+The last 20 ratings the caller has received.
+
+### `POST /v1/ratings/{session_id}`
+
+`{"score": 1-5, "feedback_text": "...", "endorsed_course_unit_ids": ["..."]}`.
+201 with the rating.
+
+`endorsed_course_unit_ids` is optional and is **not** part of the score. It
+records "this tutor knows this unit" — a claim about subject coverage that is
+stored separately in `unit_endorsements` and is never read when promotion is
+computed. Only the session's own `course_unit_id` may be endorsed; any other
+unit is a 422, because a session is evidence about one unit and no more.
+Submitting a corrected rating replaces the rater's previous endorsements for
+that session rather than accumulating them.
+
+Either party may rate a completed session. Only the session's **tutor** has
+standing to move: a tutor rating their tutee stores the feedback and leaves
+every tutor counter untouched, and does not create a `Tutor_Profile` for the
+student.
+
+Declared after the literal `/me` routes above because FastAPI matches in
+declaration order.
 
 ## Health
 
