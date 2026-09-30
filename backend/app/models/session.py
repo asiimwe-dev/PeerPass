@@ -7,6 +7,7 @@ tutor session exists for a request that never found one, and every query about
 tutor workload would have to filter those rows out.
 """
 
+import random
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -131,6 +132,10 @@ class Session(Base, TimestampMixin):
         UniqueConstraint("help_request_id", name="session_per_request"),
         CheckConstraint("duration_minutes >= 0", name="duration_non_negative"),
         CheckConstraint("tutee_id <> tutor_id", name="session_parties_differ"),
+        CheckConstraint(
+            "session_pin IS NULL OR length(session_pin) = 2",
+            name="session_pin_length",
+        ),
         # A completed session needs a start and an end, or the hours it
         # contributes to a certificate cannot be established.
         CheckConstraint(
@@ -182,6 +187,8 @@ class Session(Base, TimestampMixin):
     )
 
     duration_minutes: Mapped[int] = mapped_column(nullable=False, default=0)
+    session_pin: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    meeting_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     cancelled_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -190,6 +197,7 @@ class Session(Base, TimestampMixin):
     cancellation_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     help_request: Mapped[HelpRequest | None] = relationship(back_populates="sessions")
+    course_unit: Mapped[CourseUnit] = relationship()
     tutee: Mapped[User] = relationship(foreign_keys=[tutee_id])
     tutor: Mapped[User] = relationship(foreign_keys=[tutor_id])
     #: `passive_deletes` because the foreign key is already ON DELETE CASCADE.
@@ -199,6 +207,16 @@ class Session(Base, TimestampMixin):
     ratings: Mapped[list[Rating]] = relationship(
         back_populates="session", passive_deletes=True
     )
+
+    @staticmethod
+    def generate_session_pin() -> str:
+        """A two-digit handshake pin the backend verifies.
+
+        The platform owns the value rather than the client: a student can reveal
+        the pin to a tutor, but neither party can generate or mutate it on their
+        own when they accept or start the session.
+        """
+        return f"{random.randint(0, 99):02d}"
 
     async def is_rated(self, db: AsyncSession) -> bool:
         """Whether anyone has rated this session yet.
