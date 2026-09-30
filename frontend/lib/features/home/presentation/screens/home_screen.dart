@@ -11,19 +11,39 @@ import 'package:peerpass/features/home/presentation/providers/sign_out_controlle
 
 /// The signed-in landing screen.
 ///
-/// Reads the student's own name and where they study, and says plainly that
-/// tutoring is not switched on yet. It does not offer a tutor list, a course
-/// picker, or a "find a tutor" button, because the matching endpoint behind
-/// those does not exist in this release. An empty state that pretends to be a
-/// hub is worse than an honest one: a student who taps a tile that leads
-/// nowhere concludes the app is broken, rather than that it is early.
+/// Reads the student's own name and where they study, offers a way into their
+/// own sessions, and says plainly that finding a tutor is not switched on yet.
+/// It does not offer a tutor list or a course picker, because the matching
+/// endpoint behind those does not exist in this release. An empty state that
+/// pretends to be a hub is worse than an honest one: a student who taps a tile
+/// that leads nowhere concludes the app is broken, rather than that it is early.
+///
+/// "My sessions" is a live entry rather than a promise, and that is the
+/// distinction the pending tiles exist to make: sessions really are built, so a
+/// list of them with no way to reach it from the landing screen would be a
+/// feature nobody can find. The link is expressed as a route push, not as an
+/// import of the sessions feature's screen -- see [activeSessionCard] for why
+/// the boundary is drawn here.
+///
+/// The active-session card arrives as a widget rather than being built here, and
+/// that is an architectural decision rather than a preference. The card belongs to
+/// the sessions feature, and a home screen that named it would have to import a
+/// feature it owns nothing of -- which the dependency rules forbid and which, more
+/// to the point, would make home a second place that has to change when the
+/// sessions feature does. So the shell passes the card in and home decides only
+/// where it goes. Null means there is no card, which is the state the home screen's
+/// own tests are in.
 class HomeScreen extends ConsumerWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({this.activeSessionCard, super.key});
+
+  /// The card to show above the pending tiles, if the shell has one.
+  final Widget? activeSessionCard;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final profile = ref.watch(sessionControllerProvider).profile;
+    final card = activeSessionCard;
 
     return Scaffold(
       appBar: AppBar(
@@ -65,10 +85,19 @@ class HomeScreen extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: AppDimens.xxl),
+                    if (card != null) ...[
+                      const SizedBox(height: AppDimens.xl),
+                      card,
+                    ],
+                    const SizedBox(height: AppDimens.xl),
+                    _SessionsEntry(
+                      onTap: () => context.push(AppRoutes.sessions),
+                    ),
+                    const SizedBox(height: AppDimens.xl),
                     if (!(profile?.hasRole(UserRole.tutor) ?? false))
                       FilledButton.icon(
-                        onPressed: () => context.push(AppRoutes.tutorVerification),
+                        onPressed: () =>
+                            context.push(AppRoutes.tutorVerification),
                         icon: const Icon(Icons.verified_user_outlined),
                         label: const Text('Become a tutor'),
                       ),
@@ -163,6 +192,62 @@ class _PendingCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A tile that leads to a real screen, so unlike the pending tiles it is tappable.
+///
+/// It sits above them and carries no "Soon" chip. The pending tiles exist to
+/// keep home honest about what is not built; an entry point for a screen that
+/// *is* built is the opposite claim, and a list of sessions with no way to reach
+/// it from anywhere else is a feature nobody can find.
+class _SessionsEntry extends StatelessWidget {
+  const _SessionsEntry({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimens.lg),
+          child: Row(
+            children: [
+              Icon(
+                Icons.event_note_outlined,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: AppDimens.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('My sessions', style: theme.textTheme.titleMedium),
+                    const SizedBox(height: AppDimens.xs),
+                    Text(
+                      'Past sessions, your PIN for the next one, and the '
+                      'rating you owe.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
         ),
       ),
     );

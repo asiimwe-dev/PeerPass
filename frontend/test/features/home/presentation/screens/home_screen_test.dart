@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
@@ -24,7 +26,10 @@ const UserProfile _enrolled = UserProfile(
 const String _greeting = 'Hello, Achieng';
 
 /// A container to read the session through, plus the repository behind it.
-typedef _Harness = ({ProviderContainer container, FakeAuthRepository repository});
+typedef _Harness = ({
+  ProviderContainer container,
+  FakeAuthRepository repository,
+});
 
 Future<void> _settle(WidgetTester tester) async {
   await tester.pump();
@@ -34,7 +39,10 @@ Future<void> _settle(WidgetTester tester) async {
 
 /// Pumps home over a container holding [profile] as the signed-in account.
 _Harness _harness(UserProfile profile) {
-  final repository = FakeAuthRepository(session: profile, refreshToken: 'refresh');
+  final repository = FakeAuthRepository(
+    session: profile,
+    refreshToken: 'refresh',
+  );
   final container = ProviderContainer(
     overrides: [authRepositoryProvider.overrideWithValue(repository)],
   );
@@ -64,10 +72,7 @@ void main() {
     // pilot stores no images, and a client-side upload would put a face in a
     // bucket the API does not describe.
     expect(
-      find.descendant(
-        of: find.byType(CircleAvatar),
-        matching: find.text('AO'),
-      ),
+      find.descendant(of: find.byType(CircleAvatar), matching: find.text('AO')),
       findsOneWidget,
     );
   });
@@ -75,10 +80,7 @@ void main() {
   testWidgets('shows which account is signed in', (tester) async {
     await _pumpHome(tester, _harness(_enrolled));
 
-    expect(
-      find.text('Signed in as ${_enrolled.email}'),
-      findsOneWidget,
-    );
+    expect(find.text('Signed in as ${_enrolled.email}'), findsOneWidget);
   });
 
   testWidgets('the two pending tiles are marked Soon and lead nowhere', (
@@ -114,7 +116,9 @@ void main() {
     );
   });
 
-  testWidgets('tapping sign out in the app bar ends the session', (tester) async {
+  testWidgets('tapping sign out in the app bar ends the session', (
+    tester,
+  ) async {
     // Regression. `onPressed` is a `VoidCallback`, so a handler of
     // `() => ref.read(signOutControllerProvider)` evaluated the read, discarded
     // the function it returned, and signed nobody out while still looking like
@@ -137,5 +141,55 @@ void main() {
     // signed out.
     expect(harness.repository.session, isNull);
     expect(harness.repository.refreshToken, isNull);
+  });
+
+  testWidgets('the sessions entry is live, not a promise', (tester) async {
+    // Sessions are built, so the landing screen has to offer a way in. Marked
+    // Soon, or hidden among the pending tiles, a working feature looks absent.
+    final harness = _harness(_enrolled);
+    await _pumpHome(tester, harness);
+
+    expect(find.text('My sessions'), findsOneWidget);
+    // Two pending tiles carry the chip; this one must not add a third, or it is
+    // making the same "not built yet" claim as the tiles beside it.
+    expect(
+      find.text('Soon'),
+      findsNWidgets(2),
+      reason: 'the sessions entry is live and must not claim otherwise',
+    );
+  });
+
+  testWidgets('tapping the sessions entry opens the sessions list', (
+    tester,
+  ) async {
+    // Asserted through a real router, because the claim under test is a
+    // navigation and a test without one would pass against a handler that
+    // pushes nothing at all.
+    final harness = _harness(_enrolled);
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+        GoRoute(
+          path: AppRoutes.sessions,
+          builder: (_, _) => const Scaffold(body: Text('Sessions list here')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await _settle(tester);
+
+    await tester.tap(find.text('My sessions'));
+    await _settle(tester);
+
+    expect(find.text('Sessions list here'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
   });
 }
