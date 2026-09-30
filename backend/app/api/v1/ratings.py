@@ -52,5 +52,10 @@ async def submit_rating_for_session(
     same session updates the existing row and adjusts the tutor's running total
     rather than counting the change twice, so the route answers 201 either way
     and the response is the rating that now stands.
+
+    The body's `endorsed_course_unit_ids` is replaced on a re-submission for the
+    same reason: the second submission is the rater correcting the first, so a
+    unit they have removed must stop being counted. An empty list withdraws every
+    endorsement they had made; it is not a partial update.
     """
     return await rating_service.submit_rating(db, caller.user, session_id, payload)
