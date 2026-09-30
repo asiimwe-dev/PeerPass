@@ -141,8 +141,7 @@ async def _search_candidates(
         return exact_candidates, exact_exclusions, False
 
     result = await db.execute(
-        select(CourseUnit.id)
-        .where(
+        select(CourseUnit.id).where(
             CourseUnit.university_id == course_unit.university_id,
             CourseUnit.subject_id == course_unit.subject_id,
         )
@@ -278,8 +277,9 @@ async def _load_course_unit(db: AsyncSession, public_id: uuid.UUID) -> CourseUni
 
 async def _has_role(db: AsyncSession, user_id: uuid.UUID, role: UserRole) -> bool:
     result = await db.execute(
-        select(user_roles.c.role)
-        .where(user_roles.c.user_id == user_id, user_roles.c.role == role.value)
+        select(user_roles.c.role).where(
+            user_roles.c.user_id == user_id, user_roles.c.role == role.value
+        )
     )
     return result.scalar_one_or_none() is not None
 

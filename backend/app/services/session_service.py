@@ -15,8 +15,8 @@ from app.core.exceptions import (
 )
 from app.models.course_unit import CourseUnit
 from app.models.enums import (
-    HelpRequestStatus,
     SESSION_TRANSITIONS,
+    HelpRequestStatus,
     SessionStatus,
     UserRole,
 )
@@ -60,7 +60,10 @@ async def create_session(
     help_request = await _load_help_request(db, payload.help_request_id)
     if help_request.tutee_id == user.id:
         raise AuthorizationProblem("The student cannot create the accepted session.")
-    if help_request.matched_tutor_id is not None and help_request.matched_tutor_id != user.id:
+    if (
+        help_request.matched_tutor_id is not None
+        and help_request.matched_tutor_id != user.id
+    ):
         raise AuthorizationProblem("Only the matched tutor can accept this request.")
     if help_request.matched_tutor_id is None:
         help_request.matched_tutor_id = user.id
@@ -126,7 +129,9 @@ async def list_sessions(
     return [await _session_response(db, row) for row in result.scalars()]
 
 
-async def get_session(db: AsyncSession, user: User, session_id: uuid.UUID) -> SessionResponse:
+async def get_session(
+    db: AsyncSession, user: User, session_id: uuid.UUID
+) -> SessionResponse:
     """Fetch one session the current user can view."""
     session = await _load_session_for_user(db, user, session_id)
     return await _session_response(db, session)
@@ -144,7 +149,9 @@ async def transition_session(
     if payload.status not in allowed:
         raise ValidationProblem(
             "That session status change is not allowed.",
-            errors={"status": f"{session.status.value} -> {payload.status.value} is invalid"},
+            errors={
+                "status": f"{session.status.value} -> {payload.status.value} is invalid"
+            },
         )
 
     if payload.status is SessionStatus.IN_PROGRESS:
@@ -153,7 +160,12 @@ async def transition_session(
                 "The pin is required to start the session.",
                 errors={"pin": "required"},
             )
-        if payload.pin.strip() != (session.session_pin or ""):
+        # A missing stored pin is not an empty expected pin. `payload.pin.strip()
+        # == (session.session_pin or "")` would make a whitespace-only pin
+        # compare equal to "" and start a session whose handshake was never
+        # satisfied, so the absence of a pin has to fail closed.
+        expected_pin = (session.session_pin or "").strip()
+        if not expected_pin or payload.pin.strip() != expected_pin:
             raise ValidationProblem(
                 "The session PIN is incorrect.",
                 errors={"pin": "incorrect"},
@@ -167,7 +179,9 @@ async def transition_session(
                 errors={"status": "in_progress required"},
             )
         session.ended_at = _utc(session.ended_at or datetime.now(UTC))
-        elapsed = int((_utc(session.ended_at) - _utc(session.started_at)).total_seconds() // 60)
+        elapsed = int(
+            (_utc(session.ended_at) - _utc(session.started_at)).total_seconds() // 60
+        )
         session.duration_minutes = max(1, elapsed)
 
     if payload.status is SessionStatus.CANCELLED:
@@ -191,8 +205,10 @@ async def verify_session_pin(
 ) -> SessionResponse:
     """Verify the two-digit session PIN before the session is marked live."""
     session = await _load_session_for_user(db, user, session_id)
-    expected = session.session_pin or ""
-    if pin.strip() != expected:
+    # Fails closed for the same reason as the transition path: a session with no
+    # stored pin must reject every candidate, including a blank one.
+    expected = (session.session_pin or "").strip()
+    if not expected or pin.strip() != expected:
         raise ValidationProblem(
             "The session PIN is incorrect.",
             errors={"pin": "incorrect"},
@@ -261,7 +277,9 @@ async def _session_response(db: AsyncSession, session: Session) -> SessionRespon
     """Build the response with a computed rating flag."""
     return SessionResponse(
         id=session.public_id,
-        help_request_id=(session.help_request.public_id if session.help_request else None),
+        help_request_id=(
+            session.help_request.public_id if session.help_request else None
+        ),
         tutee_id=session.tutee.public_id,
         tutor_id=session.tutor.public_id,
         course_unit_id=session.course_unit.public_id,

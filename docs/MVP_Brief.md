@@ -111,6 +111,10 @@ To enforce a hard gate for competency, tutors must upload a screenshot of their 
 **2. Provisional → Verified promotion path**  
 New tutors are not hidden, but they are clearly labelled. Consistent positive ratings unlock the Verified badge. This creates a fair, transparent reputation system.
 
+The thresholds are **3 completed sessions and a running average of 4.10 or above**. Both must hold; a tutor with a 5.00 average across two sessions stays Provisional, and so does one with three sessions and a 4.00 average. Below the bar a tutor is marked **Reduced** rather than hidden, so a tutor who improves recovers on the next rating without re-applying.
+
+The numbers live in `app/services/rating_service.py` as `PROMOTION_MIN_SESSIONS` and `PROMOTION_MIN_AVERAGE`. They are recorded here because a promotion rule that exists only in code cannot be reviewed by a product owner, and changing them is a product decision rather than a refactor.
+
 **3. Student chooses from a short list (instead of pure auto-match)**  
 Giving the tutee final choice increases trust and reduces the feeling of being “assigned” a stranger.
 

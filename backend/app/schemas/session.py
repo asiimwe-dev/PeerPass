@@ -172,8 +172,12 @@ class SessionResponse(OrmSchema):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     duration_minutes: int = Field(ge=0)
-    session_pin: str | None = Field(default=None, description="Backend-generated handshake pin.")
-    meeting_link: str | None = Field(default=None, description="Shared meeting link for the session.")
+    session_pin: str | None = Field(
+        default=None, description="Backend-generated handshake pin."
+    )
+    meeting_link: str | None = Field(
+        default=None, description="Shared meeting link for the session."
+    )
     is_rated: bool = Field(
         description=(
             "Whether a rating exists yet. The client needs this to decide whether "
