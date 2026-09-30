@@ -12,6 +12,7 @@ score is bounded, a rater cannot rate the same session twice, and
 `Session.is_rated` is the check that rule is written against.
 """
 
+from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 

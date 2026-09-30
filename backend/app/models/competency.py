@@ -12,6 +12,7 @@ and say nothing about another, and a tutor is expected to be selectively
 competent rather than uniformly so.
 """
 
+from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
