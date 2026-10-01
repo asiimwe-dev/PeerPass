@@ -25,6 +25,17 @@ const UserProfile _enrolled = UserProfile(
 /// The greeting the screen builds from the first name alone.
 const String _greeting = 'Hello, Achieng';
 
+/// The same account once they have been approved to teach.
+const UserProfile _tutor = UserProfile(
+  publicId: 'user-1',
+  email: 'student@must.ac.ug',
+  fullName: 'Achieng Okello',
+  roles: <UserRole>{UserRole.student, UserRole.tutor},
+  universityId: 'university-1',
+  facultyId: 'subject-1',
+  yearOfStudy: 2,
+);
+
 /// A container to read the session through, plus the repository behind it.
 typedef _Harness = ({
   ProviderContainer container,
@@ -253,5 +264,115 @@ void main() {
     await _settle(tester);
 
     expect(find.text('Tutors at your university'), findsOneWidget);
+  });
+
+  testWidgets('a tutor is offered their certificate, and a student is not', (
+    tester,
+  ) async {
+    // The entry is about the viewer's own banked hours, so it belongs to the
+    // tutor. A student who tapped it would land on a screen whose honest answer
+    // is that they have not applied yet.
+    await _pumpHome(tester, _harness(_enrolled));
+
+    expect(find.text('My certificate'), findsNothing);
+
+    await _pumpHome(tester, _harness(_tutor));
+
+    expect(find.text('My certificate'), findsOneWidget);
+  });
+
+  testWidgets('tapping the certificate entry opens the certificate screen', (
+    tester,
+  ) async {
+    // Asserted through a real router, because the claim under test is a
+    // navigation and a test without one would pass against a handler that pushes
+    // nothing at all.
+    final harness = _harness(_tutor);
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+        GoRoute(
+          path: AppRoutes.certificate,
+          builder: (_, _) => const Scaffold(body: Text('Certificate screen here')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await _settle(tester);
+
+    await tester.tap(find.text('My certificate'));
+    await _settle(tester);
+
+    expect(find.text('Certificate screen here'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
+  });
+
+  testWidgets('a tutor is told what is waiting on them, and a student is not', (
+    tester,
+  ) async {
+    // The requests are the only entries on this screen about somebody else waiting
+    // for something, so they go stale. A tutor who never learns they were chosen
+    // is a tutor who never answers.
+    await _pumpHome(tester, _harness(_enrolled));
+
+    expect(find.text('Waiting on you'), findsNothing);
+
+    await _pumpHome(tester, _harness(_tutor));
+
+    expect(find.text('Waiting on you'), findsOneWidget);
+  });
+
+  testWidgets("the waiting entry comes before the tutor's own progress", (
+    tester,
+  ) async {
+    // Ordering is the only thing that makes this entry get read. It is a decision
+    // about a tutor scrolling, so it is asserted rather than left to the widget
+    // order it happens to have.
+    await _pumpHome(tester, _harness(_tutor));
+
+    final waiting = tester.getTopLeft(find.text('Waiting on you')).dy;
+    final certificate = tester.getTopLeft(find.text('My certificate')).dy;
+
+    expect(waiting, lessThan(certificate));
+  });
+
+  testWidgets('tapping it opens the list of requests awaiting an answer', (
+    tester,
+  ) async {
+    // Through a real router, because the claim under test is a navigation.
+    final harness = _harness(_tutor);
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+        GoRoute(
+          path: AppRoutes.tutorRequests,
+          builder: (_, _) => const Scaffold(body: Text('Waiting screen here')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: harness.container,
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await _settle(tester);
+
+    await tester.tap(find.text('Waiting on you'));
+    await _settle(tester);
+
+    expect(find.text('Waiting screen here'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
   });
 }

@@ -14,10 +14,14 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import NotFoundProblem, ValidationProblem
+from app.core.exceptions import (
+    ConflictProblem,
+    NotFoundProblem,
+    ValidationProblem,
+)
 from app.models.competency import Competency
 from app.models.course_unit import CourseUnit
-from app.models.enums import TutorStanding, UserRole
+from app.models.enums import HelpRequestStatus, TutorStanding, UserRole
 from app.models.session import HelpRequest
 from app.models.user import User, user_roles
 from app.schemas.matching import (
@@ -26,7 +30,11 @@ from app.schemas.matching import (
     MatchRequest,
     MatchResponse,
 )
-from app.schemas.session import HelpRequestCreate, HelpRequestResponse
+from app.schemas.session import (
+    HelpRequestCreate,
+    HelpRequestResponse,
+    SelectTutorRequest,
+)
 from app.schemas.tutor import TutorProfileSummary
 
 
@@ -92,6 +100,147 @@ async def get_help_request(
     """
     request = await load_help_request(db, user, request_id)
     return help_request_response(request)
+
+
+async def select_tutor_for_request(
+    db: AsyncSession,
+    user: User,
+    request_id: uuid.UUID,
+    payload: SelectTutorRequest,
+) -> HelpRequestResponse:
+    """The student names a tutor, and the request waits on that tutor saying yes.
+
+    This is the half of MVP decision 3 that the client cannot be trusted with.
+    The student is choosing, so the platform proposes a short list -- and a
+    request body is whatever the caller decided to type into it. An id sent
+    directly could name any user at the university, including one whose grade was
+    never checked or whose tutoring access is suspended, so the gate is
+    re-derived here from the same query matching answers with rather than being
+    inferred from a list the client happens to be holding.
+
+    Reachability, not rank, is what is checked. A tutor who passes the gate for
+    this unit is acceptable even if a client that asked for a short list would
+    not have been shown them: the alternative is a refusal whose only justification
+    is which page the student had scrolled to, and `limit` is the caller's to
+    choose.
+    """
+    request = await load_help_request(db, user, request_id)
+
+    # Checked before the tutor so that re-selecting reports the real problem. A
+    # second tap is the common case on a phone, and "you already chose" is the
+    # sentence that helps.
+    if request.status is not HelpRequestStatus.OPEN:
+        raise ConflictProblem(
+            "This help request is no longer waiting for a tutor to be chosen.",
+        )
+
+    if payload.candidate_tutor_id == user.public_id:
+        # The query below would exclude the caller anyway; saying so here is what
+        # turns "you cannot pick that" into "you cannot pick yourself".
+        raise ValidationProblem(
+            "You cannot choose yourself as your own tutor.",
+            errors={"candidate_tutor_id": "the student cannot tutor themselves"},
+        )
+
+    tutor = await _eligible_tutor_for_request(db, request, payload.candidate_tutor_id)
+    if tutor is None:
+        # One answer for "does not exist" and "exists but may not take this
+        # request", because the distinction is a probe of who is a tutor at this
+        # university, and the student already learns that from the exclusions the
+        # matching response carries.
+        raise ValidationProblem(
+            "That tutor cannot be chosen for this help request.",
+            errors={"candidate_tutor_id": "not an eligible tutor for this course unit"},
+        )
+
+    # The relationship, not the foreign key. `matched_tutor_public_id` reads
+    # `request.matched_tutor`, which stays unpopulated when only the column is
+    # assigned, so the response would report no tutor for a request that has just
+    # been given one -- and the student would be told their choice did not register
+    # while the tutor's screen says it did.
+    request.matched_tutor = tutor
+    request.status = HelpRequestStatus.PENDING_CONFIRMATION
+    await db.flush()
+    return help_request_response(request)
+
+
+async def decline_help_request(
+    db: AsyncSession,
+    user: User,
+    request_id: uuid.UUID,
+) -> HelpRequestResponse:
+    """The chosen tutor turns the request down, and it stays declined.
+
+    Scoped to the tutor the student named, so the answer to "not yours" and "not
+    there" is the same one and no student can decline their own request from the
+    other end of the platform.
+
+    `DECLINED` is terminal rather than a return to `OPEN`. A request the tutor
+    refused is not the same as one nobody was ever asked, and the student reads
+    the two differently; re-opening it would also let a tutor decline and then
+    watch the student re-select them. The recovery is a new request, which keeps
+    the record of what was asked intact.
+    """
+    result = await db.execute(
+        select(HelpRequest)
+        .where(
+            HelpRequest.public_id == request_id,
+            HelpRequest.matched_tutor_id == user.id,
+        )
+        .options(
+            selectinload(HelpRequest.course_unit),
+            selectinload(HelpRequest.matched_tutor),
+            selectinload(HelpRequest.tutee),
+        )
+    )
+    request = result.scalar_one_or_none()
+    if request is None:
+        raise NotFoundProblem("That help request could not be found.")
+
+    if request.status is not HelpRequestStatus.PENDING_CONFIRMATION:
+        raise ConflictProblem("This help request is not waiting for your answer.")
+
+    request.status = HelpRequestStatus.DECLINED
+    await db.flush()
+    return help_request_response(request)
+
+
+async def list_requests_awaiting_confirmation(
+    db: AsyncSession,
+    user: User,
+) -> list[HelpRequestResponse]:
+    """The requests that named this user and are waiting on their answer.
+
+    No tutor-role check, because the query is its own authorisation: only a tutor
+    the engine would propose can ever be written into `matched_tutor_id`, so for
+    anyone else this is an empty list rather than a refusal. Refusing would make
+    a student who opened a tutor screen read a permission error as though the
+    platform were broken.
+
+    The scope is the tutor's own pending work and nothing else. A request they
+    already confirmed, or already declined, is answered on the student's side and
+    belongs there; showing it again would offer a decision that has been made.
+
+    Every relationship the response reads is eager-loaded, `tutee` included. The
+    tutee is a different account from the caller, so it is the one row this query
+    cannot serve from the identity map, and leaving it out turns the first tutor
+    who opens their list into a `MissingGreenlet`. The model's public-id
+    properties are deliberately lazy-load-hostile for the same reason.
+    """
+    result = await db.execute(
+        select(HelpRequest)
+        .where(
+            HelpRequest.matched_tutor_id == user.id,
+            HelpRequest.status == HelpRequestStatus.PENDING_CONFIRMATION,
+        )
+        .options(
+            selectinload(HelpRequest.course_unit).selectinload(CourseUnit.university),
+            selectinload(HelpRequest.matched_tutor),
+            selectinload(HelpRequest.tutee),
+        )
+        .order_by(HelpRequest.created_at.desc())
+    )
+    return [help_request_response(row) for row in result.scalars()]
 
 
 async def match_tutors(
@@ -376,7 +525,7 @@ async def _search_candidates_for_units(
         candidate = MatchCandidate(
             tutor=TutorProfileSummary(
                 user_id=tutor.public_id,
-                full_name=tutor.full_name or tutor.email,
+                full_name=tutor.display_name,
                 standing=profile.standing,
                 average_rating=profile.average_rating,
                 completed_sessions=profile.completed_sessions,
@@ -412,6 +561,46 @@ async def _load_course_unit(db: AsyncSession, public_id: uuid.UUID) -> CourseUni
     if course_unit is None:
         raise NotFoundProblem("That course unit could not be found.")
     return course_unit
+
+
+async def _eligible_tutor_for_request(
+    db: AsyncSession,
+    request: HelpRequest,
+    tutor_public_id: uuid.UUID,
+) -> User | None:
+    """The tutor named by a selection, if the engine would still propose them.
+
+    The same search `match_request_tutors` runs, for the same unit, asked with
+    widening on. Widening on is what covers both answers a client can act on: it
+    returns the exact unit's candidates whenever there are any, and falls back to
+    the subject only when there are none, which is precisely the list the
+    matching screen showed. Reusing the search rather than re-reading its rules is
+    the point -- a second copy of the competency, grade, university and standing
+    checks would be a second copy to drift, and it would drift at exactly the
+    moment a student is deciding who to trust.
+
+    `None` for a tutor the search does not propose. The caller turns that into a
+    rejection; this function does not raise, because "not eligible" and "no such
+    user" are the same answer to the client and differ only in which query found
+    nothing.
+    """
+    course_unit = await _load_course_unit(db, request.course_unit_public_id)
+    candidates, _exclusions, _widened = await _search_candidates(
+        db,
+        user=request.tutee,
+        course_unit=course_unit,
+        widen_to_subject=True,
+    )
+
+    if not any(candidate.tutor.user_id == tutor_public_id for candidate in candidates):
+        return None
+
+    # `TutorProfileSummary` carries the internal `user_id`, not the public one, so
+    # the row the caller needs has to be fetched again by the id it holds. The
+    # candidate list is a transport shape; the assignment above needs the mapped
+    # row, or the response would report no tutor for a request that has one.
+    result = await db.execute(select(User).where(User.public_id == tutor_public_id))
+    return result.scalar_one_or_none()
 
 
 def _grade_threshold(course_unit: CourseUnit) -> Decimal:

@@ -13,6 +13,12 @@ from app.schemas.academic import (
     SubjectResponse,
     UniversityResponse,
 )
+from app.schemas.admin import (
+    AdminAuditEventPage,
+    AdminAuditEventResponse,
+    AdminUserPage,
+    AdminUserResponse,
+)
 from app.schemas.base import OrmSchema, RequestSchema
 from app.schemas.common import (
     DEFAULT_PAGE_SIZE,
@@ -76,6 +82,10 @@ __all__ = [
     "MAX_RATING",
     "MIN_RATING",
     "RAIL_ENDORSED_UNITS",
+    "AdminAuditEventPage",
+    "AdminAuditEventResponse",
+    "AdminUserPage",
+    "AdminUserResponse",
     "AuthResponse",
     "CertificateEligibilityResponse",
     "CompetencyCreate",

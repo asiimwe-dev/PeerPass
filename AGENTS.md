@@ -16,7 +16,7 @@ PeerPass is a mobile-first peer tutoring network for university students. It mat
 | `README.md`            | Product scope and local setup                       |
 | `docs/architecture.md` | System boundaries, data model, matching, validation |
 | `docs/MVP_Brief.md`    | What is in / out of the current MVP                 |
-| `docs/CONTRIBUTING.md` | Workflow, standards, review rules                   |
+| `docs/Contribution.md`  | Workflow, standards, review rules                   |
 
 Do not invent product rules. Matching, grade gates, rating thresholds, and role transitions are defined in architecture and the backend — not in Flutter widgets.
 

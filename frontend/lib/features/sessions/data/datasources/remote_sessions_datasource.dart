@@ -48,6 +48,37 @@ class RemoteSessionsDatasource {
     return response.data!;
   }
 
+  /// Creates the session that a tutor confirmed a help request into.
+  ///
+  /// The request id is in the body rather than the path because the resource
+  /// being created is a session, not a sub-resource of the request: the API
+  /// refuses the call unless the request is one this tutor was named on and is
+  /// still waiting, so the request id identifies *what is being confirmed* rather
+  /// than naming the created thing.
+  ///
+  /// [courseUnitId] is sent because the API requires it, and the API then checks
+  /// it against the request's own unit -- a mismatch is refused rather than
+  /// trusted. `topic` is the student's own question as the tutor read it on the
+  /// request; it is what the session is titled in both apps, so it is not left to
+  /// the client to invent and not reworded into something the student did not ask.
+  Future<Map<String, dynamic>> createFromRequest(
+    String requestId, {
+    required String courseUnitId,
+    required String topic,
+    required int durationMinutes,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v1/sessions',
+      data: <String, dynamic>{
+        'help_request_id': requestId,
+        'course_unit_id': courseUnitId,
+        'topic': topic,
+        'duration_minutes': durationMinutes,
+      },
+    );
+    return response.data!;
+  }
+
   /// Submits the two-digit handshake pin for a session.
   ///
   /// The dedicated route rather than a transition carrying the pin, because it is

@@ -327,6 +327,13 @@ async def authenticate(db: AsyncSession, request: LoginRequest) -> AuthResponse:
         # password and the response is the same as a wrong password.
         raise _credentials_rejected()
 
+    if user.is_deleted:
+        # Unreachable in practice: deletion rewrites the address, so a tombstone
+        # cannot be reached by the one a student types. Stated anyway, because
+        # this is the path that would hand back a token pair if that ever
+        # stopped being true, and because it costs a comparison.
+        raise _credentials_rejected()
+
     if password_needs_rehash(user.password_hash):
         # The password was correct, so this is the one moment rewriting the
         # stored hash is safe. It is how a raised Argon2 cost reaches existing
@@ -412,6 +419,14 @@ async def refresh(db: AsyncSession, refresh_token: str) -> AuthResponse:
     if user is None or not user.is_active:
         raise _credentials_rejected()
 
+    if user.is_deleted:
+        # A tombstone has every refresh token revoked, so `stored.is_revoked`
+        # above already refuses it. Repeated because this is the longest-lived
+        # credential in the system and the one a stolen token would be replayed
+        # through first: the check is a comparison, and the failure mode of
+        # omitting it is a deleted account minting 30-day sessions.
+        raise _credentials_rejected()
+
     pair = create_token_pair(subject=user.public_id)
     _record_refresh_token(db, user, pair)
 
@@ -481,9 +496,17 @@ async def update_profile(
     sent = request.model_dump(exclude_unset=True)
 
     if "university_id" in sent:
+        previous_university = user.university_id
         user.university_id = await _resolve_university(db, sent["university_id"])
+        if user.university_id != previous_university:
+            user.faculty_id = None
     if "faculty_id" in sent:
-        user.faculty_id = await _resolve_subject(db, sent["faculty_id"])
+        faculty_university = user.university_id
+        user.faculty_id = await _resolve_subject(
+            db,
+            sent["faculty_id"],
+            university_id=faculty_university,
+        )
     if "year_of_study" in sent:
         user.year_of_study = sent["year_of_study"]
     if "full_name" in sent:
@@ -525,12 +548,20 @@ async def _resolve_university(
 
 
 async def _resolve_subject(
-    db: AsyncSession, public_id: uuid.UUID | None
+    db: AsyncSession,
+    public_id: uuid.UUID | None,
+    *,
+    university_id: uuid.UUID | None = None,
 ) -> uuid.UUID | None:
     """The primary key for a faculty's public id, or `NotFoundProblem`."""
     if public_id is None:
         return None
-    result = await db.execute(select(Subject.id).where(Subject.public_id == public_id))
+    result = await db.execute(
+        select(Subject.id).where(
+            Subject.public_id == public_id,
+            Subject.university_id == university_id,
+        )
+    )
     row = result.scalar_one_or_none()
     if row is None:
         raise NotFoundProblem("That faculty could not be found.")

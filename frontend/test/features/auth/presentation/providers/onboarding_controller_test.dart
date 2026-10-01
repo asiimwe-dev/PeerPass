@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
+import 'package:peerpass/features/auth/data/models/academic_fallback.dart';
+import 'package:peerpass/features/auth/data/models/university_option.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/providers/onboarding_providers.dart';
@@ -22,7 +25,10 @@ const String _faculty = 'subject-1';
 
 /// A container wired to a fake repository, plus the fake so a test can read what
 /// the wizard actually sent.
-typedef _Harness = ({ProviderContainer container, FakeAuthRepository repository});
+typedef _Harness = ({
+  ProviderContainer container,
+  FakeAuthRepository repository,
+});
 
 _Harness _harness() {
   final repository = FakeAuthRepository(
@@ -178,17 +184,50 @@ void main() {
       expect(_state(noFaculty.container).canContinue, isFalse);
     });
 
-    test('sends nothing and does not advance while consent is unticked', () async {
+    test(
+      'sends nothing and does not advance while consent is unticked',
+      () async {
+        final harness = await atAcademicContext();
+        _controller(harness.container)
+          ..setUniversity(_university)
+          ..setFaculty(_faculty)
+          ..setYearOfStudy(2);
+
+        final advanced = await _controller(harness.container).saveAndAdvance();
+
+        expect(advanced, isFalse);
+        expect(harness.repository.profileUpdates, isEmpty);
+      },
+    );
+
+    test('resolves fallback labels to live IDs before saving', () async {
       final harness = await atAcademicContext();
+      harness.repository
+        ..universityOptions = const [
+          UniversityOption(
+            publicId: _university,
+            name: mustFallbackUniversityName,
+          ),
+        ]
+        ..facultyOptions = const [
+          Subject(publicId: _faculty, name: 'Faculty of Medicine'),
+        ];
       _controller(harness.container)
-        ..setUniversity(_university)
-        ..setFaculty(_faculty)
-        ..setYearOfStudy(2);
+        ..setUniversity(mustFallbackUniversityId)
+        ..setFaculty(mustFallbackFaculties.first.publicId)
+        ..setYearOfStudy(2)
+        ..setConsent(value: true);
 
       final advanced = await _controller(harness.container).saveAndAdvance();
 
-      expect(advanced, isFalse);
-      expect(harness.repository.profileUpdates, isEmpty);
+      expect(advanced, isTrue);
+      expect(
+        harness.repository.profileUpdates.single['university_id'],
+        _university,
+      );
+      expect(harness.repository.profileUpdates.single['faculty_id'], _faculty);
+      expect(_state(harness.container).universityId, _university);
+      expect(_state(harness.container).facultyId, _faculty);
     });
   });
 

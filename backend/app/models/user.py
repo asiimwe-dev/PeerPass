@@ -67,6 +67,16 @@ user_primary_course_units = Table(
     ),
 )
 
+#: What a deleted account is called wherever somebody else is being named.
+#:
+#: A fixed string rather than the scrubbed row, for two reasons. A tombstone has
+#: `full_name = None` and an email rewritten to a synthetic
+#: `deleted+...@deleted.invalid`, so the old `full_name or email` fallback would
+#: render either a blank or an internal placeholder as a person's name. And
+#: "Deleted user" says something about the person, where the placeholder says
+#: something about this database.
+DELETED_USER_DISPLAY_NAME = "Deleted user"
+
 
 class User(Base, TimestampMixin):
     """A person with an account.
@@ -140,6 +150,46 @@ class User(Base, TimestampMixin):
     )
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    #: When the account holder asked for their account to be erased, or `None`
+    #: for an account that has never asked.
+    #:
+    #: A timestamp rather than an `is_deleted` boolean, because the fact worth
+    #: keeping is *when*, not merely that it happened: a data-retention claim
+    #: has to be able to say the request was received on a given date. Two
+    #: columns that both mean "gone" cannot disagree, whereas a boolean and a
+    #: timestamp can.
+    #:
+    #: The row itself is never deleted. Every FK to `users.id` is `CASCADE`, so
+    #: removing the row would take the sessions, ratings, endorsements and
+    #: competencies with it -- and session records are the source of truth for
+    #: a tutor's hours, so erasing them would silently rewrite a colleague's
+    #: certificate progress. Instead deletion scrubs the identifying columns and
+    #: leaves the evidence, which is what "anonymised" has to mean if the
+    #: evidence is worth keeping at all.
+    #:
+    #: Everything that grants access must treat a non-null value as
+    #: unauthenticated. Otherwise this is a live account with a blank name.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    @property
+    def is_deleted(self) -> bool:
+        """Whether this row is a tombstone rather than a usable account."""
+        return self.deleted_at is not None
+
+    @property
+    def display_name(self) -> str:
+        """The name to show where somebody else is being named.
+
+        One definition, because there are three student-facing surfaces that
+        label a person and a fourth copy of this fallback is a fourth place for
+        it to be wrong.
+        """
+        if self.is_deleted:
+            return DELETED_USER_DISPLAY_NAME
+        return self.full_name or self.email
 
     #: Set when a student accepts the academic-data consent. Competency
     #: submission is refused without it, which is the explicit consent the

@@ -32,8 +32,7 @@ enum MatchExclusionReason {
   /// the third person about the student, since a student reading about a
   /// stranger needs to know which is which.
   String get explanation => switch (this) {
-    belowThreshold =>
-      'their verified grade is below what this unit asks for',
+    belowThreshold => 'their verified grade is below what this unit asks for',
     sameUniversityOnly => 'they teach at another university',
     suspended => 'their tutoring access has been suspended',
     unverified => 'the grade they claimed has not been checked by anyone yet',
@@ -52,7 +51,11 @@ enum MatchExclusionReason {
 /// A tutor the engine looked at and did not propose.
 @immutable
 class MatchExclusion {
-  const MatchExclusion({required this.tutorId, required this.reasonWire, this.reason});
+  const MatchExclusion({
+    required this.tutorId,
+    required this.reasonWire,
+    this.reason,
+  });
 
   /// Reads one exclusion.
   ///
@@ -130,7 +133,9 @@ class MatchCandidate {
     final courseUnitId = json['course_unit_id'];
     final score = json['score'];
 
-    if (tutor is! Map<String, dynamic> || courseUnitId is! String || score is! num) {
+    if (tutor is! Map<String, dynamic> ||
+        courseUnitId is! String ||
+        score is! num) {
       throw const FormatException('candidate was missing its tutor or score');
     }
 
@@ -331,7 +336,8 @@ class MatchResult {
   );
 
   @override
-  String toString() => 'MatchResult($courseUnitId, widened: $widened, '
+  String toString() =>
+      'MatchResult($courseUnitId, widened: $widened, '
       '${candidates.length} candidates)';
 }
 

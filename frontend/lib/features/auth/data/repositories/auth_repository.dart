@@ -44,7 +44,7 @@ abstract interface class AuthRepository {
   Future<List<UniversityOption>> universities();
 
   /// The faculties the picker offers.
-  Future<List<Subject>> faculties();
+  Future<List<Subject>> faculties({required String universityId});
 
   /// Course units for the given university, for the primary modules step.
   Future<List<CourseUnitOption>> courseUnits({String? universityId});
@@ -76,6 +76,26 @@ abstract interface class AuthRepository {
 
   /// Discards the stored session on this device.
   Future<void> signOut();
+
+  /// Asks the API to anonymise the signed-in account, then ends the session.
+  ///
+  /// Not the same thing as [signOut], and the ordering is deliberate. Sign-out
+  /// discards the tokens and leaves the account intact; this anonymises the
+  /// account, after which the tokens are worthless and every later request comes
+  /// back `401`. The caller is expected to end up signed out either way, because
+  /// a deleted account that still held a live session would be an account the
+  /// person asked to stop existing and could keep using.
+  ///
+  /// The tokens are cleared locally *before* the call is trusted, for the same
+  /// reason [signOut] does it: a network failure must still leave the device in
+  /// the state the user asked for, and the server-side anonymisation is
+  /// idempotent so a retry cannot double-scrub.
+  ///
+  /// Throws a [Failure] if the request does not reach a deleted account. The
+  /// session is cleared regardless, because leaving a student in the app with a
+  /// token the server has already refused would strand them on a screen that
+  /// cannot load.
+  Future<void> deleteAccount();
 }
 
 /// The auth contract, as a live instance.

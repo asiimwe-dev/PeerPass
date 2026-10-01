@@ -172,15 +172,50 @@ class TutorDetailResponse(OrmSchema):
 
 
 class CertificateEligibilityResponse(OrmSchema):
-    """Whether a tutor has earned a certificate, and how far off they are.
+    """Whether the signed-in tutor has earned a certificate, and how far off they are.
 
     Reports the shortfall as well as the verdict. A tutor who is told only "not
     yet" cannot tell whether they need one more session or forty, and the
     incentive that motivates teaching disappears.
+
+    `certified_minutes` is sent as the exact stored integer, not rounded to a
+    display scale. `MeanRating` exists because a mean of integer scores need not
+    fit in the two decimal places a rating wire declares; minutes are a count with
+    no fractional part, so there is nothing to round and rounding would only put
+    a second number on the wire that the verdict was not computed from. The
+    threshold is a `>=` against this integer and is applied server-side, so a
+    client cannot round its way to an answer the platform did not give.
     """
 
+    has_tutor_profile: bool = Field(
+        description=(
+            "Whether the caller has a tutor profile at all. Sent rather than "
+            "left for the client to infer, because a student with no profile and "
+            "a new tutor with zero minutes are both `0 of 2400` arithmetically "
+            "and are not the same thing to the person reading it: the first is "
+            "not on this path, the second has not started. Mirrors the `None` "
+            "rather than zero that `average_rating` uses for the same reason."
+        )
+    )
     eligible: bool
     certified_minutes: int = Field(ge=0)
-    required_minutes: int = Field(gt=0)
+    required_minutes: int = Field(
+        gt=0,
+        description=(
+            "The configured threshold in minutes, sent so the client renders "
+            "the operator's number rather than one of its own. A client that "
+            "hardcoded the default would keep showing 40 hours after the "
+            "threshold was lowered for a pilot."
+        ),
+    )
     remaining_minutes: int = Field(ge=0)
+    progress: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How far along the tutor is, as a fraction of `required_minutes`. "
+            "Clamped at 1.0, so a tutor well over the threshold is shown as "
+            "complete instead of as a bar that overflows."
+        ),
+    )
     generated_at: datetime

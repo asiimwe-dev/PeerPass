@@ -454,3 +454,139 @@ class RatingFormController extends Notifier<RatingFormState> {
     }
   }
 }
+
+/// The state of the form that turns a chosen help request into a session.
+///
+/// The one field the tutor fills in is how long the session is meant to last. The
+/// request already carries the topic and the course unit, and neither is asked
+/// for again: the student wrote the question, and the API checks the unit against
+/// the request rather than trusting a value typed here. Asking the tutor to
+/// retype either would invite a mismatch the server would then refuse, in front
+/// of a tutor who did nothing wrong.
+@immutable
+class ConfirmRequestState {
+  const ConfirmRequestState({
+    this.durationMinutes = '',
+    this.submitting = false,
+    this.failure,
+  });
+
+  /// What has been typed, as text rather than as a number.
+  ///
+  /// A string because an empty field and the number zero are different states and
+  /// the field has to be able to be empty. A `TextEditingController` would hold
+  /// the text in the widget tree, which is rebuilt on every keystroke-driven
+  /// setState, and this is the same reason [RatingFormState.feedback] is a string.
+  final String durationMinutes;
+
+  final bool submitting;
+
+  final Failure? failure;
+
+  /// The typed value as minutes, or null when it is not a whole positive number.
+  ///
+  /// Null rather than a guess. "60 minutes" and "sixty" both read as plausible to
+  /// a person and only one of them is a number, and guessing at which the tutor
+  /// meant is not this screen's decision to make. The API's own bounds are not
+  /// restated here: it refuses a length it does not accept and names the field,
+  /// and a client that hardcoded the range would be a second copy of a rule that
+  /// changes without a deploy.
+  int? get minutes {
+    final parsed = int.tryParse(durationMinutes.trim());
+    if (parsed == null || parsed < 1) return null;
+    return parsed;
+  }
+
+  bool get canSubmit => minutes != null && !submitting;
+
+  ConfirmRequestState copyWith({
+    String? durationMinutes,
+    bool? submitting,
+    Failure? failure,
+    bool clearFailure = false,
+  }) {
+    return ConfirmRequestState(
+      durationMinutes: durationMinutes ?? this.durationMinutes,
+      submitting: submitting ?? this.submitting,
+      failure: clearFailure ? null : (failure ?? this.failure),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ConfirmRequestState &&
+          other.durationMinutes == durationMinutes &&
+          other.submitting == submitting &&
+          other.failure == failure;
+
+  @override
+  int get hashCode => Object.hash(durationMinutes, submitting, failure);
+}
+
+/// The form that confirms one help request, keyed by the request's public id.
+///
+/// A [Notifier] family rather than screen state because the confirmation outlives
+/// the widget for one good reason: it is an action the tutor can lose. The screen
+/// is reachable by a route, the Android back gesture is one swipe away, and a
+/// tutor who loses a typed length because of it would have to open the request
+/// again. Keeping the draft here means returning to the route restores it.
+// The family provider's generics are explicit, but the analyzer does not expose
+// them as a concrete type for the declaration itself.
+// ignore: specify_nonobvious_property_types
+final confirmRequestProvider =
+    NotifierProvider.family<ConfirmRequestController, ConfirmRequestState, String>(
+      ConfirmRequestController.new,
+    );
+
+class ConfirmRequestController extends Notifier<ConfirmRequestState> {
+  ConfirmRequestController(this.requestId);
+
+  final String requestId;
+
+  @override
+  ConfirmRequestState build() => const ConfirmRequestState();
+
+  void writeDuration(String value) {
+    if (state.submitting) return;
+    state = state.copyWith(durationMinutes: value, clearFailure: true);
+  }
+
+  /// Confirms the request, returning the session the API created.
+  ///
+  /// Null means the API refused it and [ConfirmRequestState.failure] says why. The
+  /// typed length is kept on refusal for the same reason the rating form keeps its
+  /// note: the tutor should not have to retype it to try again.
+  ///
+  /// On success the session list is invalidated rather than patched in, because
+  /// the created session belongs to the tutor and to the student and only the
+  /// server knows what it looks like everywhere else. This screen hands the
+  /// session back so the caller can open it directly.
+  Future<SessionModel?> submit({
+    required String courseUnitId,
+    required String topic,
+  }) async {
+    final minutes = state.minutes;
+    if (minutes == null || state.submitting) return null;
+    state = state.copyWith(submitting: true, clearFailure: true);
+
+    try {
+      final created = await ref
+          .read(sessionsRepositoryProvider)
+          .confirmRequest(
+            requestId: requestId,
+            courseUnitId: courseUnitId,
+            topic: topic,
+            durationMinutes: minutes,
+          );
+      if (!ref.mounted) return created;
+      ref.invalidate(sessionListProvider);
+      state = state.copyWith(submitting: false);
+      return created;
+    } on Object catch (error) {
+      if (!ref.mounted) return null;
+      state = state.copyWith(submitting: false, failure: failureFor(error));
+      return null;
+    }
+  }
+}

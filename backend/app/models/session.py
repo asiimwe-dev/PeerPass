@@ -148,9 +148,19 @@ class Session(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid7)
     public_id: Mapped[uuid.UUID] = public_id_column()
 
-    #: Nullable because a session can exist from an offer the student has not
-    #: accepted. Not every session descends from a help request: a tutor may
-    #: offer a session directly to a student they already know.
+    #: A tutoring session always starts from a problem the student asked for.
+    #:
+    #: Nullable at the database level, but `create_session` requires it, so in
+    #: practice every session descends from a help request. The column stays
+    #: nullable for the migration that introduces it and for `ON DELETE SET
+    #: NULL`: a request the student withdraws must not take the session that
+    #: already happened with it. The session is the record, not the request.
+    #:
+    #: There is no "tutor offers a session directly" path, and there should not
+    #: be one in the MVP. A session with no request would have no statement of
+    #: what the student wanted help with, and a tutor could create hours
+    #: against any student who is not themselves -- which is the same way
+    #: certificate minutes could be inflated without a counterparty's intent.
     help_request_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("help_requests.id", ondelete="SET NULL"), nullable=True
     )

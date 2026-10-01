@@ -8,6 +8,7 @@ import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/widgets/content_width_limiter.dart';
 import 'package:peerpass/features/home/presentation/providers/sign_out_controller.dart';
+import 'package:peerpass/features/home/presentation/widgets/delete_account_tile.dart';
 
 /// The signed-in landing screen.
 ///
@@ -110,6 +111,37 @@ class HomeScreen extends ConsumerWidget {
                           'rating you owe.',
                       onTap: () => context.push(AppRoutes.sessions),
                     ),
+                    // Tutor-only, on the same role check as "Become a tutor"
+                    // below, because the entry is about the viewer's own banked
+                    // hours. A student offered it would tap through to a screen
+                    // whose honest answer is that they have not applied yet, which
+                    // is a worse first impression than not seeing the tile.
+                    if (profile?.hasRole(UserRole.tutor) ?? false) ...[
+                      // Above the certificate rather than below it: the requests
+                      // waiting on an answer are the only tiles on this screen
+                      // that are about somebody else waiting for something, and
+                      // they go stale. A tutor who has to scroll past their own
+                      // progress to reach a student who chose them has been
+                      // given a reason to never open the screen again.
+                      const SizedBox(height: AppDimens.md),
+                      _FeatureEntry(
+                        icon: Icons.mark_email_unread_outlined,
+                        title: 'Waiting on you',
+                        body:
+                            'Students who asked you to tutor them, and the '
+                            'sessions they are waiting on you to confirm.',
+                        onTap: () => context.push(AppRoutes.tutorRequests),
+                      ),
+                      const SizedBox(height: AppDimens.md),
+                      _FeatureEntry(
+                        icon: Icons.workspace_premium_outlined,
+                        title: 'My certificate',
+                        body:
+                            'The teaching hours you have banked, and the hours '
+                            'a certificate still needs.',
+                        onTap: () => context.push(AppRoutes.certificate),
+                      ),
+                    ],
                     if (rail != null) ...[
                       const SizedBox(height: AppDimens.xl),
                       rail,
@@ -137,6 +169,8 @@ class HomeScreen extends ConsumerWidget {
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
+                    const SizedBox(height: AppDimens.xl),
+                    const DeleteAccountTile(),
                   ],
                 ),
               ),

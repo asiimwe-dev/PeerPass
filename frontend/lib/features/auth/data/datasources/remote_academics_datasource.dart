@@ -33,8 +33,11 @@ class RemoteAcademicsDatasource {
   /// Not filtered by university, because the API does not filter it. A faculty is
   /// a property of a course unit rather than of an institution, so the list is
   /// global while the pilot is a single institution.
-  Future<List<Subject>> faculties() async {
-    final response = await _dio.get<List<dynamic>>('/v1/academics/faculties');
+  Future<List<Subject>> faculties({required String universityId}) async {
+    final response = await _dio.get<List<dynamic>>(
+      '/v1/academics/faculties',
+      queryParameters: {'university_id': universityId},
+    );
     return [
       for (final row in response.data!)
         Subject(

@@ -76,6 +76,11 @@ async def get_current_user(
     token would be accepted wherever an access token is expected, and a refresh
     token is a 30 day credential -- it would quietly turn every authenticated
     endpoint into a month-long session.
+
+    This is also where a deleted account is refused, on every route at once. Any
+    other check would have to be repeated per route, and one route that forgot it
+    would hand a tombstone a live session for the remaining lifetime of its
+    token.
     """
     claims = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
     user = await auth_service.load_user_by_public_id(db, uuid.UUID(claims["sub"]))
@@ -86,8 +91,29 @@ async def get_current_user(
         # thing that must not wait for a timeout.
         raise AuthenticationProblem()
 
+    if user.is_deleted:
+        # Checked separately from `is_active` even though deletion sets both, so
+        # that the rule reads as one statement in one place. Deletion also sets
+        # `is_active = False` to fail closed against any future path that only
+        # knows about `is_active`; if that flag is ever restored, this still
+        # refuses. The person asked to stop existing, and their unexpired token
+        # is not a reason to keep serving them.
+        raise AuthenticationProblem()
+
     return AuthenticatedUser(user=user, roles=frozenset(await load_roles(db, user.id)))
 
 
 #: The authenticated caller, for a route that needs one.
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
+
+
+async def require_admin(caller: CurrentUser) -> AuthenticatedUser:
+    """Allow only explicitly provisioned administrators."""
+    if UserRole.ADMIN not in caller.roles:
+        from app.core.exceptions import AuthorizationProblem
+
+        raise AuthorizationProblem()
+    return caller
+
+
+AdminUser = Annotated[AuthenticatedUser, Depends(require_admin)]

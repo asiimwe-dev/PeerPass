@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/features/matching/data/datasources/remote_matching_datasource.dart';
+import 'package:peerpass/features/matching/data/models/help_request.dart';
 import 'package:peerpass/features/matching/data/repositories/remote_matching_repository.dart';
 
 /// A recorded request, so a test can assert on what the client actually sent.
@@ -120,6 +121,23 @@ Map<String, dynamic> _candidate({String id = 'tutor-1'}) {
   };
 }
 
+/// `HelpRequestResponse`, with the optional fields left out unless asked for.
+Map<String, dynamic> _helpResponse({
+  String status = 'open',
+  String? matchedTutorId,
+}) {
+  return {
+    'id': 'request-1',
+    'tutee_id': 'student-1',
+    'course_unit_id': 'unit-1',
+    'topic': 'eigenvalues',
+    'description': null,
+    'status': status,
+    'matched_tutor_id': matchedTutorId,
+    'created_at': '2026-03-04T09:12:00Z',
+  };
+}
+
 /// The API's own refusal, as `MatchRequest` validation produces it.
 Map<String, dynamic> _problem({
   int status = 422,
@@ -157,10 +175,7 @@ void main() {
 
   group('asking who may take a course unit', () {
     test('posts the three documented fields, and nothing else', () async {
-      server.reply(
-        200,
-        _matchResponse(candidates: [_candidate()]),
-      );
+      server.reply(200, _matchResponse(candidates: [_candidate()]));
 
       await repository.suggestions(courseUnitId: 'unit-1');
 
@@ -260,9 +275,7 @@ void main() {
     test('a refused body is a ValidationFailure naming the field', () async {
       server.reply(
         422,
-        _problem(
-          errors: {'course_unit_id': 'Field required.'},
-        ),
+        _problem(errors: {'course_unit_id': 'Field required.'}),
       );
 
       await expectLater(
@@ -312,10 +325,7 @@ void main() {
 
       await repository.courseUnits(universityId: 'university-1');
 
-      expect(
-        server.calls.single.query,
-        {'university_id': 'university-1'},
-      );
+      expect(server.calls.single.query, {'university_id': 'university-1'});
     });
 
     test('an empty catalogue is a list, not a failure', () async {
@@ -338,5 +348,257 @@ void main() {
         throwsA(isA<NetworkFailure>()),
       );
     });
+  });
+
+  group('asking a tutor to take a request', () {
+    test('posts the unit and the topic, and nothing else', () async {
+      server.reply(201, _helpResponse());
+
+      await repository.createHelpRequest(
+        courseUnitId: 'unit-1',
+        topic: 'eigenvalues',
+      );
+
+      final call = server.calls.single;
+      expect(call.method, 'POST');
+      expect(call.path, '/v1/matching/help-requests');
+      // `HelpRequestCreate` forbids unknown keys, so this is also the test that
+      // would fail if the client grew a field the API rejects. The description is
+      // absent rather than null: sending one would assert the student wrote
+      // nothing, rather than that they had no chance to.
+      expect(call.body, {'course_unit_id': 'unit-1', 'topic': 'eigenvalues'});
+    });
+
+    test('sends a description the student gave', () async {
+      server.reply(201, _helpResponse());
+
+      await repository.createHelpRequest(
+        courseUnitId: 'unit-1',
+        topic: 'eigenvalues',
+        description: 'Stuck on the second eigenvector.',
+      );
+
+      expect(
+        (server.calls.single.body! as Map<String, dynamic>)['description'],
+        'Stuck on the second eigenvector.',
+      );
+    });
+
+    test(
+      'leaves an empty description out rather than sending a blank',
+      () async {
+        server.reply(201, _helpResponse());
+
+        await repository.createHelpRequest(
+          courseUnitId: 'unit-1',
+          topic: 'eigenvalues',
+          description: '',
+        );
+
+        // Absent, not null and not blank. Only the *empty* string is dropped here:
+        // trimming belongs to the form that collected it, and a datasource that
+        // silently discarded whitespace would hide a caller that forgot to.
+        expect(
+          (server.calls.single.body! as Map<String, dynamic>).containsKey(
+            'description',
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('naming a tutor sends candidate_tutor_id and returns the new state', () async {
+      server.reply(
+        200,
+        _helpResponse(
+          status: 'pending_confirmation',
+          matchedTutorId: 'tutor-1',
+        ),
+      );
+
+      final request = await repository.selectTutor(
+        requestId: 'request-1',
+        candidateTutorId: 'tutor-1',
+      );
+
+      final call = server.calls.single;
+      expect(call.method, 'POST');
+      expect(call.path, '/v1/matching/help-requests/request-1/select');
+      // Not `tutor_id`: that spelling is refused by `RequestSchema`, which reads a
+      // plainly-named user id in a body as a primary key that leaked onto the
+      // wire. A test that asserted the shorter name would pass locally and 422 in
+      // production.
+      expect(call.body, {'candidate_tutor_id': 'tutor-1'});
+      // And the answer is a request waiting on a tutor, not a booking. A client
+      // that could not see the difference here would say "booked" on the strength
+      // of a 200.
+      expect(request.status, HelpRequestStatus.pendingConfirmation);
+      expect(request.isAwaitingTutor, isTrue);
+      expect(request.matchedTutorId, 'tutor-1');
+    });
+
+    test(
+      'a refusal of the named tutor is a ValidationFailure naming it',
+      () async {
+        // The API re-derives the candidates for the request's own unit and refuses
+        // a tutor who is not among them, however confidently the client names them.
+        // This is the path a stale list takes a student down, and the field error is
+        // what lets the screen put it next to the row they tapped.
+        server.reply(
+          422,
+          _problem(
+            detail: 'That tutor cannot be chosen for this help request.',
+            errors: {
+              'candidate_tutor_id':
+                  'not an eligible tutor for this course unit',
+            },
+          ),
+        );
+
+        await expectLater(
+          repository.selectTutor(
+            requestId: 'request-1',
+            candidateTutorId: 'tutor-9',
+          ),
+          throwsA(
+            isA<ValidationFailure>().having(
+              (failure) => failure.fieldErrors,
+              'fieldErrors',
+              containsPair('candidate_tutor_id', isNotEmpty),
+            ),
+          ),
+        );
+      },
+    );
+
+    test('asking twice is a ConflictFailure, not a second tutor', () async {
+      server.reply(409, _problem(status: 409, title: 'Conflict'));
+
+      await expectLater(
+        repository.selectTutor(
+          requestId: 'request-1',
+          candidateTutorId: 'tutor-2',
+        ),
+        throwsA(isA<ConflictFailure>()),
+      );
+    });
+
+    test(
+      'an ended session is an AuthFailure, so a screen can send them back',
+      () async {
+        server.reply(401, _problem(status: 401, title: 'Unauthenticated'));
+
+        await expectLater(
+          repository.selectTutor(
+            requestId: 'request-1',
+            candidateTutorId: 'tutor-1',
+          ),
+          throwsA(isA<AuthFailure>()),
+        );
+      },
+    );
+
+    test('the student can read what became of their own request', () async {
+      server.reply(200, [_helpResponse(status: 'declined')]);
+
+      final mine = await repository.myHelpRequests();
+
+      expect(server.calls.single.path, '/v1/matching/help-requests/me');
+      // The only source a student has for "they declined". A screen that cannot
+      // read this keeps saying "not yet confirmed" after the API recorded a
+      // refusal, which is the one sentence here that can become false on its own.
+      expect(mine.single.isDeclined, isTrue);
+    });
+  });
+
+  group('answering a request that named this tutor', () {
+    test('reads the awaiting list from the literal path', () async {
+      server.reply(200, [
+        _helpResponse(
+          status: 'pending_confirmation',
+          matchedTutorId: 'tutor-1',
+        ),
+      ]);
+
+      final awaiting = await repository.requestsAwaitingMe();
+
+      // The literal segment, not `help-requests/{id}`. FastAPI matches in
+      // declaration order, so this path being reachable at all is a property of
+      // the route table and not something the client controls -- asserting the
+      // exact string is what notices the API moving it.
+      expect(server.calls.single.method, 'GET');
+      expect(
+        server.calls.single.path,
+        '/v1/matching/help-requests/awaiting-me',
+      );
+      expect(awaiting.single.isAwaitingTutor, isTrue);
+    });
+
+    test('an empty list is a list, not a failure', () async {
+      // For a tutor nobody has chosen yet this is the ordinary answer, and it
+      // must not put a permission error on a screen that simply has nothing.
+      server.reply(200, const []);
+
+      expect(await repository.requestsAwaitingMe(), isEmpty);
+    });
+
+    test('turning a request down sends no body and records the refusal', () async {
+      server.reply(
+        200,
+        _helpResponse(status: 'declined', matchedTutorId: 'tutor-1'),
+      );
+
+      final declined = await repository.declineHelpRequest(
+        requestId: 'request-1',
+      );
+
+      final call = server.calls.single;
+      expect(call.method, 'POST');
+      expect(call.path, '/v1/matching/help-requests/request-1/decline');
+      // No body: the decision is entirely the tutor's, so there is nothing for
+      // them to say beyond making it.
+      expect(call.body, isNull);
+      // The tutor is kept on a declined request, because a student cannot
+      // reconstruct who turned them down from a status word.
+      expect(declined.status, HelpRequestStatus.declined);
+      expect(declined.matchedTutorId, 'tutor-1');
+    });
+
+    test("someone else's request is a NotFoundFailure", () async {
+      // Not a 403: "it exists but is not yours" is an answer, and the API gives
+      // the same one as for an id that was never issued.
+      server.reply(404, _problem(status: 404, title: 'Not found'));
+
+      await expectLater(
+        repository.declineHelpRequest(requestId: 'request-9'),
+        throwsA(isA<NotFoundFailure>()),
+      );
+    });
+
+    test('a second refusal of one request is a ConflictFailure', () async {
+      // Declined is terminal. A tutor whose first tap landed and whose second did
+      // not get an answer must be told so, rather than seeing a spinner or a
+      // request that appears to go back to waiting.
+      server.reply(409, _problem(status: 409, title: 'Conflict'));
+
+      await expectLater(
+        repository.declineHelpRequest(requestId: 'request-1'),
+        throwsA(isA<ConflictFailure>()),
+      );
+    });
+
+    test(
+      'an unreadable row in the list is a ServerFailure, not a crash',
+      () async {
+        // One bad row must not take the whole list down as a bare `FormatException`
+        // on a tutor's screen.
+        server.reply(200, [_helpResponse()..remove('topic')]);
+
+        await expectLater(
+          repository.requestsAwaitingMe(),
+          throwsA(isA<ServerFailure>()),
+        );
+      },
+    );
   });
 }

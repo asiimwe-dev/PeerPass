@@ -109,7 +109,13 @@ async def test_create_session_from_help_request_and_generate_pin(db_session):
         select(HelpRequest).where(HelpRequest.public_id == request.id)
     )
     help_request.matched_tutor_id = tutor.id
-    help_request.status = HelpRequestStatus.MATCHED
+    # `PENDING_CONFIRMATION`, not `MATCHED`: that is the state the student choosing
+    # this tutor establishes, and `create_session` is what moves it to `MATCHED`.
+    # The tests below are about PINs and the session clock, so they start from the
+    # state a chosen request is actually in rather than from the one the
+    # confirmation produces. Who may confirm is asserted in
+    # `test_help_request_selection.py`.
+    help_request.status = HelpRequestStatus.PENDING_CONFIRMATION
     await db_session.commit()
 
     session = await session_service.create_session(
@@ -150,7 +156,13 @@ async def test_starting_a_session_requires_the_correct_pin(db_session):
         select(HelpRequest).where(HelpRequest.public_id == request.id)
     )
     help_request.matched_tutor_id = tutor.id
-    help_request.status = HelpRequestStatus.MATCHED
+    # `PENDING_CONFIRMATION`, not `MATCHED`: that is the state the student choosing
+    # this tutor establishes, and `create_session` is what moves it to `MATCHED`.
+    # The tests below are about PINs and the session clock, so they start from the
+    # state a chosen request is actually in rather than from the one the
+    # confirmation produces. Who may confirm is asserted in
+    # `test_help_request_selection.py`.
+    help_request.status = HelpRequestStatus.PENDING_CONFIRMATION
     await db_session.commit()
     created = await session_service.create_session(
         db_session,
@@ -211,7 +223,13 @@ async def test_a_session_without_a_stored_pin_rejects_every_candidate(db_session
         select(HelpRequest).where(HelpRequest.public_id == request.id)
     )
     help_request.matched_tutor_id = tutor.id
-    help_request.status = HelpRequestStatus.MATCHED
+    # `PENDING_CONFIRMATION`, not `MATCHED`: that is the state the student choosing
+    # this tutor establishes, and `create_session` is what moves it to `MATCHED`.
+    # The tests below are about PINs and the session clock, so they start from the
+    # state a chosen request is actually in rather than from the one the
+    # confirmation produces. Who may confirm is asserted in
+    # `test_help_request_selection.py`.
+    help_request.status = HelpRequestStatus.PENDING_CONFIRMATION
     await db_session.commit()
     created = await session_service.create_session(
         db_session,
@@ -255,7 +273,13 @@ async def test_the_correct_pin_is_accepted_despite_surrounding_whitespace(db_ses
         select(HelpRequest).where(HelpRequest.public_id == request.id)
     )
     help_request.matched_tutor_id = tutor.id
-    help_request.status = HelpRequestStatus.MATCHED
+    # `PENDING_CONFIRMATION`, not `MATCHED`: that is the state the student choosing
+    # this tutor establishes, and `create_session` is what moves it to `MATCHED`.
+    # The tests below are about PINs and the session clock, so they start from the
+    # state a chosen request is actually in rather than from the one the
+    # confirmation produces. Who may confirm is asserted in
+    # `test_help_request_selection.py`.
+    help_request.status = HelpRequestStatus.PENDING_CONFIRMATION
     await db_session.commit()
     created = await session_service.create_session(
         db_session,
@@ -290,7 +314,13 @@ async def test_marking_a_session_complete_stops_the_clock(db_session):
         select(HelpRequest).where(HelpRequest.public_id == request.id)
     )
     help_request.matched_tutor_id = tutor.id
-    help_request.status = HelpRequestStatus.MATCHED
+    # `PENDING_CONFIRMATION`, not `MATCHED`: that is the state the student choosing
+    # this tutor establishes, and `create_session` is what moves it to `MATCHED`.
+    # The tests below are about PINs and the session clock, so they start from the
+    # state a chosen request is actually in rather than from the one the
+    # confirmation produces. Who may confirm is asserted in
+    # `test_help_request_selection.py`.
+    help_request.status = HelpRequestStatus.PENDING_CONFIRMATION
     await db_session.commit()
     created = await session_service.create_session(
         db_session,
@@ -327,3 +357,147 @@ async def test_marking_a_session_complete_stops_the_clock(db_session):
         select(Session).where(Session.public_id == created.id)
     )
     assert session_row is not None and session_row.status is SessionStatus.COMPLETED
+
+
+async def test_completing_through_the_lifecycle_banks_minutes_and_counts_the_session(
+    db_session,
+):
+    """The accrual has to happen on the path a client actually takes.
+
+    Every other test of the tutor's counters seeds `completed_sessions` and
+    `certified_minutes` directly, so the wiring between `transition_session` and
+    `record_completion` was never asserted by anything. It was broken: the
+    transition passed a row that was not yet `completed` to a function that
+    banks only completed sessions, so it returned early every time and both
+    counters stayed at zero no matter how many sessions a tutor taught.
+
+    The consequence was not only a certificate nobody could earn. `completed_
+    sessions` is half of the promotion gate, so `_recompute_standing` read zero
+    and pinned every tutor at `probationary` for the life of the account --
+    invariant that verified standing is earned, never claimed, was unreachable
+    through the app.
+
+    Three sessions, because three is the promotion threshold: the gate is what
+    this pins, and a test asserting one session would still pass with the
+    counter stuck at one forever.
+    """
+    student, tutor, course_unit = await _seed_session_data(db_session)
+    profile = await db_session.scalar(
+        select(TutorProfile).where(TutorProfile.user_id == tutor.id)
+    )
+    assert profile is not None
+    sessions_before = profile.completed_sessions
+    minutes_before = profile.certified_minutes
+
+    banked = 0
+    for index in range(3):
+        request = await matching_service.create_help_request(
+            db_session,
+            student,
+            HelpRequestCreate(
+                course_unit_id=course_unit.public_id, topic=f"topic {index}"
+            ),
+        )
+        help_request = await db_session.scalar(
+            select(HelpRequest).where(HelpRequest.public_id == request.id)
+        )
+        help_request.matched_tutor_id = tutor.id
+        help_request.status = HelpRequestStatus.PENDING_CONFIRMATION
+        await db_session.commit()
+        created = await session_service.create_session(
+            db_session,
+            tutor,
+            SessionCreate(
+                help_request_id=request.id,
+                course_unit_id=course_unit.public_id,
+                topic=f"topic {index}",
+                duration_minutes=30,
+            ),
+        )
+        started = await session_service.transition_session(
+            db_session,
+            tutor,
+            created.id,
+            SessionTransitionRequest(
+                status=SessionStatus.IN_PROGRESS, pin=created.session_pin
+            ),
+        )
+        completed = await session_service.transition_session(
+            db_session,
+            tutor,
+            started.id,
+            SessionTransitionRequest(status=SessionStatus.COMPLETED),
+        )
+        banked += completed.duration_minutes
+
+    await db_session.refresh(profile)
+    assert banked > 0
+    assert profile.completed_sessions == sessions_before + 3
+    assert profile.certified_minutes == minutes_before + banked
+
+
+async def test_a_session_is_banked_once_even_across_repeated_calls(db_session):
+    """The accrual is not a function of how often a client asks.
+
+    `SESSION_TRANSITIONS` gives `completed` an empty allowed set, so a second
+    `completed` transition is refused before it reaches the accrual. The counter
+    is asserted directly rather than through the rejection so that the reason
+    the guard exists is visible: a completed session that could be banked twice
+    would inflate both the hours behind a certificate and the session count
+    behind promotion, and inflating either is a way to earn standing.
+    """
+    student, tutor, course_unit = await _seed_session_data(db_session)
+    profile = await db_session.scalar(
+        select(TutorProfile).where(TutorProfile.user_id == tutor.id)
+    )
+    assert profile is not None
+    sessions_before = profile.completed_sessions
+    minutes_before = profile.certified_minutes
+    request = await matching_service.create_help_request(
+        db_session,
+        student,
+        HelpRequestCreate(course_unit_id=course_unit.public_id, topic="sorting"),
+    )
+    help_request = await db_session.scalar(
+        select(HelpRequest).where(HelpRequest.public_id == request.id)
+    )
+    help_request.matched_tutor_id = tutor.id
+    help_request.status = HelpRequestStatus.PENDING_CONFIRMATION
+    await db_session.commit()
+    created = await session_service.create_session(
+        db_session,
+        tutor,
+        SessionCreate(
+            help_request_id=request.id,
+            course_unit_id=course_unit.public_id,
+            topic="sorting",
+            duration_minutes=45,
+        ),
+    )
+    started = await session_service.transition_session(
+        db_session,
+        tutor,
+        created.id,
+        SessionTransitionRequest(
+            status=SessionStatus.IN_PROGRESS, pin=created.session_pin
+        ),
+    )
+    completed = await session_service.transition_session(
+        db_session,
+        tutor,
+        started.id,
+        SessionTransitionRequest(status=SessionStatus.COMPLETED),
+    )
+    banked = completed.duration_minutes
+
+    with pytest.raises(ValidationProblem):
+        await session_service.transition_session(
+            db_session,
+            tutor,
+            started.id,
+            SessionTransitionRequest(status=SessionStatus.COMPLETED),
+        )
+
+    await db_session.refresh(profile)
+    assert profile.completed_sessions == sessions_before + 1
+    assert profile.certified_minutes == minutes_before + banked

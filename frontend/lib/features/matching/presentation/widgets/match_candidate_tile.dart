@@ -9,10 +9,34 @@ import 'package:peerpass/features/matching/data/models/match_result.dart';
 /// it is longer than a rail, it is read top to bottom, and each row carries the
 /// unit's grade as well as the tutor. The rail's card would put the same four
 /// fields in a 200pt box that the screen has the whole width for.
+///
+/// [onAsk] is what makes the list usable rather than a reading of one. It is
+/// null on a tutor who has already been asked, which the caller expresses by
+/// passing null rather than by passing a callback that does nothing -- a control
+/// that looks pressable and does nothing is worse than no control.
 class MatchCandidateTile extends StatelessWidget {
-  const MatchCandidateTile({required this.candidate, super.key});
+  const MatchCandidateTile({
+    required this.candidate,
+    required this.askLabel,
+    this.onAsk,
+    this.busy = false,
+    super.key,
+  });
 
   final MatchCandidate candidate;
+
+  /// The button's wording, so the sentence about this tutor is built once.
+  final String askLabel;
+
+  /// Called when the student asks this tutor, or null when they already have.
+  final VoidCallback? onAsk;
+
+  /// Whether this student's request for this tutor is in flight.
+  ///
+  /// Only [onAsk]'s own row is busy. A list where every row disables itself while
+  /// one is being sent leaves the student unable to tell which tutor they were
+  /// choosing.
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +78,14 @@ class MatchCandidateTile extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: AppDimens.md),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonal(
+                onPressed: onAsk,
+                child: Text(busy ? 'Sending…' : askLabel),
+              ),
+            ),
           ],
         ),
       ),
@@ -93,10 +125,8 @@ class _StandingChip extends StatelessWidget {
         scheme.tertiaryContainer,
         scheme.onTertiaryContainer,
       ),
-      TutorStanding.suspended || null => (
-        scheme.errorContainer,
-        scheme.onErrorContainer,
-      ),
+      TutorStanding.suspended ||
+      null => (scheme.errorContainer, scheme.onErrorContainer),
     };
 
     return Container(

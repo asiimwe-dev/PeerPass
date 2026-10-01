@@ -20,6 +20,16 @@ class FakeSessionsRepository implements SessionsRepository {
 
   final List<SessionModel> _sessions;
 
+  /// The tutee a confirmed session is attributed to.
+  ///
+  /// Set by [withPendingStudent] rather than invented at the point of use, so a
+  /// test that confirms a request can assert the resulting session belongs to the
+  /// student who asked rather than to nobody.
+  String _pendingTuteeId = 'student-1';
+
+  /// The tutor a confirmed session is attributed to.
+  String _pendingTutorId = 'tutor-1';
+
   /// The sessions the API would return, newest first.
   List<SessionModel> get sessions => List<SessionModel>.unmodifiable(_sessions);
 
@@ -46,6 +56,76 @@ class FakeSessionsRepository implements SessionsRepository {
 
   /// The sessions passed to [endSession], in order.
   final List<String> endedSessionIds = [];
+
+  /// What every [confirmRequest] was called with, in order.
+  ///
+  /// Recorded rather than inferred from the created session, so a test can assert
+  /// on the duration the tutor actually typed. The created session echoes it, but
+  /// only because this fake set it that way -- which is the thing under suspicion.
+  final List<({String requestId, String courseUnitId, String topic, int durationMinutes})>
+  confirmations = [];
+
+  /// Confirms a request the way the API does: refused unless it names a session
+  /// that is already confirmed for that request.
+  ///
+  /// The refusal is modelled rather than stubbed because a double confirmation is
+  /// the failure a phone actually produces, and a fake that always succeeded would
+  /// let a screen ship a button that can be tapped twice into two sessions.
+  @override
+  Future<SessionModel> confirmRequest({
+    required String requestId,
+    required String courseUnitId,
+    required String topic,
+    required int durationMinutes,
+  }) async {
+    confirmations.add((
+      requestId: requestId,
+      courseUnitId: courseUnitId,
+      topic: topic,
+      durationMinutes: durationMinutes,
+    ));
+
+    final index = _sessions.indexWhere(
+      (session) => session.helpRequestId == requestId,
+    );
+    if (index != -1) {
+      throw const ConflictFailure(
+        'This help request is not waiting for your answer.',
+      );
+    }
+    if (durationMinutes < 1) {
+      throw const ValidationFailure(
+        'That length is not one the API accepts.',
+        fieldErrors: {'duration_minutes': 'must be at least 1'},
+      );
+    }
+
+    final created = SessionModel.fromJson({
+      'id': 'session-from-$requestId',
+      'tutee_id': _pendingTuteeId,
+      'tutor_id': _pendingTutorId,
+      'course_unit_id': courseUnitId,
+      'topic': topic,
+      'status': 'scheduled',
+      'duration_minutes': durationMinutes,
+      'is_rated': false,
+      'created_at': '2026-03-01T08:00:00Z',
+      'session_pin': '42',
+      'help_request_id': requestId,
+    });
+    _sessions.add(created);
+    return created;
+  }
+
+  /// Points the fake's confirmed sessions at a student and tutor.
+  ///
+  /// Returns nothing rather than `this`: a builder returning itself invites
+  /// `FakeSessionsRepository()..withPendingStudent(...)` at a call site that then
+  /// reads as though the value were new.
+  void withPendingStudent(String tuteeId, {String? tutorId}) {
+    _pendingTuteeId = tuteeId;
+    if (tutorId != null) _pendingTutorId = tutorId;
+  }
 
   @override
   Future<List<SessionModel>> sessionsForMe() async => sessions;

@@ -41,6 +41,8 @@ class University(Base, TimestampMixin):
     )
 
     course_units: Mapped[list[CourseUnit]] = relationship(back_populates="university")
+    faculties: Mapped[list[Subject]] = relationship(back_populates="university")
+    programs: Mapped[list[Program]] = relationship(back_populates="university")
     grading_scale: Mapped[GradingScale | None] = relationship(
         back_populates="universities"
     )
@@ -71,12 +73,69 @@ class Subject(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid7)
     public_id: Mapped[uuid.UUID] = public_id_column()
 
-    name: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    __table_args__ = (
+        UniqueConstraint("university_id", "name", name="faculty_name_per_university"),
+    )
+
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    university_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("universities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
 
     course_units: Mapped[list[CourseUnit]] = relationship(back_populates="subject")
+    university: Mapped[University | None] = relationship(back_populates="faculties")
+    programs: Mapped[list[Program]] = relationship(back_populates="faculty")
+
+    @property
+    def university_public_id(self) -> uuid.UUID | None:
+        return self.university.public_id if self.university else None
 
     def __repr__(self) -> str:
         return f"<Subject {self.name}>"
+
+
+class Program(Base, TimestampMixin):
+    """A degree or postgraduate offering under a university faculty."""
+
+    __tablename__ = "programs"
+    __table_args__ = (
+        UniqueConstraint(
+            "university_id",
+            "faculty_id",
+            "name",
+            name="program_name_per_faculty",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid7)
+    public_id: Mapped[uuid.UUID] = public_id_column()
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    level: Mapped[str] = mapped_column(String(32), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    university_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("universities.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    faculty_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("subjects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    university: Mapped[University] = relationship(back_populates="programs")
+    faculty: Mapped[Subject] = relationship(back_populates="programs")
+
+    @property
+    def university_public_id(self) -> uuid.UUID:
+        return self.university.public_id
+
+    @property
+    def faculty_public_id(self) -> uuid.UUID:
+        return self.faculty.public_id
 
 
 class CourseUnit(Base, TimestampMixin):

@@ -3,6 +3,7 @@ import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/course_unit.dart';
 import 'package:peerpass/core/network/network_exceptions.dart';
 import 'package:peerpass/features/matching/data/datasources/remote_matching_datasource.dart';
+import 'package:peerpass/features/matching/data/models/help_request.dart';
 import 'package:peerpass/features/matching/data/models/match_result.dart';
 import 'package:peerpass/features/matching/data/repositories/matching_repository.dart';
 
@@ -38,6 +39,70 @@ class RemoteMatchingRepository implements MatchingRepository {
           widenToSubject: widenToSubject,
           limit: limit,
         ),
+      ),
+    );
+  }
+
+  @override
+  Future<List<HelpRequest>> myHelpRequests() {
+    return _guard(
+      () async => [
+        for (final row in await _remote.myHelpRequests())
+          HelpRequest.fromJson(row),
+      ],
+    );
+  }
+
+  @override
+  Future<HelpRequest> createHelpRequest({
+    required String courseUnitId,
+    required String topic,
+    String? description,
+  }) {
+    return _guard(
+      () async => HelpRequest.fromJson(
+        await _remote.createHelpRequest(
+          courseUnitId: courseUnitId,
+          topic: topic,
+          description: description,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<HelpRequest> selectTutor({
+    required String requestId,
+    required String candidateTutorId,
+  }) {
+    return _guard(
+      () async => HelpRequest.fromJson(
+        await _remote.selectTutor(
+          requestId: requestId,
+          candidateTutorId: candidateTutorId,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<List<HelpRequest>> requestsAwaitingMe() {
+    // Each row is parsed inside the guard rather than in a `map` outside it: one
+    // unreadable row is a server fault, and a `fromJson` that threw past the
+    // translation here would reach the screen as a bare `FormatException`.
+    return _guard(
+      () async => [
+        for (final row in await _remote.requestsAwaitingMe())
+          HelpRequest.fromJson(row),
+      ],
+    );
+  }
+
+  @override
+  Future<HelpRequest> declineHelpRequest({required String requestId}) {
+    return _guard(
+      () async => HelpRequest.fromJson(
+        await _remote.declineHelpRequest(requestId: requestId),
       ),
     );
   }

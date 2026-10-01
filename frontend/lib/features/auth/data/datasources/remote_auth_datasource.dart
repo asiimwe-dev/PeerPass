@@ -107,6 +107,15 @@ class RemoteAuthDatasource {
     );
   }
 
+  /// Anonymises the caller's own account.
+  ///
+  /// `204` with no body, so there is nothing to parse and no representation of
+  /// the account to keep in step on the client. The success case is the status
+  /// code itself.
+  Future<void> deleteAccount() async {
+    await _dio.delete<void>('/v1/users/me');
+  }
+
   /// The caller's own record, for a cold start that has a session but no profile.
   Future<Map<String, dynamic>> me() async {
     final response = await _dio.get<Map<String, dynamic>>('/v1/auth/me');

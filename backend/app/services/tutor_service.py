@@ -111,11 +111,11 @@ async def list_top_tutors(
         entries.append(
             TutorRailEntry(
                 user_id=tutor.public_id,
-                # `full_name` is nullable by design -- a student can hold an
-                # account they have not named -- and the email is the only other
-                # thing there is to show. Same fallback `matching_service` uses,
-                # so a tutor is labelled the same way on both screens.
-                full_name=tutor.full_name or tutor.email,
+                # `User.display_name`, not a fallback written out here: `full_name`
+                # is nullable by design (a student can hold an account they have
+                # not named), and a deleted tutor has neither a name nor an
+                # address worth showing. One definition covers all three.
+                full_name=tutor.display_name,
                 standing=profile.standing,
                 # Read through the model rather than recomputed here, so the rail
                 # shows the same `Decimal` the promotion rule was applied with.
@@ -169,7 +169,7 @@ async def get_tutor_detail(
     return TutorDetailResponse(
         profile=TutorProfileSummary(
             user_id=tutor.public_id,
-            full_name=tutor.full_name or tutor.email,
+            full_name=tutor.display_name,
             standing=profile.standing,
             average_rating=profile.average_rating,
             completed_sessions=profile.completed_sessions,

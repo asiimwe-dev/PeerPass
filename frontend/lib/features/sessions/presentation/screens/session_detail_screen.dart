@@ -23,10 +23,10 @@ import 'package:peerpass/features/sessions/presentation/widgets/session_status_c
 /// a move and renders whatever comes back, including a refusal -- so there is no
 /// second state machine here to fall out of step with the server's.
 ///
-/// A rating is offered, never required. `POST /v1/ratings/{session_id}` is a
-/// separate request and a session stays valid without one, so the screen makes
-/// no attempt to hold anyone here: the back button is the way out of every state
-/// on it.
+/// A completed session must be rated by the student before this quality loop is
+/// complete. `POST /v1/ratings/{session_id}` is a separate request, so this
+/// screen keeps the completed session visible and sends the student to the
+/// required form instead of treating the rating as optional.
 class SessionDetailScreen extends ConsumerWidget {
   const SessionDetailScreen({required this.sessionId, super.key});
 

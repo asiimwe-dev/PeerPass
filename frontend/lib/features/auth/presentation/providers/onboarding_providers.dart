@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/state/session.dart';
+import 'package:peerpass/features/auth/data/models/academic_fallback.dart';
+import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
 
 /// Which step of the wizard the student is on.
@@ -79,9 +81,9 @@ class OnboardingState {
     OnboardingStep.name => fullName.trim().isNotEmpty,
     OnboardingStep.academicContext =>
       universityId != null &&
-      facultyId != null &&
-      yearOfStudy != null &&
-      academicDataConsented,
+          facultyId != null &&
+          yearOfStudy != null &&
+          academicDataConsented,
     OnboardingStep.primaryModules => primaryModuleIds.isNotEmpty,
   };
 
@@ -177,10 +179,7 @@ class OnboardingController extends Notifier<OnboardingState> {
     // belonged to the old one is dropped rather than left to be submitted with
     // the new.
     final changed = publicId != state.universityId;
-    state = state.copyWith(
-      universityId: publicId,
-      clearFaculty: changed,
-    );
+    state = state.copyWith(universityId: publicId, clearFaculty: changed);
   }
 
   void setFaculty(String? publicId) {
@@ -212,6 +211,38 @@ class OnboardingController extends Notifier<OnboardingState> {
     if (previous != null) state = state.copyWith(step: previous);
   }
 
+  Future<(String, String)> _resolveAcademicSelection({
+    required String universityId,
+    required String facultyId,
+  }) async {
+    if (!isMustFallbackUniversity(universityId)) {
+      return (universityId, facultyId);
+    }
+
+    final repository = ref.read(authRepositoryProvider);
+    final universities = await repository.universities();
+    final university = universities.firstWhere(
+      (candidate) => candidate.name == mustFallbackUniversityName,
+      orElse: () => throw const ValidationFailure(
+        'MUST options are temporarily unavailable. Try again in a moment.',
+      ),
+    );
+    final facultyName = mustFallbackFacultyName(facultyId);
+    if (facultyName == null) {
+      throw const ValidationFailure('Choose a faculty before continuing.');
+    }
+    final faculties = await repository.faculties(
+      universityId: university.publicId,
+    );
+    final faculty = faculties.firstWhere(
+      (candidate) => candidate.name == facultyName,
+      orElse: () => throw const ValidationFailure(
+        'MUST faculties are temporarily unavailable. Try again in a moment.',
+      ),
+    );
+    return (university.publicId, faculty.publicId);
+  }
+
   /// Saves the current step, then advances.
   ///
   /// Returns whether it advanced. A failure is left to the caller to render, and
@@ -228,18 +259,28 @@ class OnboardingController extends Notifier<OnboardingState> {
         case OnboardingStep.name:
           await controller.updateProfile(fullName: state.fullName.trim());
         case OnboardingStep.academicContext:
+          final resolved = await _resolveAcademicSelection(
+            universityId: state.universityId!,
+            facultyId: state.facultyId!,
+          );
           await controller.updateProfile(
-            universityId: state.universityId,
-            facultyId: state.facultyId,
+            universityId: resolved.$1,
+            facultyId: resolved.$2,
             yearOfStudy: state.yearOfStudy,
             // Only sent once the box is ticked. Sending `false` would be a
             // request to record the absence of consent, which is not what the
             // API's field means.
             academicDataConsented: true,
           );
+          state = state.copyWith(
+            universityId: resolved.$1,
+            facultyId: resolved.$2,
+          );
         case OnboardingStep.primaryModules:
           // We will update the authController to accept primaryModuleIds soon
-          await controller.updateProfile(primaryCourseUnitIds: state.primaryModuleIds);
+          await controller.updateProfile(
+            primaryCourseUnitIds: state.primaryModuleIds,
+          );
       }
     } on Failure catch (failure) {
       // The wizard does not advance, and the reason is kept so the screen can
@@ -250,10 +291,7 @@ class OnboardingController extends Notifier<OnboardingState> {
     } on Object {
       // A programming error rather than an API complaint. Still has to surface
       // as a refusal to advance, so it cannot fall through as a success.
-      state = state.copyWith(
-        saving: false,
-        failure: const UnknownFailure(),
-      );
+      state = state.copyWith(saving: false, failure: const UnknownFailure());
       return false;
     }
 

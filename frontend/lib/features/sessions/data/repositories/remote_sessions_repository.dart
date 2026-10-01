@@ -46,6 +46,25 @@ class RemoteSessionsRepository implements SessionsRepository {
   }
 
   @override
+  Future<SessionModel> confirmRequest({
+    required String requestId,
+    required String courseUnitId,
+    required String topic,
+    required int durationMinutes,
+  }) {
+    return _guard(
+      () async => SessionModel.fromJson(
+        await _remote.createFromRequest(
+          requestId,
+          courseUnitId: courseUnitId,
+          topic: topic,
+          durationMinutes: durationMinutes,
+        ),
+      ),
+    );
+  }
+
+  @override
   Future<SessionModel> endSession(String sessionId) {
     return _guard(
       () async => SessionModel.fromJson(

@@ -11,12 +11,11 @@ import 'package:peerpass/features/sessions/data/models/session_model.dart';
 /// renders a message and never has to know whether the API answered with a socket
 /// error, a 400, or a body that was not the shape it documents.
 ///
-/// Deliberately narrow. Session creation, cancellation and the tutor rating
-/// summary are the API's but have no screen in this release: a session is created
-/// by accepting a matched help request, and the client has no matching or help
-/// request flow to accept one from, so a method for it would be a contract nothing
-/// calls. Cancellation needs a reason from the user and its own confirmation
-/// journey. Adding either is a screen first and a method second.
+/// Deliberately narrow. Session cancellation and the tutor rating summary are
+/// the API's but have no screen in this release: cancellation needs a reason from
+/// the user and its own confirmation journey, and a tutor's rating summary is a
+/// separate screen about their own record rather than one of these. Adding either
+/// is a screen first and a method second.
 abstract interface class SessionsRepository {
   /// Every session the signed-in user is part of, in the order the API returns.
   Future<List<SessionModel>> sessionsForMe();
@@ -31,6 +30,31 @@ abstract interface class SessionsRepository {
   /// and locks nobody out, because a lock-out enforced on a device is one a
   /// student clears by reinstalling the app.
   Future<SessionModel> verifyPin({required String sessionId, required String pin});
+
+  /// Confirms a help request the student named this tutor on, and returns the
+  /// session that confirmation created.
+  ///
+  /// The one way a session comes into being. It is not a general "create a
+  /// session" on purpose: the API accepts this only for a request that already
+  /// names the caller and is waiting on an answer, so a tutor cannot open a
+  /// session against work nobody asked them for, and cannot confirm a second
+  /// request the student never chose them for.
+  ///
+  /// [topic] and [courseUnitId] are what the request already says, passed
+  /// through rather than re-derived. The API checks the unit against the request
+  /// and refuses a mismatch, and it is the only place that answer can be trusted,
+  /// so a client that put its own unit here would be refused rather than believed.
+  ///
+  /// A request the student has since abandoned, or that another confirmation
+  /// already took, comes back as a `ConflictFailure`. A lost race is a conflict
+  /// and not a crash: the session is created by a unique constraint on the
+  /// request, and two taps on a phone produce two requests for one answer.
+  Future<SessionModel> confirmRequest({
+    required String requestId,
+    required String courseUnitId,
+    required String topic,
+    required int durationMinutes,
+  });
 
   /// Ends a live session, returning it as completed.
   Future<SessionModel> endSession(String sessionId);

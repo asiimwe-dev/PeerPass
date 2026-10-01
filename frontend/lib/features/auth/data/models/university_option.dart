@@ -13,6 +13,7 @@ class UniversityOption {
     required this.publicId,
     required this.name,
     this.gradingScaleId,
+    this.isFallback = false,
   });
 
   factory UniversityOption.fromJson(Map<String, dynamic> json) {
@@ -29,16 +30,19 @@ class UniversityOption {
 
   final String? gradingScaleId;
 
+  final bool isFallback;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is UniversityOption &&
           other.publicId == publicId &&
           other.name == name &&
-          other.gradingScaleId == gradingScaleId;
+          other.gradingScaleId == gradingScaleId &&
+          other.isFallback == isFallback;
 
   @override
-  int get hashCode => Object.hash(publicId, name, gradingScaleId);
+  int get hashCode => Object.hash(publicId, name, gradingScaleId, isFallback);
 
   @override
   String toString() => 'UniversityOption($publicId, $name)';

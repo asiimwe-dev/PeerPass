@@ -6,7 +6,11 @@ from fastapi import APIRouter, status
 
 from app.api.deps import CurrentUser, DatabaseSession
 from app.schemas.matching import MatchRequest, MatchResponse
-from app.schemas.session import HelpRequestCreate, HelpRequestResponse
+from app.schemas.session import (
+    HelpRequestCreate,
+    HelpRequestResponse,
+    SelectTutorRequest,
+)
 from app.services import matching_service
 
 router = APIRouter(prefix="/matching", tags=["matching"])
@@ -38,6 +42,72 @@ async def list_help_requests(
 ) -> list[HelpRequestResponse]:
     """List the signed-in user's help requests."""
     return await matching_service.list_help_requests(db, caller.user)
+
+
+# Declared before `/help-requests/{request_id}` below. FastAPI matches in
+# declaration order, so a path segment that is not a UUID has to be claimed here or
+# it reaches the parameterised route and comes back as a 422 for a path that
+# exists.
+@router.get(
+    "/help-requests/awaiting-me",
+    response_model=list[HelpRequestResponse],
+    summary="Requests waiting on my confirmation",
+)
+async def list_requests_awaiting_confirmation(
+    caller: CurrentUser,
+    db: DatabaseSession,
+) -> list[HelpRequestResponse]:
+    """The help requests that named this user and are waiting on their answer.
+
+    The tutor's half of the choice: a student picks, and the tutor they picked
+    decides. Without this a tutor has no way to learn that they were chosen, which
+    would leave the student waiting on a decision nobody was ever shown.
+    """
+    return await matching_service.list_requests_awaiting_confirmation(db, caller.user)
+
+
+@router.post(
+    "/help-requests/{request_id}/select",
+    response_model=HelpRequestResponse,
+    summary="Choose a tutor for one help request",
+)
+async def select_tutor_for_request(
+    request_id: uuid.UUID,
+    payload: SelectTutorRequest,
+    caller: CurrentUser,
+    db: DatabaseSession,
+) -> HelpRequestResponse:
+    """Choose the tutor a request should wait on.
+
+    The tutor named in the body is re-checked against the request's own course
+    unit rather than taken on trust: the client is choosing from a list, and the
+    list it was given proves nothing about what that client sends next.
+    """
+    return await matching_service.select_tutor_for_request(
+        db,
+        caller.user,
+        request_id,
+        payload,
+    )
+
+
+@router.post(
+    "/help-requests/{request_id}/decline",
+    response_model=HelpRequestResponse,
+    summary="Decline a help request that named me",
+)
+async def decline_help_request(
+    request_id: uuid.UUID,
+    caller: CurrentUser,
+    db: DatabaseSession,
+) -> HelpRequestResponse:
+    """Turn down a request that is waiting on this user.
+
+    The other half of the student's choice, and a decision that stays recorded:
+    a declined request is not the same as one nobody answered, and the student
+    reads the two differently.
+    """
+    return await matching_service.decline_help_request(db, caller.user, request_id)
 
 
 @router.post(

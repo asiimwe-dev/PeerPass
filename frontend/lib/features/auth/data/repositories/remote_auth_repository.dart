@@ -107,7 +107,8 @@ class RemoteAuthRepository implements AuthRepository {
       _guard(academics.universities);
 
   @override
-  Future<List<Subject>> faculties() => _guard(academics.faculties);
+  Future<List<Subject>> faculties({required String universityId}) =>
+      _guard(() => academics.faculties(universityId: universityId));
 
   @override
   Future<List<CourseUnitOption>> courseUnits({String? universityId}) =>
@@ -173,6 +174,18 @@ class RemoteAuthRepository implements AuthRepository {
       // Nothing to do. The local session is gone, which is what the user asked
       // for, and the token is dead on the server once it expires.
     }
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    // Clear the tokens first, for the same reason as [signOut]: the user's intent
+    // is not conditional on the network. If the request below fails, this device
+    // is signed out and the account is still whole, which is a recoverable state
+    // the user can retry from. The alternative -- keeping the session so the retry
+    // is convenient -- leaves the app holding credentials for an account the
+    // user believes they have just erased.
+    await tokenStore.clear();
+    await auth.deleteAccount();
   }
 
   /// Signs in or registers, and persists the tokens before returning the user.

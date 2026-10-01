@@ -52,3 +52,47 @@ String _subject(int count) {
   if (count == 1) return 'One tutor was not proposed because';
   return '$count tutors were not proposed because';
 }
+
+/// The action on a candidate tile.
+///
+/// Stated as a question the student can refuse rather than an invitation they can
+/// only accept. Choosing a tutor is the one thing in this screen that changes
+/// another person's work queue, and "Ask them to tutor you" is the version of
+/// that a student can see they are about to send it.
+String askTutorCopy(String tutorName) => 'Ask $tutorName to tutor you';
+
+/// The tile's own label when the request has already gone to this tutor.
+///
+/// Not a second button and not a disabled one: the action is done, and a
+/// control that still looks pressable on a completed request is how a student
+/// ends up asking twice for the same thing.
+String tutorChosenCopy(String tutorName) => 'Asked $tutorName';
+
+/// The waiting state, once a tutor has been named.
+///
+/// Says "asked" and not "booked", and says what the student can do about it,
+/// because `pending_confirmation` is the platform holding a question open for
+/// somebody who has not answered it yet. A student told they are booked here
+/// would turn up to a session nobody agreed to.
+String awaitingTutorCopy(String tutorName) =>
+    'Asked $tutorName. They have not confirmed yet, so there is no session '
+    'booked. Pull down to check whether they have answered.';
+
+/// The state after the chosen tutor said no.
+///
+/// Names the outcome rather than leaving the student to infer it from an empty
+/// list, and says what to do instead, because a declined request is final and
+/// "try again" against this one would be refused by the API.
+String declinedCopy(String topic) =>
+    'Your chosen tutor turned down "$topic". You can ask for help with it '
+    'again as a new request.';
+
+/// Why a choice could not be sent, as the student's own next step.
+///
+/// Built beside the repository's own failure message rather than restating it:
+/// the repository already decided the wording once, for every screen, and a
+/// second phrasing here is the place where the two drift and the student is told
+/// something different from what the server said.
+String choiceFailureHint(String tutorName) =>
+    'Your request was not sent, so $tutorName has not been asked. '
+    'Nothing has changed and you can try again.';

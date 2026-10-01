@@ -11,8 +11,11 @@ import 'package:peerpass/features/auth/presentation/screens/onboarding_screen.da
 import 'package:peerpass/features/auth/presentation/screens/sign_in_screen.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
 import 'package:peerpass/features/home/presentation/screens/home_screen.dart';
+import 'package:peerpass/features/incentives/presentation/screens/certificate_screen.dart';
 import 'package:peerpass/features/matching/presentation/screens/course_unit_picker_screen.dart';
 import 'package:peerpass/features/matching/presentation/screens/match_results_screen.dart';
+import 'package:peerpass/features/matching/presentation/screens/tutor_requests_screen.dart';
+import 'package:peerpass/features/sessions/presentation/screens/confirm_request_screen.dart';
 import 'package:peerpass/features/sessions/presentation/screens/rate_session_screen.dart';
 import 'package:peerpass/features/sessions/presentation/screens/session_detail_screen.dart';
 import 'package:peerpass/features/sessions/presentation/screens/sessions_list_screen.dart';
@@ -31,6 +34,8 @@ abstract final class AppRoutes {
   static const String sessions = '/sessions';
   static const String tutors = '/tutors';
   static const String matching = '/matching';
+  static const String certificate = '/certificate';
+  static const String tutorRequests = '/tutor-requests';
 
   /// One tutor's profile, opened from the rail.
   ///
@@ -55,6 +60,31 @@ abstract final class AppRoutes {
   static String sessionDetailPath(String sessionId) => '$sessions/$sessionId';
 
   static String rateSessionPath(String sessionId) => '$sessions/$sessionId/rate';
+
+  /// Confirming a help request the student named this tutor on.
+  ///
+  /// A query rather than a path segment, and the reason is what the path would
+  /// have to carry: the student's question is free text, and a question is not
+  /// something to paste unescaped into a route someone can share or a link can
+  /// be truncated. [Uri] does the encoding, so a topic with a slash, an ampersand
+  /// or a question mark of its own arrives as itself.
+  ///
+  /// These are the request's own values passed back in. The alternative -- the
+  /// sessions feature fetching the request to recover them -- would make it own
+  /// the matching feature's endpoint and put the tutor's decision behind a
+  /// request that can fail for reasons unrelated to it.
+  static String confirmRequestPath({
+    required String requestId,
+    required String courseUnitId,
+    required String topic,
+  }) => Uri(
+    path: '$sessions/confirm',
+    queryParameters: <String, String>{
+      'request': requestId,
+      'unit': courseUnitId,
+      'topic': topic,
+    },
+  ).toString();
 }
 
 /// The session id out of a matched route, or the honest answer that there isn't one.
@@ -73,6 +103,38 @@ String? _idOf(GoRouterState state, String parameter) {
   final id = state.pathParameters[parameter];
   if (id == null || id.isEmpty) return null;
   return id;
+}
+
+/// What a confirmation link carries, or the honest answer that it does not.
+typedef _ConfirmRequest = ({
+  String requestId,
+  String courseUnitId,
+  String topic,
+});
+
+/// A confirmation link missing any of the three things it is made of.
+///
+/// All three or nothing. A form with a request and no unit, or a topic and no
+/// request, is a screen that renders and then fails on submit, which reads to the
+/// tutor as the app refusing them rather than as a link that was never complete.
+_ConfirmRequest? _confirmRequestOf(GoRouterState state) {
+  final params = state.uri.queryParameters;
+  final requestId = params['request'];
+  final courseUnitId = params['unit'];
+  final topic = params['topic'];
+  if (requestId == null ||
+      requestId.isEmpty ||
+      courseUnitId == null ||
+      courseUnitId.isEmpty ||
+      topic == null ||
+      topic.isEmpty) {
+    return null;
+  }
+  return (
+    requestId: requestId,
+    courseUnitId: courseUnitId,
+    topic: topic,
+  );
 }
 
 /// What a link with no id in it gets.
@@ -153,6 +215,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SessionsListScreen(),
       ),
       GoRoute(
+        path: '${AppRoutes.sessions}/confirm',
+        builder: (context, state) {
+          final confirm = _confirmRequestOf(state);
+          if (confirm == null) {
+            return const _MissingIdRoute(
+              title: 'Confirm session',
+              message: 'That link does not name a help request.',
+            );
+          }
+          return ConfirmRequestScreen(
+            requestId: confirm.requestId,
+            courseUnitId: confirm.courseUnitId,
+            topic: confirm.topic,
+          );
+        },
+      ),
+      GoRoute(
         path: '${AppRoutes.sessions}/:sessionId',
         builder: (context, state) {
           final sessionId = _sessionIdOf(state);
@@ -207,6 +286,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           }
           return MatchResultsScreen(courseUnitId: courseUnitId);
         },
+      ),
+      GoRoute(
+        path: AppRoutes.tutorRequests,
+        builder: (context, state) => const TutorRequestsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.certificate,
+        builder: (context, state) => const CertificateScreen(),
       ),
     ],
     // go_router re-evaluates this on every navigation and whenever the
@@ -276,6 +363,21 @@ String? _redirectForSignedIn(UserProfile? profile, String location) {
     return null;
   }
 
+  // The requests a tutor has been chosen for. Allowed here for the same reason as
+  // the certificate screen -- the screen asks for this account's own pending
+  // requests, and the server filters by the caller -- but without the role check,
+  // because the screen has an honest empty state to show an account that is not a
+  // tutor yet, and because refusing by role would bounce a tutor whose approval
+  // landed between two launches.
+  //
+  // Without this the guard sends the tutor straight back to the dashboard on
+  // arrival: the entry navigates, the guard undoes it, and the tile looks broken.
+  // The widget tests never saw it, because they pumped the screen directly and
+  // never came through here.
+  if (location == AppRoutes.tutorRequests) {
+    return null;
+  }
+
   // The whole sessions subtree, not just its two screens. A signed-in student who
   // follows a link to a session, or who is on the rating form for one, is exactly
   // as allowed to be there as one who walked there from home, and the guard that
@@ -286,9 +388,19 @@ String? _redirectForSignedIn(UserProfile? profile, String location) {
   // exempted home and sessions would let a student tap a tutor's card and be
   // returned to the dashboard, which reads as the app refusing to open the thing
   // they just pressed.
+  //
+  // The certificate screen is allowed for a narrower reason, and it is not the
+  // tutor-role check it looks like. It answers about the caller's own hours and
+  // only about the caller's, so there is nothing behind it for another account to
+  // read -- but the guard cannot ask that, because by the time it runs the screen
+  // has not fetched anything. Refusing the route by role would send a tutor whose
+  // profile was created between two app launches back to the dashboard, and
+  // redirecting everyone else would leave a deep link to a screen that has an
+  // honest "you are not a tutor yet" state as the only alternative.
   if (_isSessionRoute(location) ||
       _isTutorRoute(location) ||
-      _isMatchingRoute(location)) {
+      _isMatchingRoute(location) ||
+      location == AppRoutes.certificate) {
     return null;
   }
 

@@ -7,9 +7,10 @@ resulting "missing table" surfaces at runtime rather than at review.
 """
 
 from app.core.database import Base
+from app.models.audit import AdminAuditEvent
 from app.models.base import TimestampMixin, enum_column, public_id_column
 from app.models.competency import Competency
-from app.models.course_unit import CourseUnit, Subject, University
+from app.models.course_unit import CourseUnit, Program, Subject, University
 from app.models.endorsement import UnitEndorsement
 from app.models.enums import (
     COMPLETED_SESSION_STATUSES,
@@ -39,6 +40,7 @@ __all__ = [
     "MAX_RATING",
     "MIN_RATING",
     "SESSION_TRANSITIONS",
+    "AdminAuditEvent",
     "Base",
     "Competency",
     "CompetencyStatus",
@@ -47,6 +49,7 @@ __all__ = [
     "GradingScale",
     "HelpRequest",
     "HelpRequestStatus",
+    "Program",
     "Rating",
     "RefreshToken",
     "Session",

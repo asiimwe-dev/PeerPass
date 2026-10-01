@@ -83,7 +83,7 @@ both more honest and less damaging to trust than a plausible-looking stub.
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | **Accounts & Roles**      | Sign up / login, basic profile (name, faculty, year), roles: Tutee, Provisional Tutor, Verified Tutor                                                                                        | Identity and trust require clear roles from day one                |
 | **Tutor Validation**      | Self-declared course units + minimum grade (B+ / A), Provisional status on entry, filtering by competency + status                                                                           | Protects academic quality without heavy institutional integration  |
-| **Matching**              | Help request (unit + topic), list of 1–3 eligible tutors, request → accept/decline flow, simple ranking (Verified > Provisional, then rating)                                                | Delivers the core value proposition                                |
+| **Matching**              | Help request (unit + topic), list of 1–3 eligible tutors, **student selects one, that tutor confirms or declines**, simple ranking (Verified > Provisional, then rating)         | Delivers the core value proposition                                |
 | **Sessions**              | Session record on acceptance, mark as completed, basic time/note field                                                                                                                       | Creates the data needed for ratings and future incentives          |
 | **Rating & Verification** | Mandatory 1–5 rating + optional short feedback after session, running average, automatic promotion (Provisional → Verified after threshold), reduced priority for low ratings, visible badge | Closes the quality loop and makes verification earned, not claimed |
 | **Light Admin**           | Ability to view users/requests/sessions and manually adjust status if needed                                                                                                                 | Safety net during pilot                                            |
@@ -199,7 +199,8 @@ Each phase builds directly on the proven MVP loop rather than replacing it.
 
 1. **Foundation** – Users, roles, profiles
 2. **Competency layer** – Course units + self-declared grades + status
-3. **Matching** – Help requests, filtering, ranking, accept/decline
+3. **Matching** – Help requests, filtering, ranking, student selects a tutor, the
+   tutor confirms or declines
 4. **Sessions** – Create and complete session records
 5. **Rating & promotion** – Scores, averages, Provisional → Verified rules
 

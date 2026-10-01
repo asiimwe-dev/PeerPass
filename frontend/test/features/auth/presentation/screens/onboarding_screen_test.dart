@@ -103,6 +103,20 @@ class _RefusingAuthRepository extends FakeAuthRepository {
   }
 }
 
+class _UnavailableFacultyRepository extends FakeAuthRepository {
+  _UnavailableFacultyRepository()
+    : super(
+        session: _freshAccount,
+        refreshToken: 'refresh',
+        universityOptions: _universities,
+      );
+
+  @override
+  Future<List<Subject>> faculties({required String universityId}) async {
+    throw const NetworkFailure();
+  }
+}
+
 /// A container to read the session through, plus the repository behind it.
 ///
 /// Typed as the fake rather than as the contract because a test here is often
@@ -221,7 +235,7 @@ Future<_Harness> _atFilledSecondStep(WidgetTester tester) async {
   await _pumpWizard(tester, harness);
   await _completeNameStep(tester, harness);
   _chooseUniversity(harness, _university);
-  await tester.pump();
+  await tester.pumpAndSettle();
   await _chooseFacultyAndYear(tester);
   return harness;
 }
@@ -387,7 +401,7 @@ void main() {
     await _pumpWizard(tester, harness);
     await _completeNameStep(tester, harness);
     _chooseUniversity(harness, _university);
-    await tester.pump();
+    await tester.pumpAndSettle();
     await _chooseFacultyAndYear(tester);
     await _tapConsent(tester);
 
@@ -459,5 +473,40 @@ void main() {
       isFalse,
       reason: 'a university alone is not a finished step',
     );
+  });
+
+  testWidgets('an empty university catalogue keeps MUST onboarding usable', (
+    tester,
+  ) async {
+    final harness = _harness(
+      FakeAuthRepository(session: _freshAccount, refreshToken: 'refresh'),
+    );
+    await _pumpWizard(tester, harness);
+    await _completeNameStep(tester, harness);
+
+    expect(find.textContaining('Showing saved MUST options'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+    expect(find.text('University'), findsOneWidget);
+    expect(_canAdvance(tester, 'Continue'), isFalse);
+  });
+
+  testWidgets('a faculty lookup failure is visible and retryable', (
+    tester,
+  ) async {
+    final harness = _harness(_UnavailableFacultyRepository());
+    await _pumpWizard(tester, harness);
+    await _completeNameStep(tester, harness);
+    _chooseUniversity(harness, _university);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Could not load faculties. Check your connection and try again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+    expect(find.text('Faculty'), findsNothing);
+    expect(_canAdvance(tester, 'Continue'), isFalse);
   });
 }

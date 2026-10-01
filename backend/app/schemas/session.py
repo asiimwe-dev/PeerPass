@@ -47,6 +47,26 @@ class HelpRequestCreate(RequestSchema):
     )
 
 
+class SelectTutorRequest(RequestSchema):
+    """A student naming the tutor they have chosen from the proposals.
+
+    One field, and it is deliberately not enough to be trusted. The service
+    re-derives the eligible candidates for the request's own course unit and
+    refuses a tutor who is not among them, because a request body is whatever
+    the caller chose to send: invariant 1 is a server rule, and the fact that an
+    id once appeared in a list the client holds is not evidence about the tutor's
+    competency, grade, or standing now.
+
+    Called `candidate_tutor_id` rather than the bare `tutor_id` the responses
+    use, because a request body may not carry a plainly-named user id -- that
+    spelling is read as a primary key that leaked onto the wire, and
+    `test_no_request_schema_accepts_an_id_field` holds it out. What the field
+    selects is the column the response then calls `matched_tutor_id`.
+    """
+
+    candidate_tutor_id: uuid.UUID
+
+
 class HelpRequestResponse(OrmSchema):
     """A request as its owner and as a candidate tutor see it."""
 

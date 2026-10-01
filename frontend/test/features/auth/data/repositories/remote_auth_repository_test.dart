@@ -11,14 +11,15 @@ import 'package:peerpass/features/auth/data/repositories/remote_auth_repository.
 
 /// A recorded request, so a test can assert on what the client actually sent.
 class _Call {
-  _Call(this.method, this.path, this.body);
+  _Call(this.method, this.path, this.query, this.body);
 
   final String method;
   final String path;
+  final Map<String, dynamic> query;
   final Object? body;
 
   @override
-  String toString() => '$method $path $body';
+  String toString() => '$method $path $query $body';
 }
 
 /// Answers requests from a script, and records what it was asked.
@@ -48,7 +49,14 @@ class _FakeServer implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    calls.add(_Call(options.method, options.path, _decode(options.data)));
+    calls.add(
+      _Call(
+        options.method,
+        options.path,
+        options.queryParameters,
+        _decode(options.data),
+      ),
+    );
 
     final reply = _replies.removeAt(0);
     if (reply is DioException) throw reply;
@@ -462,9 +470,10 @@ void main() {
         {'id': 'subject-1', 'name': 'School of Business and Management'},
       ]);
 
-      final faculties = await repository.faculties();
+      final faculties = await repository.faculties(universityId: 'university-1');
 
       expect(server.calls.single.path, '/v1/academics/faculties');
+      expect(server.calls.single.query, {'university_id': 'university-1'});
       expect(faculties.single.name, 'School of Business and Management');
     });
   });

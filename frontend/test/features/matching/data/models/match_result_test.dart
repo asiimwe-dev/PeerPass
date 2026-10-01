@@ -60,24 +60,30 @@ void main() {
       expect(result.courseUnitId, 'unit-1');
       expect(result.widened, isTrue);
       expect(result.candidates.single.tutor.fullName, 'Grace Okello');
-      expect(result.exclusions.single.reason, MatchExclusionReason.belowThreshold);
+      expect(
+        result.exclusions.single.reason,
+        MatchExclusionReason.belowThreshold,
+      );
       expect(result.generatedAt, DateTime.utc(2026, 3, 4, 9, 12));
       // The unit-only query has no help request behind it, so the response's null
       // must not become a string the client could later try to follow.
       expect(result.requestId, isNull);
     });
 
-    test('a null request id stays null rather than becoming an empty string', () {
-      expect(MatchResult.fromJson(_response()).requestId, isNull);
-      expect(
-        MatchResult.fromJson(_response(requestId: '')).requestId,
-        isNull,
-      );
-      expect(
-        MatchResult.fromJson(_response(requestId: 'request-1')).requestId,
-        'request-1',
-      );
-    });
+    test(
+      'a null request id stays null rather than becoming an empty string',
+      () {
+        expect(MatchResult.fromJson(_response()).requestId, isNull);
+        expect(
+          MatchResult.fromJson(_response(requestId: '')).requestId,
+          isNull,
+        );
+        expect(
+          MatchResult.fromJson(_response(requestId: 'request-1')).requestId,
+          'request-1',
+        );
+      },
+    );
   });
 
   group('nobody being eligible is a result, not an absence', () {
@@ -149,15 +155,18 @@ void main() {
       expect(candidate.score, 1.0);
     });
 
-    test('a missing meets_threshold does not assert the tutor failed the bar', () {
-      // The default is the reading that does not make a claim the server did not:
-      // the engine proposed this tutor, so treat it as eligible rather than
-      // recording it as having failed a competency gate.
-      expect(
-        MatchCandidate.fromJson(_candidate(meets: null)).meetsThreshold,
-        isTrue,
-      );
-    });
+    test(
+      'a missing meets_threshold does not assert the tutor failed the bar',
+      () {
+        // The default is the reading that does not make a claim the server did not:
+        // the engine proposed this tutor, so treat it as eligible rather than
+        // recording it as having failed a competency gate.
+        expect(
+          MatchCandidate.fromJson(_candidate(meets: null)).meetsThreshold,
+          isTrue,
+        );
+      },
+    );
   });
 
   group('an exclusion', () {
@@ -190,7 +199,10 @@ void main() {
         throwsFormatException,
       );
       expect(
-        () => MatchExclusion.fromJson(const {'tutor_id': 'tutor-2', 'reason': ''}),
+        () => MatchExclusion.fromJson(const {
+          'tutor_id': 'tutor-2',
+          'reason': '',
+        }),
         throwsFormatException,
       );
     });
@@ -201,7 +213,8 @@ void main() {
     // without the time it could not say when the answer was true. Neither has a
     // neutral reading, so neither is defaulted.
     expect(
-      () => MatchResult.fromJson(const {'generated_at': '2026-03-04T09:12:00Z'}),
+      () =>
+          MatchResult.fromJson(const {'generated_at': '2026-03-04T09:12:00Z'}),
       throwsFormatException,
     );
     expect(

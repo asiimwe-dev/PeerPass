@@ -190,6 +190,21 @@ class Settings(BaseSettings):
         "to any site a student visits.",
     )
 
+    #: Hours of completed tutoring a tutor must accumulate to be issued a
+    #: certificate, in minutes. The default is 40 hours.
+    #:
+    #: Configuration rather than a constant beside `PROMOTION_MIN_SESSIONS` in
+    #: the rating service, and the reason is who changes it. Promotion is a
+    #: quality rule an engineering decision should be able to defend in review;
+    #: the certificate is an incentive a product owner tunes between pilots.
+    #: A pilot that found 40 hours unreachable should be able to lower it with
+    #: an environment variable rather than a code change and a migration.
+    certificate_required_minutes: int = Field(
+        default=2400,
+        gt=0,
+        description="Teaching minutes required for certificate eligibility.",
+    )
+
     @property
     def jwt_verification_secrets(self) -> list[str]:
         """Every key a presented token is allowed to have been signed with.

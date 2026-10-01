@@ -45,6 +45,21 @@ class SubjectResponse(OrmSchema):
 
     id: uuid.UUID = Field(validation_alias="public_id")
     name: str
+    description: str | None = None
+    university_id: uuid.UUID | None = Field(
+        default=None, validation_alias="university_public_id"
+    )
+
+
+class ProgramResponse(OrmSchema):
+    """A degree or postgraduate offering under a faculty."""
+
+    id: uuid.UUID = Field(validation_alias="public_id")
+    name: str
+    level: str
+    description: str | None = None
+    university_id: uuid.UUID = Field(validation_alias="university_public_id")
+    faculty_id: uuid.UUID = Field(validation_alias="faculty_public_id")
 
 
 class UniversityResponse(OrmSchema):

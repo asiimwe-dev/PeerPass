@@ -13,12 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DatabaseSession
-from app.models.course_unit import CourseUnit, Subject, University
+from app.models.course_unit import CourseUnit, Program, Subject, University
 from app.models.grading_scale import Grade, GradingScale
 from app.schemas.academic import (
     CourseUnitResponse,
     GradeResponse,
     GradingScaleResponse,
+    ProgramResponse,
     SubjectResponse,
     UniversityResponse,
 )
@@ -99,17 +100,41 @@ async def list_grades(
     response_model=list[SubjectResponse],
     summary="List faculties and departments",
 )
-async def list_faculties(db: DatabaseSession) -> list[SubjectResponse]:
-    """Every faculty, alphabetically.
+async def list_faculties(
+    db: DatabaseSession,
+    university_id: uuid.UUID,
+) -> list[SubjectResponse]:
+    """Every faculty for one university, alphabetically.
 
-    Not filtered by university, and that is a consequence of pointing
-    `users.faculty_id` at `subjects`: a faculty is a property of a course unit,
-    not of an institution, so the list is global while the pilot is a single
-    institution. When a second university is seeded this becomes a per-university
-    query and `subjects` needs a `university_id` of its own.
+    Faculties are owned by a university, so the selected institution is required
+    before the client can populate this list.
     """
-    result = await db.execute(select(Subject).order_by(Subject.name))
+    result = await db.execute(
+        select(Subject)
+        .options(selectinload(Subject.university))
+        .where(Subject.university_id == await _university_uuid(db, university_id))
+        .order_by(Subject.name)
+    )
     return [SubjectResponse.model_validate(row) for row in result.scalars()]
+
+
+@router.get(
+    "/programs",
+    response_model=list[ProgramResponse],
+    summary="List university faculty programs",
+)
+async def list_programs(
+    university_id: uuid.UUID,
+    db: DatabaseSession,
+) -> list[ProgramResponse]:
+    """Every seeded program for a university, ordered by faculty and name."""
+    result = await db.execute(
+        select(Program)
+        .options(selectinload(Program.university), selectinload(Program.faculty))
+        .where(Program.university_id == await _university_uuid(db, university_id))
+        .order_by(Program.faculty_id, Program.name)
+    )
+    return [ProgramResponse.model_validate(row) for row in result.scalars()]
 
 
 @router.get(
@@ -143,13 +168,17 @@ async def list_course_units(
         subject_uuid = await _subject_uuid(db, subject_id)
         if subject_uuid is None:
             return []
-        query = query.where(CourseUnit.subject_id == subject_uuid)
+        query = query.join(Subject, CourseUnit.subject_id == Subject.id).where(
+            CourseUnit.subject_id == subject_uuid
+        )
 
     if university_id is not None:
         uni_uuid = await _university_uuid(db, university_id)
         if uni_uuid is None:
             return []
         query = query.where(CourseUnit.university_id == uni_uuid)
+        if subject_id is not None:
+            query = query.where(Subject.university_id == uni_uuid)
 
     result = await db.execute(query.order_by(CourseUnit.university_id, CourseUnit.code))
     return [CourseUnitResponse.model_validate(row) for row in result.scalars()]

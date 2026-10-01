@@ -206,6 +206,13 @@ core/         → Config, security, database session, exceptions
 - `TutorService` — The discovery rail and one tutor's public profile
 - `SessionService` — Lifecycle of a tutoring session + logging
 - `IncentiveService` — Aggregates hours and prepares certificate data
+- `AdminService` — Least-privilege MUST operations and append-only audit records
+
+Administrative access is a separately provisioned `admin` role in the existing
+role join table. The API fails closed through one dependency before reaching an
+admin route. Admin responses use dedicated schemas rather than student-facing
+schemas, so passwords, refresh tokens, consent timestamps, competency evidence,
+and internal ids cannot be exposed by adding a field to a shared response.
 
 `app/services/` is a package of public functions, and a route calls one of them.
 No router reaches for a `_`-prefixed name: reaching into another module's internals
@@ -411,18 +418,19 @@ carries a filter for sessions that never happened.
 | **Competencies**  | `user_id`, `course_unit_id`, `grade_id`, `status`, `source`    | Validation gate requiring a verified grade at or above the scale's threshold            |
 | **Refresh_Tokens** | `id` (PK), `user_id` (FK → users), `token_hash` (unique), `expires_at`, `revoked_at`, `replaced_by_id` (FK → refresh_tokens, optional) | The handle is a JWT; only its peppered hash is stored, so a database disclosure yields no usable token. `replaced_by_id` forms the chain that makes reuse of an already-rotated token detectable. Every row is deleted on user deletion |
 
-##### A known limitation: `subjects` is global
+##### Faculties and programs are university-scoped
 
-`users.faculty_id` points at `subjects`, because a faculty is a property of a
-course unit rather than of an institution. The consequence is that
-`subjects.name` is **globally unique** and `subjects` carries no
-`university_id`. So `GET /v1/academics/faculties` is a global list, and two
-universities cannot have a subject with the same name.
+`users.faculty_id` and `course_units.subject_id` point at `subjects`, and each
+seeded subject belongs to one university. Faculty names are unique within a
+university rather than globally, so two institutions may both have a Faculty of
+Science without sharing a catalogue. `GET /v1/academics/faculties` therefore
+requires the selected university.
 
-A single-institution pilot hides this. A multi-institution deployment will not,
-and it will be discovered by a seed failure rather than by reading this. Lifting
-it: give `subjects` a nullable `university_id`, change the unique constraint to
-`(university_id, name)`, and add a `university_id` filter to `/faculties`.
+Degree and postgraduate offerings are stored as `programs`, linked to both the
+university and faculty. Programs describe what an institution offers; course
+units remain the specific records used by help requests, competencies, and
+matching. This prevents a degree name such as Medicine and Surgery from being
+mistaken for a matchable course unit.
 
 **Help_Requests** | `tutee_id`, `course_unit_id`, `topic`, `status`                | What was asked for, before a tutor was matched                                          |
 | **Sessions**      | `tutee_id`, `tutor_id`, `course_unit_id`, `status`, `duration_minutes`, `session_pin`, `meeting_link` | A session that happened; the source for tutor hours and certificates. Includes PIN for handshake and copyable meeting link |
@@ -735,20 +743,71 @@ The rail's endorsed-unit list is capped at `RAIL_ENDORSED_UNITS` and the full
 total travels beside it. A tutor endorsed in fourteen units is not summarised by
 any five of them, and the number shown has to be the whole truth for the sample
 next to it to mean anything.
->>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
+
+### 7.5 The decision is the student's, and the gate is re-derived
+
+A proposed list is not a decision. The student names one tutor, that tutor
+confirms or declines, and only a confirmation creates the session.
+
+**Selection re-runs the search.** The named tutor is checked by asking the same
+`_search_candidates` the matching answer came from and looking for them in the
+result. Nothing is re-derived by re-reading the rules, because the rules are
+where the drift would live: a second copy of the competency, grade, university
+and standing checks is a second copy to maintain, and it would diverge exactly
+when a student is deciding who to trust. Reachability is the question, not rank —
+a tutor who passes the gate is acceptable even if a client that asked for a short
+list would not have shown them, since `limit` is the caller's to choose and a
+refusal justified by which page was scrolled to helps nobody.
+
+`POST /v1/sessions` is a **confirmation, not a claim**, and the distinction is
+load-bearing. It used to accept any tutor against any unselected request, setting
+`matched_tutor_id` to the caller: a tutor could take work a student had refused
+them, which is the inverse of the decision the platform exists to make. Only the
+tutor the student already named may confirm, and only out of
+`pending_confirmation`.
+
+**Nothing expires.** There is no job closing an unanswered request. A request that
+quietly expired would leave a student who applied and heard nothing, which is the
+same silence as the platform losing it. `declined` is terminal for the mirror
+reason — a request the tutor refused is not the same as one nobody was asked, and
+re-opening it would let a tutor decline and then watch the student re-select them.
+Recovery is a new request, which keeps the record of what was asked intact.
+
+### 7.6 Where the confirmation screen lives
+
+Confirmation is a session, so it lives in the sessions feature, and matching
+navigates to it through `AppRoutes.confirmRequestPath` rather than importing
+another feature's `presentation/`. The request id, unit id and topic travel as
+route query values, URI-encoded — a topic is free text a student typed, and the
+screen needs it to say what is being confirmed.
+
+The waiting list is the mirror: it is matching's own screen, reached from home for
+tutors only, and it navigates *out* to sessions the same way. Both directions cross
+the boundary through the router, which is what the feature boundary is for.
+
+The redirect guard has to know about both routes, or the entry navigates, the
+guard undoes it, and the screen is unreachable in the app while green in tests.
+That is not hypothetical: the guard had no entry for the waiting list, and every
+widget test passed because they pumped the screen directly and never came through
+the guard.
 
 ---
 
 ## 8. Session Lifecycle
 
 ```
-Request Created
+Help Request Created (open)
       │
       ▼
-Matching Engine runs
+Matching Engine proposes eligible tutors
       │
       ▼
-Tutor Accepts / Declines
+Student selects one → pending_confirmation   (never expires)
+      │
+      ├── Tutor declines → declined            (terminal; recovery is a new request)
+      │
+      ▼
+Tutor confirms → POST /v1/sessions
       │
       ▼
 Session Scheduled (in-app)
@@ -759,8 +818,8 @@ Session Scheduled (in-app)
 PIN Handshake: tutor reveals a 2-digit PIN, tutee submits it
       │   (a missing PIN fails closed — never treated as a match)
       ▼
->>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
-Session Completed
+Session Completed  (status assigned first, then the accrual —
+                   so minutes bank exactly once)
       │
       ▼
 Rating Submitted → ValidationService updates tutor status

@@ -102,7 +102,8 @@ class FakeAuthRepository implements AuthRepository {
   Future<List<UniversityOption>> universities() async => universityOptions;
 
   @override
-  Future<List<Subject>> faculties() async => facultyOptions;
+  Future<List<Subject>> faculties({required String universityId}) async =>
+      facultyOptions;
 
   @override
   Future<List<CourseUnitOption>> courseUnits({String? universityId}) async =>
@@ -165,6 +166,15 @@ class FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {
+    session = null;
+    refreshToken = null;
+    await _tokenStore.clear();
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    // Mirrors the live ordering: the session goes first, unconditionally, so a
+    // fake cannot end up modelling the state the real client refuses to be in.
     session = null;
     refreshToken = null;
     await _tokenStore.clear();

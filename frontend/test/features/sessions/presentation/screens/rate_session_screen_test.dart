@@ -88,7 +88,8 @@ Future<FakeSessionsRepository> _pumpRate(
   UserProfile profile, {
   FakeSessionsRepository? repository,
 }) async {
-  final sessions = repository ?? FakeSessionsRepository(sessions: [completed()]);
+  final sessions =
+      repository ?? FakeSessionsRepository(sessions: [completed()]);
   final router = GoRouter(
     initialLocation: '/',
     routes: [
@@ -175,7 +176,10 @@ void main() {
 
     // Trimmed on the way out. The surrounding whitespace is the phone keyboard's,
     // not something the student meant to say.
-    expect(sessions.submittedRatings.single.feedbackText, 'Explained it twice.');
+    expect(
+      sessions.submittedRatings.single.feedbackText,
+      'Explained it twice.',
+    );
 
     final second = FakeSessionsRepository(sessions: [completed()]);
     await _pumpRate(tester, _tutee, repository: second);
@@ -256,7 +260,10 @@ void main() {
 
     // The screen stays open and the note survives, so fixing the problem does not
     // mean retyping. The failure's own message, never the exception.
-    expect(find.text('A session can only be rated once it has finished.'), findsOneWidget);
+    expect(
+      find.text('A session can only be rated once it has finished.'),
+      findsOneWidget,
+    );
     expect(find.text('Worth saying.'), findsOneWidget);
   });
 
@@ -289,20 +296,16 @@ void main() {
       repository: FakeSessionsRepository(sessions: [completed(isRated: true)]),
     );
 
-    expect(
-      find.textContaining('withdraws the recommendation'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('withdraws the recommendation'), findsOneWidget);
   });
 
-  testWidgets('leaving is always possible', (tester) async {
-    // A rating is offered and never required: the session is already recorded and
-    // the loop closes whenever the student gets to it.
-    final sessions = await _pumpRate(tester, _tutee);
+  testWidgets('a first rating cannot be dismissed', (tester) async {
+    await _pumpRate(tester, _tutee);
 
-    await tester.tap(find.text('Not now'));
-    await _settle(tester);
-
-    expect(sessions.submittedRatings, isEmpty);
+    expect(
+      find.text('A rating is required to finish this session review.'),
+      findsOneWidget,
+    );
+    expect(find.text('Not now'), findsNothing);
   });
 }

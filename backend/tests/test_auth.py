@@ -26,6 +26,7 @@ from app.core.security import (
     hash_opaque_token,
 )
 from app.db.seed import seed
+from app.models.course_unit import Subject, University
 from app.models.enums import UserRole
 from app.models.grading_scale import Grade, GradingScale
 from app.models.user import RefreshToken, User
@@ -614,6 +615,35 @@ async def test_logout_will_not_revoke_another_users_token(
 # --- the profile -----------------------------------------------------------
 
 
+async def test_seeded_academic_catalogue_populates_onboarding_options(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The real lookup routes expose the data the onboarding client needs."""
+    await seed(db_session)
+
+    universities = await client.get("/v1/academics/universities")
+    university_id = (await client.get("/v1/academics/universities")).json()[0]["id"]
+    faculties = await client.get(
+        "/v1/academics/faculties",
+        params={"university_id": university_id},
+    )
+
+    assert universities.status_code == 200
+    assert faculties.status_code == 200
+    assert universities.json()[0]["name"] == (
+        "Mbarara University of Science and Technology"
+    )
+    assert "Faculty of Computing and Informatics Sciences" in {
+        row["name"] for row in faculties.json()
+    }
+    programs = await client.get(
+        "/v1/academics/programs",
+        params={"university_id": university_id},
+    )
+    assert programs.status_code == 200
+    assert any(row["name"] == "Medicine and Surgery (MBChB)" for row in programs.json())
+
+
 async def test_profile_update_sets_the_name(client: AsyncClient) -> None:
     body = await register(client)
 
@@ -636,7 +666,12 @@ async def test_profile_update_only_touches_the_fields_it_was_given(
     await seed(db_session)
     body = await register(client)
     university = (await client.get("/v1/academics/universities")).json()[0]
-    faculty = (await client.get("/v1/academics/faculties")).json()[0]
+    faculty = (
+        await client.get(
+            "/v1/academics/faculties",
+            params={"university_id": university["id"]},
+        )
+    ).json()[0]
     headers = headers_for(body)
 
     await client.patch(
@@ -655,6 +690,29 @@ async def test_profile_update_only_touches_the_fields_it_was_given(
     assert response.json()["university_id"] == university["id"]
     assert response.json()["faculty_id"] == faculty["id"]
     assert response.json()["year_of_study"] == 2
+
+
+async def test_profile_update_rejects_faculty_from_another_university(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await seed(db_session)
+    university = (await client.get("/v1/academics/universities")).json()[0]
+    other = University(name="Other University")
+    other_faculty = Subject(name="Faculty of Science", university=other)
+    db_session.add_all([other, other_faculty])
+    await db_session.commit()
+    body = await register(client)
+
+    response = await client.patch(
+        PROFILE_URL,
+        json={
+            "university_id": university["id"],
+            "faculty_id": str(other_faculty.public_id),
+        },
+        headers=headers_for(body),
+    )
+
+    assert response.status_code == 404
 
 
 async def test_profile_update_records_consent_once(client: AsyncClient) -> None:
@@ -717,14 +775,43 @@ async def test_profile_update_requires_authentication(client: AsyncClient) -> No
 # --- reference data --------------------------------------------------------
 
 
-async def test_academics_are_readable_before_signing_in(client: AsyncClient) -> None:
+async def test_academics_are_readable_before_signing_in(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     """Sign-up asks a stranger where they study, so these cannot need a token."""
+    await seed(db_session)
+    university_id = (await client.get("/v1/academics/universities")).json()[0]["id"]
     for url in (
         "/v1/academics/universities",
-        "/v1/academics/faculties",
         "/v1/academics/course-units",
     ):
         assert (await client.get(url)).status_code == 200, url
+    assert (
+        await client.get(
+            "/v1/academics/faculties",
+            params={"university_id": university_id},
+        )
+    ).status_code == 200
+
+
+async def test_seed_exposes_only_the_provisional_pilot_course_units(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await seed(db_session)
+
+    units = (await client.get("/v1/academics/course-units")).json()
+
+    assert {(unit["code"], unit["name"]) for unit in units} == {
+        ("BIT 221", "Operating Systems"),
+        ("BIT 223", "Database Programming"),
+        ("BIT 225", "Computer Networks"),
+        ("SCH 211", "Organic Chemistry"),
+        ("PHY 212", "Thermodynamics"),
+        ("MTH 213", "Linear Algebra"),
+    }
+    assert not any(
+        unit["name"] in {"Computer Science", "Information Technology"} for unit in units
+    )
 
 
 async def test_the_seeded_gate_admits_a_b_plus_and_refuses_a_b(
@@ -749,6 +836,8 @@ async def test_the_seeded_gate_admits_a_b_plus_and_refuses_a_b(
     }
 
     assert scale.max_points == 5
-    assert scale.competency_min_points == 4
+    assert scale.competency_min_points == 4.5
     assert points["B+"] >= scale.competency_min_points
+    assert points["B+"] == 4.5
+    assert points["B"] == 4
     assert points["B"] < scale.competency_min_points

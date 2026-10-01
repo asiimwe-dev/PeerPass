@@ -7,18 +7,31 @@ every error the client sees has the same shape.
 
 import logging
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.core.database import get_session_factory
 from app.core.exceptions import ProblemException
 
 logger = logging.getLogger(__name__)
 
 PROBLEM_CONTENT_TYPE = "application/problem+json"
+
+
+async def _database_ready() -> bool:
+    """Check database connectivity without exposing driver errors to callers."""
+    try:
+        async with get_session_factory()() as session:
+            await session.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        return False
+    return True
 
 
 def create_app() -> FastAPI:
@@ -66,6 +79,22 @@ def create_app() -> FastAPI:
         turns a database blip into an outage.
         """
         return {"status": "ok"}
+
+    @application.get("/ready", tags=["system"])
+    async def readiness_check(
+        database_ready: bool = Depends(_database_ready),
+    ) -> dict[str, str]:
+        """Report whether the service can reach its primary database.
+
+        This is intentionally separate from liveness: a database outage should
+        remove an instance from traffic, not cause the process to restart.
+        """
+        if not database_ready:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The service is not ready.",
+            ) from None
+        return {"status": "ok", "database": "ok"}
 
     return application
 

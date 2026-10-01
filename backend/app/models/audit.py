@@ -1,0 +1,34 @@
+"""Append-only records of privileged administrative actions."""
+
+import uuid
+
+from sqlalchemy import JSON, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.database import Base
+from app.core.security import new_uuid7
+from app.models.base import TimestampMixin, public_id_column
+
+
+class AdminAuditEvent(Base, TimestampMixin):
+    """A safe description of one admin action.
+
+    Request bodies, tokens, passwords, and academic evidence are deliberately
+    absent. The event stores identifiers and an action name so an operator can
+    explain who changed what without turning the audit table into a second
+    sensitive-data store.
+    """
+
+    __tablename__ = "admin_audit_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid7)
+    public_id: Mapped[uuid.UUID] = public_id_column()
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    target_public_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    context: Mapped[dict[str, object]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )

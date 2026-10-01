@@ -8,6 +8,9 @@ import 'package:peerpass/features/auth/data/datasources/remote_academics_datasou
 import 'package:peerpass/features/auth/data/datasources/remote_auth_datasource.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/remote_auth_repository.dart';
+import 'package:peerpass/features/incentives/data/datasources/remote_incentives_datasource.dart';
+import 'package:peerpass/features/incentives/data/repositories/incentives_repository.dart';
+import 'package:peerpass/features/incentives/data/repositories/remote_incentives_repository.dart';
 import 'package:peerpass/features/matching/data/datasources/remote_matching_datasource.dart';
 import 'package:peerpass/features/matching/data/repositories/matching_repository.dart';
 import 'package:peerpass/features/matching/data/repositories/remote_matching_repository.dart';
@@ -60,6 +63,9 @@ void main() {
   final matchingRepository = RemoteMatchingRepository(
     RemoteMatchingDatasource(dio),
   );
+  final incentivesRepository = RemoteIncentivesRepository(
+    RemoteIncentivesDatasource(dio),
+  );
 
   runApp(
     ProviderScope(
@@ -67,16 +73,17 @@ void main() {
       // defaulting them in the providers, is what makes a test swap the whole
       // data layer for a fake in one line.
       //
-      // `sessionsRepositoryProvider`, `tutorsRepositoryProvider` and
-      // `matchingRepositoryProvider` all throw unless they are overridden, so
-      // leaving one out does not degrade to a fake that quietly reports no
-      // sessions, no tutors and nobody eligible: the failure is immediate and
-      // names the missing override.
+      // `sessionsRepositoryProvider`, `tutorsRepositoryProvider`,
+      // `matchingRepositoryProvider` and `incentivesRepositoryProvider` all
+      // throw unless they are overridden, so leaving one out does not degrade to
+      // a fake that quietly reports no sessions, no tutors and nobody eligible:
+      // the failure is immediate and names the missing override.
       overrides: [
         authRepositoryProvider.overrideWithValue(repository),
         sessionsRepositoryProvider.overrideWithValue(sessionsRepository),
         tutorsRepositoryProvider.overrideWithValue(tutorsRepository),
         matchingRepositoryProvider.overrideWithValue(matchingRepository),
+        incentivesRepositoryProvider.overrideWithValue(incentivesRepository),
       ],
       child: const PeerPassApp(),
     ),

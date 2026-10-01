@@ -129,7 +129,9 @@ void main() {
       expect(find.text('1 hr'), findsOneWidget);
     });
 
-    testWidgets('a meeting link is copyable rather than tappable', (tester) async {
+    testWidgets('a meeting link is copyable rather than tappable', (
+      tester,
+    ) async {
       // The app ships no link-opening dependency, and the agreed substitute for
       // in-app chat is a value the student hands to a browser.
       await _pumpDetail(
@@ -150,7 +152,9 @@ void main() {
       await _pumpDetail(tester, _MissingSessionRepository(), _tutee);
 
       expect(
-        find.text(const NotFoundFailure('That session could not be found.').message),
+        find.text(
+          const NotFoundFailure('That session could not be found.').message,
+        ),
         findsOneWidget,
       );
       expect(find.text('Try again'), findsOneWidget);
@@ -158,7 +162,9 @@ void main() {
   });
 
   group('the handshake, from the tutee side', () {
-    testWidgets('the PIN is hidden until the tutee asks for it', (tester) async {
+    testWidgets('the PIN is hidden until the tutee asks for it', (
+      tester,
+    ) async {
       await _pumpDetail(
         tester,
         FakeSessionsRepository(sessions: [session()]),
@@ -240,7 +246,9 @@ void main() {
       expect(find.text('Start session'), findsOneWidget);
     });
 
-    testWidgets('a second attempt is still allowed after a refusal', (tester) async {
+    testWidgets('a second attempt is still allowed after a refusal', (
+      tester,
+    ) async {
       // No client-side attempt counter and no lock-out. A student on a bad
       // connection who mistypes must be able to try again, and a lock the device
       // enforces is one they clear by reinstalling the app.
@@ -298,8 +306,8 @@ void main() {
       await _settle(tester);
 
       expect(repository.endedSessionIds, [_sessionId]);
-      // The rating is offered, never required: a session is recorded whether or not
-      // anyone rates it, and the loop closes whenever the student gets to it.
+      // The completed session must move through the rating form before the
+      // quality loop is complete.
       expect(find.text('Rate this session'), findsOneWidget);
     });
   });

@@ -1,4 +1,4 @@
-"""Application assembly: health check and the error envelope."""
+"""Application assembly: health/readiness checks and the error envelope."""
 
 import pytest
 from httpx import AsyncClient
@@ -20,6 +20,36 @@ async def test_health_does_not_require_a_database(client: AsyncClient) -> None:
     restart the process, turning a database blip into an outage.
     """
     assert (await client.get("/health")).status_code == 200
+
+
+async def test_readiness_reports_database_access(client: AsyncClient) -> None:
+    response = await client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "database": "ok"}
+
+
+async def test_readiness_returns_generic_service_unavailable_on_database_failure(
+    client: AsyncClient,
+) -> None:
+    from app.main import _database_ready, create_app
+
+    async def _broken_db() -> bool:
+        return False
+
+    app = create_app()
+    app.dependency_overrides[_database_ready] = _broken_db
+    # The shared client is bound to a separate app instance. Exercise the
+    # overridden application through its own transport.
+    from httpx import ASGITransport
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as raw:
+        response = await raw.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "The service is not ready."
+    assert "password" not in response.text
 
 
 async def test_unknown_route_returns_problem_details(client: AsyncClient) -> None:

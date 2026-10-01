@@ -336,4 +336,110 @@ void main() {
       );
     });
   });
+
+  group('confirming a help request', () {
+    Future<SessionModel> confirm() => repository.confirmRequest(
+      requestId: 'request-1',
+      courseUnitId: 'unit-1',
+      topic: 'Second order ODEs',
+      durationMinutes: 45,
+    );
+
+    test('posts the four fields the API documents, and nothing else', () async {
+      server.reply(201, _session());
+
+      final created = await confirm();
+
+      expect(server.calls.single.method, 'POST');
+      expect(server.calls.single.path, '/v1/sessions');
+      // The body is asserted in full rather than key by key. A confirmation that
+      // also sent a `status`, a `scheduled_start`, or a `tutee_id` would be a
+      // client deciding things the API derives from the request, and an added key
+      // is exactly the kind of change that looks harmless in review.
+      expect(server.calls.single.body, {
+        'help_request_id': 'request-1',
+        'course_unit_id': 'unit-1',
+        'topic': 'Second order ODEs',
+        'duration_minutes': 45,
+      });
+      expect(created.id, 'session-1');
+    });
+
+    test('the duration is sent as the number the tutor typed', () async {
+      server.reply(201, _session());
+
+      await repository.confirmRequest(
+        requestId: 'request-1',
+        courseUnitId: 'unit-1',
+        topic: 'graphs',
+        durationMinutes: 90,
+      );
+
+      expect(
+        (server.calls.single.body! as Map)['duration_minutes'],
+        90,
+      );
+    });
+
+    test('a request someone else already confirmed is a conflict', () async {
+      // The API refuses a second confirmation, and the reason it can is the unique
+      // constraint on the request. A client that treated this as a server fault
+      // would tell a tutor their tap failed when in fact the session exists.
+      server.reply(
+        409,
+        _problem(
+          status: 409,
+          title: 'Conflict',
+          detail: 'This help request is not waiting for your answer.',
+        ),
+      );
+
+      await expectLater(confirm(), throwsA(isA<ConflictFailure>()));
+    });
+
+    test('a refused length names the field rather than arriving raw', () async {
+      server.reply(
+        422,
+        _problem(
+          detail: 'That length is not one the API accepts.',
+          errors: {'duration_minutes': 'must be at most 480'},
+        ),
+      );
+
+      await expectLater(
+        confirm(),
+        throwsA(
+          isA<ValidationFailure>().having(
+            (failure) => failure.fieldErrors,
+            'fieldErrors',
+            {'duration_minutes': 'must be at most 480'},
+          ),
+        ),
+      );
+    });
+
+    test('a tutor with no access is an authorization failure', () async {
+      server.reply(
+        403,
+        _problem(
+          status: 403,
+          title: 'Forbidden',
+          detail: 'Only the tutor the student chose can confirm this request.',
+        ),
+      );
+
+      await expectLater(confirm(), throwsA(isA<AuthFailure>()));
+    });
+
+    test('a dropped connection is a network failure, not a crash', () async {
+      server.fail(
+        DioException(
+          requestOptions: RequestOptions(path: '/v1/sessions'),
+          type: DioExceptionType.connectionError,
+        ),
+      );
+
+      await expectLater(confirm(), throwsA(isA<NetworkFailure>()));
+    });
+  });
 }

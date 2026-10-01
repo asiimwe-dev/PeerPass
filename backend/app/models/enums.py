@@ -22,6 +22,7 @@ class UserRole(StrEnum):
 
     STUDENT = "student"
     TUTOR = "tutor"
+    ADMIN = "admin"
 
 
 class VerificationSource(StrEnum):
@@ -76,9 +77,23 @@ class HelpRequestStatus(StrEnum):
     Separate from [SessionStatus] because a request outlives any single session:
     a request can be withdrawn or expire having never been matched, and a
     request that was matched can still be open if the session is cancelled.
+
+    The three states the student chose their tutor created are what make this a
+    *choice* rather than a queue. `PENDING_CONFIRMATION` is the request waiting
+    on a named tutor to say yes, and `DECLINED` is that tutor saying no. Both
+    are needed rather than one: without `PENDING_CONFIRMATION` a selected tutor
+    is indistinguishable from an unselected one, and without `DECLINED` a
+    declined request is indistinguishable from one nobody ever answered.
     """
 
     OPEN = "open"
+    #: A tutor has been chosen and has been asked to confirm. The student is
+    #: waiting; the tutor has not yet declined to.
+    PENDING_CONFIRMATION = "pending_confirmation"
+    #: The chosen tutor turned the request down. Kept as a terminal state
+    #: rather than a flag so the reason a request died stays readable, and so
+    #: the student can post a new one instead of reopening a dead thread.
+    DECLINED = "declined"
     MATCHED = "matched"
     WITHDRAWN = "withdrawn"
     EXPIRED = "expired"
