@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:peerpass/app/router.dart';
+import 'package:peerpass/core/constants/app_dimens.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/course_unit.dart';
 import 'package:peerpass/core/widgets/content_width_limiter.dart';
@@ -40,7 +41,11 @@ class CourseUnitPickerScreen extends ConsumerWidget {
                 onRetry: () => ref.invalidate(courseUnitOptionsProvider),
               ),
               null => switch (units.value) {
-                final loaded? => _UnitList(units: loaded),
+                final loaded? => _UnitList(
+                  units: loaded,
+                  onRefresh: () =>
+                      ref.refresh(courseUnitOptionsProvider.future),
+                ),
                 null => const LoadingView(message: 'Loading course units'),
               },
             },
@@ -53,27 +58,41 @@ class CourseUnitPickerScreen extends ConsumerWidget {
 
 /// The units, or the honest answer that there are none.
 class _UnitList extends StatelessWidget {
-  const _UnitList({required this.units});
+  const _UnitList({required this.units, required this.onRefresh});
 
   final List<CourseUnit> units;
+  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context) {
     if (units.isEmpty) {
       // An empty catalogue and a university with no tutors are different facts,
       // and this one is the first: there is nothing to search for yet.
-      return const EmptyView(
-        icon: Icons.menu_book_outlined,
-        title: 'No course units to search',
-        message:
-            'Your university has not published a course catalogue yet, so there '
-            'is nothing to look for a tutor in. This is not an error.',
+      return RefreshIndicator(
+        onRefresh: onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: AppDimens.xxl),
+            EmptyView(
+              icon: Icons.menu_book_outlined,
+              title: 'No course units to search',
+              message:
+                  'Your university has not published a course catalogue yet, so '
+                  'there is nothing to look for a tutor in. This is not an error.',
+            ),
+          ],
+        ),
       );
     }
 
-    return ListView.builder(
-      itemCount: units.length,
-      itemBuilder: (context, index) => _UnitTile(unit: units[index]),
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: units.length,
+        itemBuilder: (context, index) => _UnitTile(unit: units[index]),
+      ),
     );
   }
 }

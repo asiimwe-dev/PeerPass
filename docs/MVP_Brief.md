@@ -66,8 +66,8 @@ If this loop works reliably in a small pilot, the foundation for a scalable acad
 
 ### The home screen today
 
-The signed-in hub exists, and it is an honest empty state: it greets the student
-by name and shows "Find a tutor" and "Book a session" marked **Soon**. It does
+The signed-in hub exists, greets the student by name, and links to the implemented
+matching and session flows. It does
 not offer a search box that returns nothing, a filter that filters an empty list,
 or a card that looks tappable and is not. A student who signs in and finds
 nothing works should be told plainly that the feature is not built yet, which is

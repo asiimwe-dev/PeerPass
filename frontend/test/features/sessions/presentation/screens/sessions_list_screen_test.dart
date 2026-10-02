@@ -74,7 +74,10 @@ Future<void> _pumpList(WidgetTester tester, ProviderContainer container) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(theme: AppTheme.light, home: const SessionsListScreen()),
+      child: MaterialApp(
+        theme: AppTheme.light,
+        home: const SessionsListScreen(),
+      ),
     ),
   );
   await _settle(tester);
@@ -117,7 +120,7 @@ void main() {
 
     // Not a spinner that never ends and not a blank list: the API answered, and
     // the answer was nothing.
-    expect(find.byType(ListView), findsNothing);
+    expect(find.byType(ListView), findsOneWidget);
     expect(find.text('No sessions yet'), findsOneWidget);
   });
 

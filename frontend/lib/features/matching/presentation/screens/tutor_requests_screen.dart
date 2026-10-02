@@ -82,12 +82,21 @@ class _Requests extends StatelessWidget {
       // not a failure. It gets its own copy rather than the generic empty state,
       // because "nothing here" reads as a broken screen unless it says what would
       // put something here.
-      return const EmptyView(
-        icon: Icons.inbox_rounded,
-        title: 'No one is waiting on you',
-        message:
-            'When a student asks you to tutor them, their request appears here '
-            'and you can turn it down.',
+      return RefreshIndicator(
+        onRefresh: () => _reload(context),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: AppDimens.xxl),
+            EmptyView(
+              icon: Icons.inbox_rounded,
+              title: 'No one is waiting on you',
+              message:
+                  'When a student asks you to tutor them, their request appears '
+                  'here and you can turn it down.',
+            ),
+          ],
+        ),
       );
     }
 

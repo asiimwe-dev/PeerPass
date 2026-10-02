@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Build-time configuration for the client.
 ///
 /// Values arrive through `--dart-define`, which keeps environment-specific
@@ -15,15 +17,14 @@ class AppConfig {
 
   /// Reads configuration from the compile-time environment.
   ///
-  /// The default points at the Android emulator's alias for the host loopback
-  /// rather than `localhost`, because `localhost` inside the emulator resolves
-  /// to the emulator itself and fails to reach a locally running API. A
-  /// physical device needs an explicit LAN address passed in.
+  /// Web runs in the browser, where `localhost` is the developer's machine.
+  /// Android emulators instead need `10.0.2.2`; physical devices need an
+  /// explicit LAN address. Deployed builds must provide an HTTPS URL.
   factory AppConfig.fromEnvironment() {
     return const AppConfig(
       apiBaseUrl: String.fromEnvironment(
         'API_BASE_URL',
-        defaultValue: 'http://10.0.2.2:8000',
+        defaultValue: kIsWeb ? 'http://localhost:8000' : 'http://10.0.2.2:8000',
       ),
       connectTimeout: Duration(seconds: 10),
       receiveTimeout: Duration(seconds: 20),

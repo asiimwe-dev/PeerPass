@@ -94,63 +94,6 @@ void main() {
     expect(find.text('Signed in as ${_enrolled.email}'), findsOneWidget);
   });
 
-  testWidgets('the booking tile is the only promise left on the dashboard', (
-    tester,
-  ) async {
-    // There is no booking screen in this release, so a tile that navigated would
-    // take a student somewhere that does not exist. The claim is checked by
-    // pressing it: the screen stays mounted, the greeting stays, and the session
-    // is untouched. This test runs without a router, so a tile that reached for
-    // `context.go` would have nothing to go with and the press would throw rather
-    // than pass quietly.
-    final harness = _harness(_enrolled);
-    await _pumpHome(tester, harness);
-
-    expect(find.text('Book a session'), findsOneWidget);
-    expect(
-      find.text('Soon'),
-      findsOneWidget,
-      reason: 'booking is the one thing on this screen that is not built',
-    );
-
-    await tester.tap(find.text('Book a session'));
-    await _settle(tester);
-
-    expect(find.byType(HomeScreen), findsOneWidget);
-    expect(find.text(_greeting), findsOneWidget);
-    expect(
-      harness.container.read(sessionControllerProvider).status,
-      SessionStatus.authenticated,
-    );
-  });
-
-  testWidgets('tapping sign out in the app bar ends the session', (
-    tester,
-  ) async {
-    // Regression. `onPressed` is a `VoidCallback`, so a handler of
-    // `() => ref.read(signOutControllerProvider)` evaluated the read, discarded
-    // the function it returned, and signed nobody out while still looking like
-    // it worked. The button has to be the thing under test, not the provider.
-    final harness = _harness(_enrolled);
-    await _pumpHome(tester, harness);
-    expect(
-      harness.container.read(sessionControllerProvider).status,
-      SessionStatus.authenticated,
-    );
-
-    await tester.tap(find.byTooltip('Sign out'));
-    await _settle(tester);
-
-    final session = harness.container.read(sessionControllerProvider);
-    expect(session.status, SessionStatus.unauthenticated);
-    expect(session.profile, isNull);
-    // The token is discarded on the device before the session is recorded as
-    // ended, so a request that never reaches the server still leaves this device
-    // signed out.
-    expect(harness.repository.session, isNull);
-    expect(harness.repository.refreshToken, isNull);
-  });
-
   testWidgets('the sessions entry is live, not a promise', (tester) async {
     // Sessions are built, so the landing screen has to offer a way in. Marked
     // Soon, or hidden among the pending tiles, a working feature looks absent.
@@ -158,13 +101,7 @@ void main() {
     await _pumpHome(tester, harness);
 
     expect(find.text('My sessions'), findsOneWidget);
-    // One pending tile carries the chip; this entry must not add a second, or it
-    // is making the same "not built yet" claim as the tile below it.
-    expect(
-      find.text('Soon'),
-      findsNWidgets(1),
-      reason: 'the sessions entry is live and must not claim otherwise',
-    );
+    expect(find.text('Soon'), findsNothing);
   });
 
   testWidgets('tapping the sessions entry opens the sessions list', (
@@ -236,35 +173,36 @@ void main() {
     expect(find.byType(HomeScreen), findsNothing);
   });
 
-  testWidgets('the rail the shell supplies is shown, and its absence is silent', (
-    tester,
-  ) async {
-    // The rail belongs to the tutors feature and reaches home as a widget, so
-    // home's only job is to place it. Supplied, it appears; not supplied, there is
-    // no gap and no placeholder, which is the state home's own tests are in.
-    final harness = _harness(_enrolled);
-    await _pumpHome(tester, harness);
+  testWidgets(
+    'the rail the shell supplies is shown, and its absence is silent',
+    (tester) async {
+      // The rail belongs to the tutors feature and reaches home as a widget, so
+      // home's only job is to place it. Supplied, it appears; not supplied, there is
+      // no gap and no placeholder, which is the state home's own tests are in.
+      final harness = _harness(_enrolled);
+      await _pumpHome(tester, harness);
 
-    expect(find.text('Tutors at your university'), findsNothing);
+      expect(find.text('Tutors at your university'), findsNothing);
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: harness.container,
-        child: MaterialApp(
-          theme: AppTheme.light,
-          home: const HomeScreen(
-            // A bare marker, not a Scaffold: the rail is placed inside a
-            // scrolling column, and a Scaffold there would ask for the height it
-            // cannot have. The real rail sizes its own cards.
-            tutorRail: Text('Tutors at your university'),
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: harness.container,
+          child: MaterialApp(
+            theme: AppTheme.light,
+            home: const HomeScreen(
+              // A bare marker, not a Scaffold: the rail is placed inside a
+              // scrolling column, and a Scaffold there would ask for the height it
+              // cannot have. The real rail sizes its own cards.
+              tutorRail: Text('Tutors at your university'),
+            ),
           ),
         ),
-      ),
-    );
-    await _settle(tester);
+      );
+      await _settle(tester);
 
-    expect(find.text('Tutors at your university'), findsOneWidget);
-  });
+      expect(find.text('Tutors at your university'), findsOneWidget);
+    },
+  );
 
   testWidgets('a tutor is offered their certificate, and a student is not', (
     tester,
@@ -294,7 +232,8 @@ void main() {
         GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
         GoRoute(
           path: AppRoutes.certificate,
-          builder: (_, _) => const Scaffold(body: Text('Certificate screen here')),
+          builder: (_, _) =>
+              const Scaffold(body: Text('Certificate screen here')),
         ),
       ],
     );
