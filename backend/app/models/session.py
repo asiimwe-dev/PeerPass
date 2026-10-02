@@ -7,6 +7,7 @@ tutor session exists for a request that never found one, and every query about
 tutor workload would have to filter those rows out.
 """
 from __future__ import annotations
+
 import random
 import uuid
 from datetime import datetime

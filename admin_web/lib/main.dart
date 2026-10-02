@@ -477,7 +477,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
       const TutorStandingsPage(),
       const AuditPage(),
     ];
-    final destinations = const [
+    const destinations = [
       NavigationRailDestination(
         icon: Icon(Icons.people_outline),
         selectedIcon: Icon(Icons.people),

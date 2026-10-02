@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def _refuse_development_only_settings(self) -> "Settings":
+    def _refuse_development_only_settings(self) -> Settings:
         """Make the dangerous knobs unrepresentable outside development.
 
         `database_echo` logs statements *with their bound parameters*, so the

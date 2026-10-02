@@ -13,6 +13,7 @@ score is bounded, a rater cannot rate the same session twice, and
 """
 
 from __future__ import annotations
+
 import uuid
 from typing import TYPE_CHECKING
 
