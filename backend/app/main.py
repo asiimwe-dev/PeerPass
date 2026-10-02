@@ -6,10 +6,11 @@ every error the client sees has the same shape.
 """
 
 import logging
-from fastapi.middleware.cors import CORSMiddleware
+
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -188,7 +189,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi.responses import RedirectResponse
+
+
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():

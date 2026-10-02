@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, Enum as SQLEnum
-from sqlalchemy.orm import sessionmaker, Session, declarative_base
-from sqlalchemy.dialects.postgresql import UUID
-from pydantic import BaseModel
 import uuid
+
+from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import Boolean, Column, Integer, String, create_engine
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 # ==========================================
 # 1. DATABASE CONFIGURATION
@@ -27,7 +29,11 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     faculty = Column(String, nullable=False)
     year_of_study = Column(Integer, nullable=False)
-    tutor_status = Column(SQLEnum('None', 'Provisional', 'Verified', name='tutor_status_enum'), default='None')
+    tutor_status = Column(
+                            SQLEnum('None', 'Provisional', 'Verified', name='tutor_status_enum')# noqa: E501
+                            , default='None'
+                            )
+    
     is_admin = Column(Boolean, default=False)
 
 # ==========================================
@@ -57,7 +63,7 @@ def get_db():
         db.close()
 
 @app.post("/api/users/")
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(user: UserCreate, db: Session = Depends(get_db)):  # noqa: B008
     existing_user = db.query(User).filter(User.email == user.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -77,7 +83,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     return {"message": "User created successfully", "user_id": db_user.id}
 
 @app.post("/api/login/")
-def login_user(user: UserLogin, db: Session = Depends(get_db)):
+def login_user(user: UserLogin, db: Session = Depends(get_db)):  # noqa: B008
     db_user = db.query(User).filter(User.email == user.email).first()
     
     if not db_user:
