@@ -1,5 +1,109 @@
-"""Compatibility entry point for the documented uvicorn command."""
+import uuid
 
-from app.main import app
+from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import Boolean, Column, Integer, String, create_engine
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-__all__ = ["app"]
+# ==========================================
+# 1. DATABASE CONFIGURATION
+# ==========================================
+# Replaced psycopg2 with psycopg to match your requirements.txt
+SQLALCHEMY_DATABASE_URL = (
+    "postgresql+psycopg://postgres:YourNewPassword123!@localhost:5432/ulearn"
+)
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+# ==========================================
+# 2. SQLALCHEMY MODEL
+# ==========================================
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    faculty = Column(String, nullable=False)
+    year_of_study = Column(Integer, nullable=False)
+    tutor_status = Column(
+        SQLEnum("None", "Provisional", "Verified", name="tutor_status_enum"),
+        default="None",
+    )
+
+    is_admin = Column(Boolean, default=False)
+
+
+# ==========================================
+# 3. PYDANTIC SCHEMAS
+# ==========================================
+class UserCreate(BaseModel):
+    name: str
+    email: str
+    password: str
+    faculty: str
+    year_of_study: int
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+
+# ==========================================
+# 4. FASTAPI APP & ROUTES
+# ==========================================
+app = FastAPI()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@app.post("/api/users/")
+def create_user(user: UserCreate, db: Session = Depends(get_db)):  # noqa: B008
+    existing_user = db.query(User).filter(User.email == user.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    db_user = User(
+        name=user.name,
+        email=user.email,
+        password_hash=user.password,
+        faculty=user.faculty,
+        year_of_study=user.year_of_study,
+    )
+
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    return {"message": "User created successfully", "user_id": db_user.id}
+
+
+@app.post("/api/login/")
+def login_user(user: UserLogin, db: Session = Depends(get_db)):  # noqa: B008
+    db_user = db.query(User).filter(User.email == user.email).first()
+
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if db_user.password_hash != user.password:
+        raise HTTPException(status_code=401, detail="Incorrect password")
+
+    return {
+        "message": "Login successful",
+        "user_id": db_user.id,
+        "name": db_user.name,
+        "tutor_status": db_user.tutor_status,
+    }

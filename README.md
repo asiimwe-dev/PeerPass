@@ -1,9 +1,17 @@
+<<<<<<< HEAD
+# Ulearn
+=======
 # PeerPass
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 **A Peer-to-Peer Academic Support Network**
 
 > Dismantling the "attend lectures and fight for your life" model.  
+<<<<<<< HEAD
+> Ulearn matches struggling university students with verified peer tutors for focused, stigma-free micro-interventions — reducing retake rates and academic drop-off.
+=======
 > PeerPass matches struggling university students with verified peer tutors for focused, stigma-free micro-interventions — reducing retake rates and academic drop-off.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 [![Flutter](https://img.shields.io/badge/Frontend-Flutter-02569B?logo=flutter)](https://flutter.dev)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -14,7 +22,11 @@
 
 ## Overview
 
+<<<<<<< HEAD
+Ulearn is a localized, dynamic platform designed for Ugandan (and East African) universities. It connects students who need help on hyper-specific topics with peer tutors who have proven competency in those exact areas.
+=======
 PeerPass is a localized, dynamic platform designed for Ugandan (and East African) universities. It connects students who need help on hyper-specific topics with peer tutors who have proven competency in those exact areas.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 The platform operates on a **B2B / incentive-based model** backed by institutions or corporate sponsors. Students receive frictionless academic support; tutors earn verified Teaching Assistant certificates and leadership credits.
 
@@ -33,7 +45,11 @@ The platform operates on a **B2B / incentive-based model** backed by institution
 
 ## System Architecture
 
+<<<<<<< HEAD
+Ulearn is built as a modular, high-performance system designed for eventual integration with institutional Learning Management Systems (LMS).
+=======
 PeerPass is built as a modular, high-performance system designed for eventual integration with institutional Learning Management Systems (LMS).
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 | Layer        | Technology       | Purpose                                                                    |
 | ------------ | ---------------- | -------------------------------------------------------------------------- |
@@ -66,7 +82,11 @@ Ensure the following tools are installed on your local development environment:
 podman run --name p2p-postgres \
   -e POSTGRES_USER=admin \
   -e POSTGRES_PASSWORD=secret \
+<<<<<<< HEAD
+  -e POSTGRES_DB=Ulearn \
+=======
   -e POSTGRES_DB=PeerPass \
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
   -p 5432:5432 \
   -d postgres:latest
 ```
@@ -140,7 +160,11 @@ configuration and the current pilot surface.
 
 ## Regulatory Compliance
 
+<<<<<<< HEAD
+Ulearn is engineered for institutional deployment and adheres to:
+=======
 PeerPass is engineered for institutional deployment and adheres to:
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 - **Uganda Data Protection and Privacy Act, 2019 (DPPA)** — Explicit consent, secure storage, and registration requirements for handling sensitive academic data (transcripts & grades)
 - **Electronic Transactions Act, 2011** — Intermediary liability protections
@@ -179,7 +203,11 @@ The project is structured for a focused deployment cycle:
 
 We welcome contributions of all kinds — code, documentation, testing, and ideas.
 
+<<<<<<< HEAD
+Please read **[CONTRIBUTING.md](./docs/Contribution.md)** before submitting any pull request.  
+=======
 Please read **[Contribution Guide](./docs/Contribution.md)** before submitting any pull request.  
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 It contains our full Code of Conduct, development workflow, coding standards, and review process.
 
 ---

@@ -11,6 +11,8 @@ running average accumulates, which matters because the promotion threshold is an
 equality test.
 """
 
+from __future__ import annotations
+
 import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING

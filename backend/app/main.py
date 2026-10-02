@@ -9,7 +9,8 @@ import logging
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -179,3 +180,17 @@ def _register_exception_handlers(application: FastAPI) -> None:
 
 
 app = create_app()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all ports/origins for local development
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows POST, GET, OPTIONS, etc.
+    allow_headers=["*"],
+)
+
+
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    # Automatically bounces anyone visiting the bare URL to the API docs
+    return RedirectResponse(url="/docs")

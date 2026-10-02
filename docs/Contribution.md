@@ -1,8 +1,16 @@
+<<<<<<< HEAD
+# Contributing to Ulearn
+
+**Professional Contribution Guidelines & Code of Conduct for the Ulearn Project**
+
+> Complete guide for contributing code, reporting issues, and participating in the Ulearn community.  
+=======
 # Contributing to PeerPass
 
 **Professional Contribution Guidelines & Code of Conduct for the PeerPass Project**
 
 > Complete guide for contributing code, reporting issues, and participating in the PeerPass community.  
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 > Learn our development workflow, code standards, review process, and behavioral expectations.
 
 **Last Updated**: September 2026 | **Status**: Active | **Audience**: Contributors, Developers, Peer Tutors & Maintainers
@@ -35,11 +43,19 @@
 
 ### Our Commitment
 
+<<<<<<< HEAD
+We, as contributors and maintainers of **Ulearn** (a Peer-to-Peer Academic Support Network), pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
+
+We pledge to act and interact in ways that contribute to an open, welcoming, diverse, inclusive, and healthy community.
+
+Ulearn is dedicated to providing a safe, respectful, and professional environment where:
+=======
 We, as contributors and maintainers of **PeerPass** (a Peer-to-Peer Academic Support Network), pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
 
 We pledge to act and interact in ways that contribute to an open, welcoming, diverse, inclusive, and healthy community.
 
 PeerPass is dedicated to providing a safe, respectful, and professional environment where:
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 - All contributors feel **safe and respected**
 - Diverse perspectives are **valued and heard**
@@ -141,6 +157,22 @@ All reports are **confidential** and investigated promptly.
 
 ```bash
 # 1. Fork the repository on GitHub
+<<<<<<< HEAD
+# (Click "Fork" on the Ulearn repository)
+
+# 2. Clone your fork
+git clone https://github.com/YOUR_USERNAME/Ulearn.git
+cd Ulearn
+
+# 3. Add upstream remote
+git remote add upstream https://github.com/asiimwe-dev/Ulearn.git
+```
+
+### Step 2: Create Feature Branch
+
+```bash
+# Always create a new branch from the latest main (or develop)
+=======
 # (Click "Fork" on the PeerPass repository)
 
 # 2. Clone your fork
@@ -177,6 +209,7 @@ is attributed to whoever did the work.
 
 ```bash
 # Always create a new branch from the latest main
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 git fetch upstream
 git checkout -b feature/your-feature-name upstream/main
 
@@ -188,7 +221,11 @@ git checkout -b feature/your-feature-name upstream/main
 # test/description      — Test additions or improvements
 ```
 
+<<<<<<< HEAD
+### Step 3: Set Up Development Environment
+=======
 ### Step 4: Set Up Development Environment
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 #### Backend (FastAPI + PostgreSQL)
 
@@ -207,7 +244,11 @@ pip install -r requirements.txt
 podman run --name p2p-postgres \
   -e POSTGRES_USER=admin \
   -e POSTGRES_PASSWORD=secret \
+<<<<<<< HEAD
+  -e POSTGRES_DB=Ulearn \
+=======
   -e POSTGRES_DB=PeerPass \
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
   -p 5432:5432 -d postgres:latest
 
 # Apply migrations and start the server
@@ -245,7 +286,11 @@ flutter run
    Visit the project's GitHub Issues. Is your feature or bug already being worked on? Are there related discussions?
 
 2. **Review the Project Vision**  
+<<<<<<< HEAD
+   Read the project README and research/proposal documents. Align your work with Ulearn's goals of reducing retake rates through verified peer tutoring.
+=======
    Read the project README and research/proposal documents. Align your work with PeerPass's goals of reducing retake rates through verified peer tutoring.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 3. **Understand the Architecture**  
    Read **[Architecture](./architecture.md)**  
@@ -253,7 +298,10 @@ flutter run
    - Flutter frontend (mobile-first, low-bandwidth optimized)
    - FastAPI backend (RESTful matching & routing logic)
    - PostgreSQL (users, course units, competencies, session logs)
+<<<<<<< HEAD
+=======
    - Review the [Project Structure](./project-structure.md) for repository layout and dependency direction.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 4. **Discuss Major Changes**  
    For significant features or architectural changes, open an issue first and get feedback before implementing. This prevents wasted effort.
@@ -291,6 +339,19 @@ flutter run                           # on emulator/device
 
 ```bash
 git add .
+<<<<<<< HEAD
+git commit -m "feat: Add competency verification endpoint
+
+- Validates minimum B+ grade for tutor eligibility
+- Integrates with Course_Units and Competencies tables
+- Adds unit tests for boundary grades"
+git push origin feature/your-feature-name
+```
+
+### Step 4: Create Pull Request
+
+- Open a PR from your branch to the upstream `main` (or `develop`) branch
+=======
 git commit -m "feat: add competency verification endpoint
 
 Validates the minimum B+ grade for tutor eligibility, integrates with the
@@ -311,6 +372,7 @@ you have a reason to, and say so in the pull request.
 ### Step 4: Create Pull Request
 
 - Open a PR from your branch to the upstream `main` branch
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 - Fill out the PR template completely
 - Link related issues
 - Request reviewers
@@ -511,6 +573,12 @@ Fixes #57
 ### Running Tests
 
 ```bash
+<<<<<<< HEAD
+# Backend
+pytest
+pytest --cov=app
+
+=======
 # Backend, on in-memory SQLite
 pytest
 pytest --cov=app
@@ -523,15 +591,19 @@ pytest --cov=app
 cd backend
 PEERPASS_TEST_DATABASE_URL=postgresql+psycopg://peerpass:peerpass@localhost:5432/peerpass_test pytest
 
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 # Frontend
 flutter test
 flutter test --coverage
 flutter test --name="matching"
 ```
 
+<<<<<<< HEAD
+=======
 The PostgreSQL run drops and recreates the schema in the target database, so point
 it at a scratch database. It must never be given a URL holding real data.
 
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 ---
 
 ## Documentation Standards
@@ -572,7 +644,11 @@ Brief, clear description of the bug.
 
 ### Feature Requests
 
+<<<<<<< HEAD
+Open an issue describing the problem you want to solve, the proposed solution, and any alternatives you considered. Align requests with Ulearn’s core mission of verified, low-friction peer academic support.
+=======
 Open an issue describing the problem you want to solve, the proposed solution, and any alternatives you considered. Align requests with PeerPass’s core mission of verified, low-friction peer academic support.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 ---
 
@@ -596,7 +672,11 @@ Open an issue describing the problem you want to solve, the proposed solution, a
 
 ## Release & Versioning Policy
 
+<<<<<<< HEAD
+Ulearn follows Semantic Versioning (`MAJOR.MINOR.PATCH`):
+=======
 PeerPass follows Semantic Versioning (`MAJOR.MINOR.PATCH`):
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 
 - **MAJOR** — Incompatible API or architectural changes
 - **MINOR** — New features in a backward-compatible manner
@@ -605,6 +685,12 @@ PeerPass follows Semantic Versioning (`MAJOR.MINOR.PATCH`):
 ### Branching Strategy
 
 - `main` — Production-ready code
+<<<<<<< HEAD
+- `develop` — Integration branch (if used)
+- `feature/*` — Individual features
+- `hotfix/*` — Emergency fixes targeting `main`
+
+=======
 - `feature/*` — Individual features
 - `fix/*` — Defect fixes
 - `docs/*` — Documentation only
@@ -616,6 +702,7 @@ PeerPass follows Semantic Versioning (`MAJOR.MINOR.PATCH`):
 There is no `develop` branch; `main` is the default branch and the target of
 every pull request.
 
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 ---
 
 ## Common Mistakes
@@ -638,9 +725,13 @@ every pull request.
 - **Discussions**: Project GitHub Discussions (if enabled)
 - **Documentation**:
   - [Architecture](./architecture.md) — System design, data model, matching engine & validation
+<<<<<<< HEAD
+  - [README](../README.md) — Project overview and local setup
+=======
   - [Project Structure](./project-structure.md) — Repository layout and dependency direction
   - [README](../README.md) — Project overview and local setup
   - [MVP Brief](./MVP_Brief.md) - Covers what is in scope and what is to be integrated beyond the MVP.
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 - **Direct contact**: gilbert.asiimwe.dev@gmail.com or [@asiimwe-dev](https://github.com/asiimwe-dev)
 
 Before opening a new issue, search existing issues and discussions.
@@ -657,7 +748,11 @@ We celebrate all contributions. Contributors are recognized in:
 
 ---
 
+<<<<<<< HEAD
+**Thank you for contributing to Ulearn!**  
+=======
 **Thank you for contributing to PeerPass!**  
+>>>>>>> 48c4f527679b8c55f4e3a015c45d6ff56ce12121
 Your work helps create a stigma-free academic safety net for university students and strengthens peer-supported learning across institutions.
 
 ---

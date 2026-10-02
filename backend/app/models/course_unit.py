@@ -5,6 +5,8 @@ three are reference data loaded by an administrator rather than created by a
 student, which is why none of them carries a user foreign key.
 """
 
+from __future__ import annotations
+
 import uuid
 from typing import TYPE_CHECKING
 
