@@ -33,7 +33,7 @@ class User(Base):
     faculty = Column(String, nullable=False)
     year_of_study = Column(Integer, nullable=False)
     tutor_status = Column(
-        SQLEnum("None", "Provisional", "Verified", name="tutor_status_enum"),  # noqa: E501
+        SQLEnum("None", "Provisional", "Verified", name="tutor_status_enum"),
         default="None",
     )
 
