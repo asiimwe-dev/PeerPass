@@ -6,7 +6,7 @@ every error the client sees has the same shape.
 """
 
 import logging
-
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -180,9 +180,20 @@ def _register_exception_handlers(application: FastAPI) -> None:
 
 app = create_app()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all ports/origins for local development
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows POST, GET, OPTIONS, etc.
+    allow_headers=["*"],
+)
+
 from fastapi.responses import RedirectResponse
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():
     # Automatically bounces anyone visiting the bare URL to the API docs
     return RedirectResponse(url="/docs")
+    
+    
+
