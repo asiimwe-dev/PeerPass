@@ -5,8 +5,13 @@ from datetime import datetime
 
 from pydantic import Field
 
-from app.models.enums import UserRole
-from app.schemas.base import OrmSchema
+from app.models.enums import (
+    CompetencyStatus,
+    TutorStanding,
+    UserRole,
+    VerificationSource,
+)
+from app.schemas.base import OrmSchema, RequestSchema
 from app.schemas.common import Page
 
 
@@ -40,3 +45,48 @@ class AdminAuditEventResponse(OrmSchema):
 
 class AdminAuditEventPage(Page[AdminAuditEventResponse]):
     """A bounded page of audit events."""
+
+
+class AdminCompetencyResponse(OrmSchema):
+    """The review fields staff need without embedding academic documents."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    user_email: str
+    user_name: str | None
+    course_unit_id: uuid.UUID
+    course_unit_code: str
+    course_unit_name: str
+    grade_points: str
+    status: CompetencyStatus
+    source: VerificationSource
+    evidence_reference: str | None
+    rejection_reason: str | None
+    created_at: datetime
+
+
+class AdminCompetencyPage(Page[AdminCompetencyResponse]):
+    """A bounded page of tutor evidence awaiting or completing review."""
+
+
+class AdminCompetencyReviewRequest(RequestSchema):
+    """An audited admin decision on a tutor competency."""
+
+    status: CompetencyStatus
+    rejection_reason: str | None = None
+
+
+class AdminTutorStandingResponse(OrmSchema):
+    """Operational tutor standing and aggregate rating data."""
+
+    user_id: uuid.UUID
+    user_email: str
+    user_name: str | None
+    standing: TutorStanding
+    completed_sessions: int
+    rating_count: int
+    average_rating: str | None
+
+
+class AdminTutorStandingPage(Page[AdminTutorStandingResponse]):
+    """A bounded page of tutor standing summaries."""

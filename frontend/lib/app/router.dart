@@ -11,15 +11,19 @@ import 'package:peerpass/features/auth/presentation/screens/onboarding_screen.da
 import 'package:peerpass/features/auth/presentation/screens/sign_in_screen.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
 import 'package:peerpass/features/home/presentation/screens/home_screen.dart';
+import 'package:peerpass/features/home/presentation/screens/profile_screen.dart';
+import 'package:peerpass/features/home/presentation/widgets/authenticated_shell.dart';
 import 'package:peerpass/features/incentives/presentation/screens/certificate_screen.dart';
 import 'package:peerpass/features/matching/presentation/screens/course_unit_picker_screen.dart';
 import 'package:peerpass/features/matching/presentation/screens/match_results_screen.dart';
 import 'package:peerpass/features/matching/presentation/screens/tutor_requests_screen.dart';
+import 'package:peerpass/features/sessions/presentation/providers/session_providers.dart';
 import 'package:peerpass/features/sessions/presentation/screens/confirm_request_screen.dart';
 import 'package:peerpass/features/sessions/presentation/screens/rate_session_screen.dart';
 import 'package:peerpass/features/sessions/presentation/screens/session_detail_screen.dart';
-import 'package:peerpass/features/sessions/presentation/screens/sessions_list_screen.dart';
+import 'package:peerpass/features/sessions/presentation/screens/sessions_tab_screen.dart';
 import 'package:peerpass/features/sessions/presentation/widgets/active_session_card.dart';
+import 'package:peerpass/features/tutors/presentation/providers/tutor_providers.dart';
 import 'package:peerpass/features/tutors/presentation/screens/tutor_detail_screen.dart';
 import 'package:peerpass/features/tutors/presentation/widgets/tutor_rail.dart';
 
@@ -32,6 +36,7 @@ abstract final class AppRoutes {
   static const String tutorVerification = '/tutor-verification';
   static const String home = '/home';
   static const String sessions = '/sessions';
+  static const String profile = '/profile';
   static const String tutors = '/tutors';
   static const String matching = '/matching';
   static const String certificate = '/certificate';
@@ -59,7 +64,8 @@ abstract final class AppRoutes {
   /// segment away from a route that exists and a screen that does not.
   static String sessionDetailPath(String sessionId) => '$sessions/$sessionId';
 
-  static String rateSessionPath(String sessionId) => '$sessions/$sessionId/rate';
+  static String rateSessionPath(String sessionId) =>
+      '$sessions/$sessionId/rate';
 
   /// Confirming a help request the student named this tutor on.
   ///
@@ -130,11 +136,7 @@ _ConfirmRequest? _confirmRequestOf(GoRouterState state) {
       topic.isEmpty) {
     return null;
   }
-  return (
-    requestId: requestId,
-    courseUnitId: courseUnitId,
-    topic: topic,
-  );
+  return (requestId: requestId, courseUnitId: courseUnitId, topic: topic);
 }
 
 /// What a link with no id in it gets.
@@ -198,21 +200,38 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.tutorVerification,
         builder: (context, state) => const BecomeTutorScreen(),
       ),
-      GoRoute(
-        path: AppRoutes.home,
-        builder: (context, state) => const HomeScreen(
-          activeSessionCard: ActiveSessionCard(),
-          // Passed in rather than built here for the reason [HomeScreen]
-          // documents: home must not import a feature it owns nothing of. The
-          // rail is a section of the dashboard, not a route, so it has no path
-          // to be reached by and so the shell is the only thing that can supply
-          // it.
-          tutorRail: TutorRail(),
+      ShellRoute(
+        builder: (context, state, child) => AuthenticatedShell(
+          selectedIndex: switch (state.uri.path) {
+            AppRoutes.sessions => 1,
+            AppRoutes.profile => 2,
+            _ => 0,
+          },
+          child: child,
         ),
-      ),
-      GoRoute(
-        path: AppRoutes.sessions,
-        builder: (context, state) => const SessionsListScreen(),
+        routes: [
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) => HomeScreen(
+              activeSessionCard: const ActiveSessionCard(),
+              tutorRail: const TutorRail(),
+              onRefresh: () async {
+                ref
+                  ..invalidate(sessionListProvider)
+                  ..invalidate(topTutorsProvider(null));
+                await ref.read(sessionListProvider.future);
+              },
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.sessions,
+            builder: (context, state) => const SessionsTabScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.profile,
+            builder: (context, state) => const ProfileScreen(),
+          ),
+        ],
       ),
       GoRoute(
         path: '${AppRoutes.sessions}/confirm',
@@ -331,7 +350,10 @@ String? _redirectFor(SessionState state, String location) {
     // through here.
     SessionStatus.unauthenticated =>
       _isPublicAuthRoute(location) ? null : AppRoutes.signIn,
-    SessionStatus.authenticated => _redirectForSignedIn(state.profile, location),
+    SessionStatus.authenticated => _redirectForSignedIn(
+      state.profile,
+      location,
+    ),
   };
 }
 
@@ -407,7 +429,11 @@ String? _redirectForSignedIn(UserProfile? profile, String location) {
   // Onboarding is not a place a complete account can remain: once the profile
   // is finished the guard moves it home, which is also what ends the wizard
   // after its last step.
-  return location == AppRoutes.home ? null : AppRoutes.home;
+  return location == AppRoutes.home ||
+          location == AppRoutes.sessions ||
+          location == AppRoutes.profile
+      ? null
+      : AppRoutes.home;
 }
 
 /// Whether a location is inside the sessions subtree.

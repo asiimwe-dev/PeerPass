@@ -124,6 +124,38 @@ flutter pub get
 flutter run
 ```
 
+To run the student client in a browser against the local API, set the backend
+origin explicitly before starting or restarting Uvicorn:
+
+```bash
+# Run from backend/
+export CORS_ORIGINS=http://localhost:8080
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# In another terminal, from frontend/
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000
+```
+
+Use the exact origin shown in the browser address bar. If Flutter chooses a
+different port, or the address is `http://127.0.0.1:<port>`, update
+`CORS_ORIGINS` to that exact scheme, host, and port. CORS settings are read at
+backend startup, so restart the backend after changing them.
+
+### 4. Admin web application
+
+The MUST operations console is a separate Flutter web application and is not
+part of the student mobile client:
+
+```bash
+cd admin_web
+flutter pub get
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000
+```
+
+Only provisioned backend administrators can sign in. See
+[admin_web/README.md](./admin_web/README.md) for the production build
+configuration and the current pilot surface.
+
 ---
 
 ## Regulatory Compliance

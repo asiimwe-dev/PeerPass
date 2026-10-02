@@ -48,6 +48,21 @@ timestamps, competency evidence, or internal database ids.
 privileged actions. Audit context contains only action-specific identifiers and
 pagination metadata; request bodies, credentials, and evidence are not stored.
 
+`GET /v1/admin/competencies` returns paginated competency claims for operational
+review. `PATCH /v1/admin/competencies/{competency_id}/review` accepts
+`{"status": "verified"}` or `{"status": "rejected", "rejection_reason": "..."}`.
+Only `pending` claims can be reviewed; rejection reasons must be nonblank.
+Successful decisions record the reviewer in the competency and append an audit
+event. Verification grants the tutor role and creates the provisional tutor
+profile through the backend service.
+
+`GET /v1/admin/tutor-standings` returns paginated, privacy-safe tutor standing
+aggregates for operations. These endpoints require the explicit `admin` role,
+use public identifiers only, and never return uploaded evidence documents,
+password hashes, refresh tokens, consent timestamps, or internal database ids.
+All list responses use the standard `items`, `total`, `offset`, and `limit`
+pagination shape.
+
 ## Errors
 
 Every error the API returns — framework validation, domain rejection, or an

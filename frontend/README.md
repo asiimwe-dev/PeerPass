@@ -32,8 +32,9 @@ flutter run --dart-define=API_BASE_URL=https://api.example.org
 
 ### The API base URL
 
-There is no hardcoded host. `AppConfig` reads `API_BASE_URL` from
-`--dart-define`, falling back to `http://10.0.2.2:8000` for local development.
+There is no hardcoded deployment host. `AppConfig` reads `API_BASE_URL` from
+`--dart-define`; web falls back to `http://localhost:8000` and Android
+emulators fall back to `http://10.0.2.2:8000` for local development.
 `--dart-define` is resolved by the compiler, so switching environments means
 rebuilding rather than flipping a setting at runtime.
 
@@ -41,6 +42,8 @@ rebuilding rather than flipping a setting at runtime.
 `localhost` inside the emulator is the emulator itself, which is the single most
 common cause of a client that works on web and cannot reach a local API on
 Android. For a physical device, pass your machine's LAN address explicitly.
+For a browser demo against a local backend, configure `CORS_ORIGINS` for the
+demo origin (for example `http://localhost:xxxxx`).
 
 Secrets are never compiled into the client. The API holds no secrets; the
 access and refresh tokens are held in `flutter_secure_storage`.

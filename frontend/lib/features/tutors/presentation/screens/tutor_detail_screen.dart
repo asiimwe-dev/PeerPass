@@ -37,7 +37,11 @@ class TutorDetailScreen extends ConsumerWidget {
                 onRetry: () => ref.invalidate(tutorDetailProvider(userId)),
               ),
               null => switch (detail.value) {
-                final loaded? => _Detail(detail: loaded),
+                final loaded? => _Detail(
+                  detail: loaded,
+                  onRefresh: () =>
+                      ref.refresh(tutorDetailProvider(userId).future),
+                ),
                 null => const LoadingView(message: 'Loading tutor'),
               },
             },
@@ -50,60 +54,65 @@ class TutorDetailScreen extends ConsumerWidget {
 
 /// The profile, once it is here.
 class _Detail extends ConsumerWidget {
-  const _Detail({required this.detail});
+  const _Detail({required this.detail, required this.onRefresh});
 
   final TutorDetail detail;
+  final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final tutor = detail.profile;
 
-    return ListView(
-      padding: const EdgeInsets.all(AppDimens.lg),
-      children: [
-        Row(
-          children: [
-            CircleAvatar(
-              // The pilot stores no images, so the placeholder is derived from
-              // the name the API returned, on the same grounds as home's avatar.
-              child: Text(_initials(tutor.fullName)),
-            ),
-            const SizedBox(width: AppDimens.lg),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(tutor.fullName, style: theme.textTheme.titleLarge),
-                  const SizedBox(height: AppDimens.xs),
-                  TutorStandingChip(
-                    standing: tutor.standing,
-                    standingWire: tutor.standingWire,
-                  ),
-                ],
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppDimens.lg),
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                // The pilot stores no images, so the placeholder is derived from
+                // the name the API returned, on the same grounds as home's avatar.
+                child: Text(_initials(tutor.fullName)),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppDimens.xl),
-        _Stats(
-          rating: tutor.ratingLabel,
-          sessions: sessionsTaughtLabel(tutor.completedSessions),
-          endorsements: _endorsementCountLabel(detail.endorsementCount),
-        ),
-        const SizedBox(height: AppDimens.xl),
-        Text('Endorsed for', style: theme.textTheme.titleMedium),
-        const SizedBox(height: AppDimens.xs),
-        Text(
-          'Students who had a session with this tutor could say they covered '
-          'these units.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(width: AppDimens.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tutor.fullName, style: theme.textTheme.titleLarge),
+                    const SizedBox(height: AppDimens.xs),
+                    TutorStandingChip(
+                      standing: tutor.standing,
+                      standingWire: tutor.standingWire,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: AppDimens.md),
-        _EndorsedUnits(detail: detail),
-      ],
+          const SizedBox(height: AppDimens.xl),
+          _Stats(
+            rating: tutor.ratingLabel,
+            sessions: sessionsTaughtLabel(tutor.completedSessions),
+            endorsements: _endorsementCountLabel(detail.endorsementCount),
+          ),
+          const SizedBox(height: AppDimens.xl),
+          Text('Endorsed for', style: theme.textTheme.titleMedium),
+          const SizedBox(height: AppDimens.xs),
+          Text(
+            'Students who had a session with this tutor could say they covered '
+            'these units.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppDimens.md),
+          _EndorsedUnits(detail: detail),
+        ],
+      ),
     );
   }
 
@@ -158,11 +167,17 @@ class _Stats extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: _Stat(label: 'Rating', value: rating)),
+            Expanded(
+              child: _Stat(label: 'Rating', value: rating),
+            ),
             const SizedBox(width: AppDimens.md),
-            Expanded(child: _Stat(label: 'Sessions', value: sessions)),
+            Expanded(
+              child: _Stat(label: 'Sessions', value: sessions),
+            ),
             const SizedBox(width: AppDimens.md),
-            Expanded(child: _Stat(label: 'Endorsements', value: endorsements)),
+            Expanded(
+              child: _Stat(label: 'Endorsements', value: endorsements),
+            ),
           ],
         ),
       ),

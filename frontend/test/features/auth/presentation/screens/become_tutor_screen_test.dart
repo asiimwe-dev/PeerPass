@@ -6,6 +6,7 @@ import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/theme/app_theme.dart';
 import 'package:peerpass/features/auth/data/datasources/remote_academics_datasource.dart';
+import 'package:peerpass/features/auth/data/models/university_option.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/screens/become_tutor_screen.dart';
@@ -19,15 +20,23 @@ const UserProfile _student = UserProfile(
 );
 
 const List<CourseUnitOption> _courseUnits = <CourseUnitOption>[
-  CourseUnitOption(publicId: 'unit-1', code: 'BIT 221', name: 'Database Programming'),
-  CourseUnitOption(publicId: 'unit-2', code: 'BIT 311', name: 'Software Engineering'),
+  CourseUnitOption(
+    publicId: 'unit-1',
+    code: 'BIT 221',
+    name: 'Database Programming',
+  ),
+  CourseUnitOption(
+    publicId: 'unit-2',
+    code: 'BIT 311',
+    name: 'Software Engineering',
+  ),
 ];
 
 const List<GradeOption> _gradeOptions = <GradeOption>[
-  GradeOption(publicId: 'grade-1', label: 'B+', gradePoints: 3.5),
+  GradeOption(publicId: 'grade-1', label: 'B+', gradePoints: 4.5),
   // The grade scale stores exact decimal values, including the A benchmark.
   // ignore: prefer_int_literals
-  GradeOption(publicId: 'grade-2', label: 'A', gradePoints: 4.0),
+  GradeOption(publicId: 'grade-2', label: 'A', gradePoints: 5.0),
 ];
 
 Future<void> _pumpScreen(WidgetTester tester, FakeAuthRepository repo) async {
@@ -50,6 +59,36 @@ Future<void> _pumpScreen(WidgetTester tester, FakeAuthRepository repo) async {
 }
 
 void main() {
+  testWidgets(
+    'shows the MUST grade options when the live grade catalogue is empty',
+    (tester) async {
+      final repository = FakeAuthRepository(
+        session: _student,
+        refreshToken: 'refresh',
+        universityOptions: const [
+          UniversityOption(
+            publicId: 'university-1',
+            name: 'Mbarara University of Science and Technology',
+          ),
+        ],
+        courseUnitOptions: _courseUnits,
+      );
+
+      await _pumpScreen(tester, repository);
+
+      await tester.tap(find.byKey(const ValueKey('Grade')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('B+ (4.5)').last, findsOneWidget);
+      expect(
+        find.text(
+          'Showing the saved MUST grading scale while we refresh the catalogue.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('a student can submit tutor proof for one unit', (tester) async {
     final repository = FakeAuthRepository(
       session: _student,
@@ -67,7 +106,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('Grade')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('B+ (3.5)').last);
+    await tester.tap(find.text('B+ (4.5)').last);
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -88,5 +127,26 @@ void main() {
     expect(repository.submittedCompetencies.first['source'], 'transcript');
     expect(repository.submittedCompetencies.first['course_unit_id'], 'unit-1');
     expect(repository.submittedCompetencies.first['grade_id'], 'grade-1');
+  });
+
+  testWidgets('requires an explicit grade selection', (tester) async {
+    final repository = FakeAuthRepository(
+      session: _student,
+      refreshToken: 'refresh',
+      courseUnitOptions: _courseUnits,
+      gradeOptions: _gradeOptions,
+    );
+
+    await _pumpScreen(tester, repository);
+
+    final submit = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Submit proof'),
+    );
+    expect(submit.onPressed, isNull);
+    expect(repository.submittedCompetencies, isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('Grade')));
+    await tester.pumpAndSettle();
+    expect(find.text('Select grade').last, findsOneWidget);
   });
 }

@@ -1,16 +1,27 @@
 """Least-privilege read and audit operations for MUST staff."""
 
 import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.exceptions import NotFoundProblem, ValidationProblem
 from app.models.audit import AdminAuditEvent
+from app.models.competency import Competency
+from app.models.enums import CompetencyStatus
+from app.models.tutor_profile import TutorProfile
 from app.models.user import User, load_roles
 from app.schemas.admin import (
     AdminAuditEventPage,
     AdminAuditEventResponse,
+    AdminCompetencyPage,
+    AdminCompetencyResponse,
+    AdminCompetencyReviewRequest,
+    AdminTutorStandingPage,
+    AdminTutorStandingResponse,
     AdminUserPage,
     AdminUserResponse,
 )
@@ -71,6 +82,160 @@ async def list_audit_events(
         total=total,
         limit=params.limit,
         offset=params.offset,
+    )
+
+
+async def list_competencies(
+    db: AsyncSession, actor_id: uuid.UUID, params: PageParams
+) -> AdminCompetencyPage:
+    query = (
+        select(Competency)
+        .join(Competency.user)
+        .options(
+            selectinload(Competency.user),
+            selectinload(Competency.course_unit),
+            selectinload(Competency.grade),
+        )
+        .order_by(Competency.created_at.desc(), Competency.id.desc())
+    )
+    total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    rows = list(
+        (await db.scalars(query.offset(params.offset).limit(params.limit))).all()
+    )
+    await record_audit(
+        db,
+        actor_id=actor_id,
+        action="admin.competencies.list",
+        target_type="competency",
+        context={"limit": params.limit, "offset": params.offset},
+    )
+    return AdminCompetencyPage(
+        items=[_competency_response(row) for row in rows],
+        total=total,
+        limit=params.limit,
+        offset=params.offset,
+    )
+
+
+async def review_competency(
+    db: AsyncSession,
+    actor_id: uuid.UUID,
+    competency_id: uuid.UUID,
+    payload: AdminCompetencyReviewRequest,
+) -> AdminCompetencyResponse:
+    row = await db.scalar(
+        select(Competency)
+        .where(Competency.public_id == competency_id)
+        .options(
+            selectinload(Competency.user),
+            selectinload(Competency.course_unit),
+            selectinload(Competency.grade),
+        )
+    )
+    if row is None:
+        raise NotFoundProblem("That competency record could not be found.")
+    if payload.status is CompetencyStatus.PENDING:
+        raise ValidationProblem(
+            "An admin review must verify or reject the competency.",
+            errors={"status": "pending is not a review decision"},
+        )
+    if payload.status is CompetencyStatus.REJECTED and not (
+        payload.rejection_reason and payload.rejection_reason.strip()
+    ):
+        raise ValidationProblem(
+            "A rejection reason is required.",
+            errors={"rejection_reason": "required when rejecting"},
+        )
+    row.reviewed_by_id = actor_id
+    row.status = payload.status
+    row.rejection_reason = (
+        payload.rejection_reason
+        if payload.status is CompetencyStatus.REJECTED
+        else None
+    )
+    row.verified_at = (
+        datetime.now(UTC) if payload.status is CompetencyStatus.VERIFIED else None
+    )
+    if payload.status is CompetencyStatus.VERIFIED:
+        from app.models.enums import UserRole
+        from app.models.user import set_roles
+
+        roles = set(await load_roles(db, row.user_id))
+        roles.add(UserRole.TUTOR)
+        await set_roles(db, row.user_id, roles)
+        profile = await db.scalar(
+            select(TutorProfile).where(TutorProfile.user_id == row.user_id)
+        )
+        if profile is None:
+            db.add(TutorProfile(user_id=row.user_id))
+    await db.flush()
+    await record_audit(
+        db,
+        actor_id=actor_id,
+        action=f"admin.competencies.{payload.status.value}",
+        target_type="competency",
+        target_public_id=row.public_id,
+        context={"reason_provided": bool(payload.rejection_reason)},
+    )
+    return _competency_response(row)
+
+
+async def list_tutor_standings(
+    db: AsyncSession, actor_id: uuid.UUID, params: PageParams
+) -> AdminTutorStandingPage:
+    query = (
+        select(TutorProfile)
+        .join(TutorProfile.user)
+        .options(selectinload(TutorProfile.user))
+        .order_by(TutorProfile.created_at.desc(), TutorProfile.id.desc())
+    )
+    rows = list(
+        (await db.scalars(query.offset(params.offset).limit(params.limit))).all()
+    )
+    await record_audit(
+        db,
+        actor_id=actor_id,
+        action="admin.tutor_standings.list",
+        target_type="tutor",
+        context={"limit": params.limit, "offset": params.offset},
+    )
+    items = [
+        AdminTutorStandingResponse(
+            user_id=row.user.public_id,
+            user_email=row.user.email,
+            user_name=row.user.full_name,
+            standing=row.standing,
+            completed_sessions=row.completed_sessions,
+            rating_count=row.rating_count,
+            average_rating=(
+                str(row.average_rating) if row.average_rating is not None else None
+            ),
+        )
+        for row in rows
+    ]
+    return AdminTutorStandingPage(
+        items=items,
+        total=await db.scalar(select(func.count()).select_from(TutorProfile)) or 0,
+        limit=params.limit,
+        offset=params.offset,
+    )
+
+
+def _competency_response(row: Competency) -> AdminCompetencyResponse:
+    return AdminCompetencyResponse(
+        id=row.public_id,
+        user_id=row.user.public_id,
+        user_email=row.user.email,
+        user_name=row.user.full_name,
+        course_unit_id=row.course_unit.public_id,
+        course_unit_code=row.course_unit.code,
+        course_unit_name=row.course_unit.name,
+        grade_points=str(Decimal(row.grade.grade_points)),
+        status=row.status,
+        source=row.source,
+        evidence_reference=row.evidence_reference,
+        rejection_reason=row.rejection_reason,
+        created_at=row.created_at,
     )
 
 
