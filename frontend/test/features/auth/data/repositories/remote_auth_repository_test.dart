@@ -157,6 +157,36 @@ void main() {
     );
   });
 
+  group('reference data', () {
+    test('parses published grades even when the API sends Decimal strings', () async {
+      server.reply(200, [
+        {
+          'id': 'grade-1',
+          'label': 'B+',
+          'grade_points': '3.50',
+          'max_points': '5.00',
+          'grading_scale_id': 'scale-1',
+        },
+      ]);
+
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: 'https://api.peerpass.test',
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 300,
+        ),
+      )..httpClientAdapter = server;
+
+      final grades = await RemoteAcademicsDatasource(dio).grades();
+
+      expect(grades, hasLength(1));
+      expect(grades.single.publicId, 'grade-1');
+      expect(grades.single.label, 'B+');
+      expect(grades.single.gradePoints, 3.5);
+      expect(server.calls.single.path, '/v1/academics/grades');
+    });
+  });
+
   group('signing in', () {
     test('posts to the login endpoint and adopts the account', () async {
       server.reply(200, _tokens());

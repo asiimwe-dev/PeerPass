@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
@@ -59,6 +61,76 @@ Future<void> _pumpScreen(WidgetTester tester, FakeAuthRepository repo) async {
   await tester.pumpAndSettle();
 }
 
+class _ErrorGradeRepository implements AuthRepository {
+  @override
+  Future<UserProfile> signIn({
+    required String email,
+    required String password,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<UserProfile> register({
+    required String email,
+    required String password,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<UserProfile?> restoreSession() async => _student;
+
+  @override
+  Future<bool> refreshSession() async => true;
+
+  @override
+  Future<List<UniversityOption>> universities() async => const [
+    UniversityOption(
+      publicId: 'university-1',
+      name: 'Mbarara University of Science and Technology',
+    ),
+  ];
+
+  @override
+  Future<String?> universityNameById(String universityId) async => null;
+
+  @override
+  Future<List<Subject>> faculties({required String universityId}) async => const [];
+
+  @override
+  Future<List<CourseUnitOption>> courseUnits({
+    String? universityId,
+    String? subjectId,
+  }) async => _courseUnits;
+
+  @override
+  Future<List<GradeOption>> grades({String? universityId}) async {
+    throw const ServerFailure('The server sent something we could not read.');
+  }
+
+  @override
+  Future<void> submitCompetency({
+    required String courseUnitId,
+    required String gradeId,
+    required String source,
+    String? evidenceReference,
+    String? notes,
+  }) async {}
+
+  @override
+  Future<UserProfile> updateProfile({
+    String? fullName,
+    String? universityId,
+    String? facultyId,
+    int? yearOfStudy,
+    bool? academicDataConsented,
+    List<String>? primaryCourseUnitIds,
+  }) async => _student;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
+}
+
 void main() {
   testWidgets(
     'shows the MUST grade options when the live grade catalogue is empty',
@@ -86,6 +158,38 @@ void main() {
           'Showing the saved MUST grading scale while we refresh the catalogue.',
         ),
         findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'shows a retry state instead of the MUST fallback when the grade fetch errors',
+    (tester) async {
+      final container = ProviderContainer(
+        overrides: [authRepositoryProvider.overrideWithValue(_ErrorGradeRepository())],
+      );
+      addTearDown(container.dispose);
+      container.read(sessionControllerProvider.notifier).signedIn(_student);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light,
+            home: const BecomeTutorScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('We could not load the published grading scale right now.'),
+        findsOneWidget,
+      );
+      expect(find.text('Retry grades'), findsOneWidget);
+      expect(
+        find.text('Showing the saved MUST grading scale while we refresh the catalogue.'),
+        findsNothing,
       );
     },
   );

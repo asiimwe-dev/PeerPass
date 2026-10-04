@@ -38,18 +38,17 @@ class GradingScale {
   String toString() => 'GradingScale($name, max $maxPoints)';
 }
 
-/// A single grade achieved on a [GradingScale].
+/// A single grade in a published [GradingScale].
 ///
-/// [isVerified] records that the evidence for the grade was checked. An
-/// unverified grade is still displayable, but the backend will not count it
-/// toward a tutor competency, so the client needs to distinguish the two when
-/// explaining why a tutor is not yet matchable.
+/// The backend treats this as a catalogue entry for the institution's official
+/// scale, not as a student-specific verification record. A student's verification
+/// status belongs to a competency, not to the grade label itself.
 @immutable
 class Grade {
   const Grade({
     required this.label,
     required this.gradePoints,
-    required this.isVerified,
+    this.maxPoints = 0.0,
   });
 
   /// The grade as the university writes it, for example "B+".
@@ -61,7 +60,8 @@ class Grade {
   /// The grade expressed as a number on the owning [GradingScale].
   final double gradePoints;
 
-  final bool isVerified;
+  /// The maximum score on the published scale.
+  final double maxPoints;
 
   @override
   bool operator ==(Object other) =>
@@ -69,11 +69,11 @@ class Grade {
       other is Grade &&
           other.label == label &&
           other.gradePoints == gradePoints &&
-          other.isVerified == isVerified;
+          other.maxPoints == maxPoints;
 
   @override
-  int get hashCode => Object.hash(label, gradePoints, isVerified);
+  int get hashCode => Object.hash(label, gradePoints, maxPoints);
 
   @override
-  String toString() => 'Grade($label, $gradePoints, verified: $isVerified)';
+  String toString() => 'Grade($label, $gradePoints/$maxPoints)';
 }

@@ -57,9 +57,8 @@ class _BecomeTutorScreenState extends ConsumerState<BecomeTutorScreen> {
       ),
       orElse: () => false,
     );
-    final grades = liveGrades.isNotEmpty || !isMust
-        ? liveGrades
-        : mustFallbackGrades;
+    final isUsingFallback = isMust && !gradesAsync.hasError && liveGrades.isEmpty;
+    final grades = isUsingFallback ? mustFallbackGrades : liveGrades;
 
     if (_courseUnitId == null && courseUnits.isNotEmpty) {
       _courseUnitId = courseUnits.first.publicId;
@@ -157,18 +156,22 @@ class _BecomeTutorScreenState extends ConsumerState<BecomeTutorScreen> {
                         ? null
                         : (value) => setState(() => _gradeId = value),
                   ),
-                  if (isMust && liveGrades.isEmpty) ...[
+                  if (gradesAsync.hasError) ...[
+                    const SizedBox(height: AppDimens.sm),
+                    Text(
+                      'We could not load the published grading scale right now.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    TextButton(
+                      onPressed: () => ref.invalidate(gradesProvider(universityId)),
+                      child: const Text('Retry grades'),
+                    ),
+                  ] else if (isUsingFallback) ...[
                     const SizedBox(height: AppDimens.sm),
                     Text(
                       'Showing the saved MUST grading scale while we refresh the catalogue.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    if (gradesAsync.hasError)
-                      TextButton(
-                        onPressed: () =>
-                            ref.invalidate(gradesProvider(universityId)),
-                        child: const Text('Retry grades'),
-                      ),
                   ],
                   const SizedBox(height: AppDimens.md),
                   _buildDropdown<String>(
