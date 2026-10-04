@@ -102,6 +102,15 @@ class CourseUnitOption {
   final String name;
 }
 
+double _readDecimalValue(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is num) return value.toDouble();
+  if (value is String) return double.parse(value);
+  throw FormatException(
+    'Expected $key to be a numeric value or a decimal string, got ${value.runtimeType}.',
+  );
+}
+
 /// A grade on a university's published scale.
 @immutable
 class GradeOption {
@@ -109,15 +118,18 @@ class GradeOption {
     required this.publicId,
     required this.label,
     required this.gradePoints,
+    this.maxPoints = 0.0,
   });
 
   factory GradeOption.fromJson(Map<String, dynamic> json) => GradeOption(
     publicId: json['id'] as String,
     label: json['label'] as String,
-    gradePoints: (json['grade_points'] as num).toDouble(),
+    gradePoints: _readDecimalValue(json, 'grade_points'),
+    maxPoints: _readDecimalValue(json, 'max_points'),
   );
 
   final String publicId;
   final String label;
   final double gradePoints;
+  final double maxPoints;
 }
