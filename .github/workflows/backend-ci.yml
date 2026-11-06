@@ -4,13 +4,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
-# Pinned to 3.14 in every job because `app.core.security.new_uuid7` uses
+# Pinned to 3.15 in every job because `app.core.security.new_uuid7` uses
 # `uuid.uuid7`, which is 3.14+. The floor is load-bearing: on an older
 # interpreter that function raises `AttributeError` the first time anything
 # constructs a `User`, so the suite fails at runtime rather than at install.
 env:
-  PYTHON_VERSION: "3.14"
+  PYTHON_VERSION: "3.15"
 
 jobs:
   test:

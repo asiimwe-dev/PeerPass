@@ -94,16 +94,7 @@ FACULTIES: tuple[tuple[str, str], ...] = (
 
 PROGRAMS: tuple[tuple[str, str, str], ...] = (
     ("Faculty of Medicine", "undergraduate", "Medicine and Surgery (MBChB)"),
-    ("Faculty of Medicine", "undergraduate", "Pharmacy"),
-    ("Faculty of Medicine", "undergraduate", "Nursing Science"),
-    ("Faculty of Medicine", "undergraduate", "Medical Laboratory Science"),
-    ("Faculty of Medicine", "undergraduate", "Physiotherapy"),
     ("Faculty of Medicine", "postgraduate", "Master of Medicine (MMed)"),
-    ("Faculty of Science", "undergraduate", "Bachelor of Science with Education"),
-    ("Faculty of Science", "postgraduate", "MSc and PhD in Biology"),
-    ("Faculty of Science", "postgraduate", "MSc and PhD in Chemistry"),
-    ("Faculty of Science", "postgraduate", "MSc and PhD in Mathematics"),
-    ("Faculty of Science", "postgraduate", "MSc and PhD in Physics"),
     (
         "Faculty of Computing and Informatics Sciences",
         "undergraduate",
@@ -111,68 +102,8 @@ PROGRAMS: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "Faculty of Computing and Informatics Sciences",
-        "undergraduate",
-        "Information Technology",
-    ),
-    (
-        "Faculty of Computing and Informatics Sciences",
         "postgraduate",
         "Health Information Technology",
-    ),
-    (
-        "Faculty of Computing and Informatics Sciences",
-        "postgraduate",
-        "Information Systems",
-    ),
-    (
-        "Faculty of Applied Sciences and Technology",
-        "undergraduate",
-        "Biomedical Engineering",
-    ),
-    (
-        "Faculty of Applied Sciences and Technology",
-        "undergraduate",
-        "Electrical and Electronics Engineering",
-    ),
-    (
-        "Faculty of Applied Sciences and Technology",
-        "undergraduate",
-        "Petroleum Engineering",
-    ),
-    (
-        "Faculty of Applied Sciences and Technology",
-        "undergraduate",
-        "Environmental Management",
-    ),
-    (
-        "Faculty of Interdisciplinary Studies",
-        "undergraduate",
-        "Gender and Applied Women Health",
-    ),
-    (
-        "Faculty of Interdisciplinary Studies",
-        "undergraduate",
-        "Planning and Community Development",
-    ),
-    (
-        "Faculty of Interdisciplinary Studies",
-        "undergraduate",
-        "Agricultural Livelihoods",
-    ),
-    (
-        "Faculty of Business and Management Sciences",
-        "undergraduate",
-        "Business Administration",
-    ),
-    (
-        "Faculty of Business and Management Sciences",
-        "undergraduate",
-        "Accounting and Finance",
-    ),
-    (
-        "Faculty of Business and Management Sciences",
-        "undergraduate",
-        "Procurement and Supply Chain Management",
     ),
 )
 
@@ -2412,6 +2343,35 @@ COURSE_UNITS: tuple[tuple[str, str, str], ...] = (
         "PHY3114",
         "Introduction to Space Physics and Technology",
     ),
+    ("Faculty of Applied Sciences and Technology", "BCE2104", "Signals and Systems"),
+    (
+        "Faculty of Applied Sciences and Technology",
+        "BCE2106",
+        "Fundamentals of Fluid Mechanics",
+    ),
+    ("Faculty of Applied Sciences and Technology", "BCE2108", "Engineering Economics"),
+    ("Faculty of Applied Sciences and Technology", "BCE2110", "Thermofluids"),
+    ("Faculty of Applied Sciences and Technology", "BME2106", "Physiology"),
+    ("Faculty of Applied Sciences and Technology", "BME2107", "Pharmacology"),
+    (
+        "Faculty of Applied Sciences and Technology",
+        "CVE2107",
+        "Engineering Surveying II",
+    ),
+    (
+        "Faculty of Applied Sciences and Technology",
+        "CVE2108",
+        "Theory of Structures II",
+    ),
+    ("Faculty of Applied Sciences and Technology", "CVE2109", "Construction Materials"),
+    ("Faculty of Applied Sciences and Technology", "CVE2110", "Hydrology II"),
+    ("Faculty of Applied Sciences and Technology", "EEE2105", "Power Electronics"),
+    ("Faculty of Applied Sciences and Technology", "EEE2108", "Digital Systems"),
+    ("Faculty of Applied Sciences and Technology", "EEE2110", "Electromagnetic Fields"),
+    ("Faculty of Health Sciences", "BME2113", "Clinical Skills"),
+    ("Faculty of Health Sciences", "BME2114", "Patient Assessment"),
+    ("Faculty of Health Sciences", "BME3114", "Pathophysiology"),
+    ("Faculty of Health Sciences", "BME3115", "Pharmacology II"),
 )
 
 

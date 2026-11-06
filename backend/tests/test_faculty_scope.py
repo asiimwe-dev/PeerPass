@@ -43,8 +43,8 @@ UNITS_URL = "/v1/academics/course-units"
 
 OWN_FACULTY = "Faculty of Computing and Informatics Sciences"
 OTHER_FACULTY = "Faculty of Science"
-OWN_UNIT_CODE = "BIT 221"
-OTHER_UNIT_CODE = "SCH 211"
+OWN_UNIT_CODE = "BIT1101"
+OTHER_UNIT_CODE = "PHY1101"
 
 
 @pytest.fixture
@@ -182,7 +182,71 @@ async def test_the_catalogue_offers_only_your_own_faculty(
 
     units = (await committed_env.client.get(UNITS_URL, headers=bearer(body))).json()
 
-    assert {unit["code"] for unit in units} == {"BIT 221", "BIT 223", "BIT 225"}
+    assert {unit["code"] for unit in units} == {
+        "BIT1101",
+        "BIT1103",
+        "BIT1104",
+        "BIT1105",
+        "BIT1106",
+        "BIT1206",
+        "BIT2101",
+        "BIT2102",
+        "BIT2103",
+        "BIT2104",
+        "BIT2105",
+        "BIT2106",
+        "BIT2107",
+        "BIT3101",
+        "BIT3103",
+        "BIT3104",
+        "BIT3105",
+        "BIT3106",
+        "BIT3107",
+        "BIT3108",
+        "CSC1101",
+        "CSC1102",
+        "CSC1103",
+        "CSC1104",
+        "CSC1114",
+        "CSC1121",
+        "CSC2101",
+        "CSC2102",
+        "CSC2104",
+        "CSC2105",
+        "CSC2106",
+        "CSC3101",
+        "CSC3102",
+        "CSC3103",
+        "CSC3104",
+        "CSC3105",
+        "CSC3106",
+        "CSC3109",
+        "CSC3111",
+        "DCS1101",
+        "SWE1101",
+        "SWE1103",
+        "SWE1104",
+        "SWE1105",
+        "SWE2101",
+        "SWE2102",
+        "SWE2103",
+        "SWE2104",
+        "SWE2105",
+        "SWE2106",
+        "SWE2107",
+        "SWE3101",
+        "SWE3102",
+        "SWE3103",
+        "SWE3104",
+        "SWE3105",
+        "SWE3107",
+        "SWE4101",
+        "SWE4102",
+        "SWE4103",
+        "SWE4104",
+        "SWE4106",
+        "SWE4107",
+    }
 
 
 async def test_a_faculty_with_no_course_units_is_offered_none(
@@ -430,7 +494,7 @@ async def test_changing_faculty_drops_modules_that_are_now_out_of_scope(
 ) -> None:
     """The consequence of making faculty editable, so it is asserted here.
 
-    Moving from Computing to Science leaves BIT 221 behind as a primary module the
+    Moving from Computing to Science leaves BIT1101 behind as a primary module the
     account can no longer act on. Kept, the profile would be making a claim about
     itself that is false; dropped, the onboarding gate asks for the new ones. The
     same rule as a university change clearing the faculty one step up.

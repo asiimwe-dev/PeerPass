@@ -102,6 +102,7 @@ class HomeScreen extends ConsumerWidget {
               if (profile?.hasRole(UserRole.tutor) ?? false) ...[
                 const SizedBox(height: AppDimens.md),
                 _FeatureEntry(
+                  key: const ValueKey('waiting_entry'),
                   icon: Icons.mark_email_unread_outlined,
                   title: 'Waiting on you',
                   body:
@@ -111,6 +112,7 @@ class HomeScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppDimens.md),
                 _FeatureEntry(
+                  key: const ValueKey('certificate_entry'),
                   icon: Icons.workspace_premium_outlined,
                   title: 'My certificate',
                   body:
@@ -175,6 +177,7 @@ class _FeatureEntry extends StatelessWidget {
     required this.title,
     required this.body,
     required this.onTap,
+    super.key,
   });
 
   final IconData icon;

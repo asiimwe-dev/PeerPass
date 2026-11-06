@@ -351,10 +351,11 @@ void main() {
     // on screen, so a tap at the recorded position would land on whatever happens
     // to be there instead of the entry -- which reads as a broken tile rather than
     // as a test that did not scroll.
-    await tester.scrollUntilVisible(find.text('My certificate'), 200);
+    // Define the finder once with .first to guarantee a single match
+    final certificateFinder = find.byKey(const ValueKey('certificate_entry'));
+    await tester.drag(find.byType(SingleChildScrollView).first, const Offset(0, -500));
     await _settle(tester);
-
-    await tester.tap(find.text('My certificate'));
+    await tester.tap(certificateFinder);
     await _settle(tester);
 
     expect(find.byType(CertificateScreen), findsOneWidget);
@@ -385,10 +386,12 @@ void main() {
     );
     await _settle(tester);
 
-    await tester.scrollUntilVisible(find.text('Waiting on you'), 200);
+    // Define the finder once with .first to guarantee a single match
+    final waitingFinder = find.byKey(const ValueKey('waiting_entry'));
+    // Manually drag the scroll view up to reveal entries below the fold
+    await tester.drag(find.byType(SingleChildScrollView).first, const Offset(0, -500));
     await _settle(tester);
-
-    await tester.tap(find.text('Waiting on you'));
+    await tester.tap(waitingFinder);
     await _settle(tester);
 
     expect(find.byType(TutorRequestsScreen), findsOneWidget);
