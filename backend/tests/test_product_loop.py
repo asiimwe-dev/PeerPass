@@ -161,6 +161,17 @@ async def test_the_full_tutoring_loop_records_everything_it_promises(
     )
     assert rating.status_code == 201, rating.text
 
+    # --- the tutor can read the feedback the student just left -----------
+    # The client's session screen calls this as a GET, and a read that is routed
+    # as a POST answers 405 -- which the screen retried behind a spinner, so the
+    # defect looked like a load that never finished rather than a wrong verb.
+    feedback = await client.get(
+        f"/v1/ratings/session/{session_id}", headers=bearer(tutor)
+    )
+    assert feedback.status_code == 200, feedback.text
+    assert feedback.json()["score"] == 5
+    assert feedback.json()["feedback_text"] == "Explained it clearly."
+
     # --- what the platform promised is actually recorded ------------------
     standings = await client.get("/v1/admin/tutor-standings", headers=bearer(admin))
     assert standings.status_code == 200, standings.text

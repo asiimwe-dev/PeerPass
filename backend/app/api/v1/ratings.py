@@ -34,7 +34,7 @@ async def my_recent_ratings(
 # Declared after the literal `/me` paths above. FastAPI matches in declaration
 # order, and a `POST /ratings/{session_id}` would otherwise sit in front of a
 # literal path that shares the prefix.
-@router.post(
+@router.get(
     "/session/{session_id}",
     response_model=RatingResponse | None,
     summary="Read feedback received for one session",
