@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
@@ -425,5 +427,46 @@ void main() {
         expect(find.text('This session has been rated.'), findsNothing);
       },
     );
+  });
+
+  testWidgets('a session opened with no back stack offers a way home', (
+    tester,
+  ) async {
+    // The tutor lands here by `go` after confirming a help request, which
+    // replaces the stack. The app bar's automatic back control therefore does not
+    // appear, and without an explicit home control the tutor is stranded on the
+    // session they just booked.
+    final repository = FakeSessionsRepository(sessions: [session()])
+      ..currentUser = _tutor.publicId;
+    final router = GoRouter(
+      initialLocation: AppRoutes.sessionDetailPath(_sessionId),
+      routes: [
+        GoRoute(
+          path: AppRoutes.sessionDetailPath(_sessionId),
+          builder: (context, state) =>
+              const SessionDetailScreen(sessionId: _sessionId),
+        ),
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) =>
+              const Scaffold(body: Text('Home after the session')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: _container(repository, _tutor),
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await _settle(tester);
+
+    expect(find.byTooltip('Back to Home'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back to Home'));
+    await _settle(tester);
+
+    expect(find.text('Home after the session'), findsOneWidget);
   });
 }
