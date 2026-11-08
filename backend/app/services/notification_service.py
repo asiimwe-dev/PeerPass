@@ -14,7 +14,7 @@ changing a single call site.
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -346,19 +346,25 @@ async def mark_read(
 
 
 async def mark_all_read(db: AsyncSession, user: User) -> int:
-    """Mark every unread row the caller owns, and say how many changed."""
+    """Mark every unread row the caller owns, and say how many changed.
+
+    One statement rather than a read followed by per-row writes in Python. The
+    clear is a single fact -- "everything unread of mine is read now" -- so it
+    does not need the rows themselves, and loading an inbox of a few hundred
+    objects to stamp one column would put them all in memory for no answer the
+    server did not already have. `read_at` is one timestamp for the whole batch,
+    which is what the row loop did too; only the ordering by row disappeared.
+    """
     result = await db.execute(
-        select(Notification).where(
+        update(Notification)
+        .where(
             Notification.user_id == user.id,
             Notification.read_at.is_(None),
         )
+        .values(read_at=datetime.now(UTC))
     )
-    rows = list(result.scalars())
-    now = datetime.now(UTC)
-    for row in rows:
-        row.read_at = now
     await db.commit()
-    return len(rows)
+    return result.rowcount or 0
 
 
 async def register_device(
