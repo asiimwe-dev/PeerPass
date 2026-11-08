@@ -8,12 +8,16 @@ import 'package:peerpass/app/app.dart';
 import 'package:peerpass/app/router.dart';
 import 'package:peerpass/app/splash_screen.dart';
 import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/models/course_unit_option.dart';
+import 'package:peerpass/core/models/subject.dart';
+import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
+import 'package:peerpass/features/auth/presentation/providers/onboarding_providers.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
 import 'package:peerpass/features/home/presentation/screens/tutor_hq_screen.dart';
 import 'package:peerpass/features/incentives/data/repositories/fake_incentives_repository.dart';
@@ -190,6 +194,88 @@ void main() {
 
     expect(find.text(_homeText), findsNothing);
     expect(find.text('What is your name?'), findsOneWidget);
+  });
+
+  testWidgets('the module step survives the profile becoming complete', (
+    tester,
+  ) async {
+    // Regression. Finishing the academic-context step writes university and
+    // faculty, which is all `UserProfile.needsOnboarding` asks about. The router
+    // listened to that write, saw a complete profile on /onboarding and sent the
+    // student home -- so step three, the units they need help with, could never
+    // be reached. The last step is deliberately not part of the profile gate,
+    // so the guard must leave the wizard alone and let it finish itself.
+    final repository = FakeAuthRepository(
+      session: _freshAccount,
+      refreshToken: 'refresh',
+      universityOptions: const [
+        UniversityOption(
+          publicId: 'university-1',
+          name: 'Mbarara University of Science and Technology',
+        ),
+      ],
+      facultyOptions: const [
+        Subject(publicId: 'subject-1', name: 'School of Computing'),
+      ],
+      courseUnitOptions: const [
+        CourseUnitOption(
+          publicId: 'unit-1',
+          code: 'BIT 221',
+          name: 'Database Programming',
+        ),
+      ],
+    );
+    final container = ProviderContainer(
+      overrides: [authRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+
+    expect(find.text('What is your name?'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Full name'),
+      'Achieng Okello',
+    );
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await _settle(tester);
+
+    // The second step's fields are set through the controller so this test is
+    // about the redirect, not about dropdown mechanics; the screen's own tests
+    // drive those through the real pickers.
+    container.read(onboardingControllerProvider.notifier)
+      ..setUniversity('university-1')
+      ..setFaculty('subject-1')
+      ..setYearOfStudy(2)
+      ..setConsent(value: true);
+    await _settle(tester);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await _settle(tester);
+
+    expect(find.text('Step 3 of 3'), findsOneWidget);
+    expect(find.text('Which units might you need help with?'), findsOneWidget);
+    expect(
+      find.text(_homeText),
+      findsNothing,
+      reason: 'the guard sent the student home before the module step',
+    );
+
+    await tester.tap(find.text('BIT 221 - Database Programming'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish'));
+    await _settle(tester);
+
+    expect(find.text(_homeText), findsOneWidget);
+    expect(find.text('Which units might you need help with?'), findsNothing);
   });
 
   test('a late restore cannot replace a newer signed-in account', () async {

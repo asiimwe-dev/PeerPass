@@ -508,9 +508,20 @@ String? _redirectForSignedIn(UserProfile? profile, String location) {
     return null;
   }
 
-  // Onboarding is not a place a complete account can remain: once the profile
-  // is finished the guard moves it home, which is also what ends the wizard
-  // after its last step.
+  // Onboarding is not a place a complete account is sent *back* to, but it is a
+  // place a signed-in account must be allowed to remain. Step two completes the
+  // profile, and the third step -- the units a student expects to need help with
+  // -- is deliberately not part of [UserProfile.needsOnboarding]: a faculty may
+  // publish no units, so requiring one would trap those students in the wizard
+  // for ever. That makes step two the moment the profile becomes "complete"
+  // while the wizard is only two thirds done. A guard that pulled a complete
+  // profile off /onboarding here would skip the module step entirely, which is
+  // exactly what it used to do. The wizard owns its exit: it navigates home
+  // after its last step has saved.
+  if (location == AppRoutes.onboarding) {
+    return null;
+  }
+
   return location == AppRoutes.home ||
           location == AppRoutes.sessions ||
           location == AppRoutes.notifications ||

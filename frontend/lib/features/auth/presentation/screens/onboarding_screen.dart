@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/constants/app_dimens.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/subject.dart';
@@ -26,7 +28,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  Future<void> _saveAndAdvance() {
+  Future<void> _saveAndAdvance() async {
     // The controller keeps the reason on the state, so the screen only has to
     // ask it to try. A false return means the step did not move, and the
     // controller has already recorded why.
@@ -46,9 +48,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           )
         : null;
     final emptyCatalogue = units?.asData?.value.isEmpty == true;
-    return ref
+    final finishing =
+        ref.read(onboardingControllerProvider).step ==
+        OnboardingStep.primaryModules;
+    final advanced = await ref
         .read(onboardingControllerProvider.notifier)
         .saveAndAdvance(facultyHasNoCourseUnits: emptyCatalogue);
+
+    if (!advanced || !finishing || !mounted) return;
+
+    // The wizard ends itself. The router cannot tell a profile that has just
+    // finished step two from one that has finished the whole wizard, because
+    // declared units are deliberately not part of the profile gate. Navigating
+    // here is what stops a completed account sitting on the last step for ever.
+    context.go(AppRoutes.home);
   }
 
   @override
@@ -230,7 +243,11 @@ class _Progress extends StatelessWidget {
         ),
         child: Row(
           children: [
-            for (var index = 0; index < OnboardingStep.values.length; index++) ...[
+            for (
+              var index = 0;
+              index < OnboardingStep.values.length;
+              index++
+            ) ...[
               if (index > 0) const SizedBox(width: AppDimens.sm),
               Expanded(
                 child: Container(

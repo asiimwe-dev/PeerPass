@@ -845,6 +845,12 @@ rather than treat it as damage:
   step still asks the question and still has to be answered to leave the wizard;
   what it must not do is bar the app to a student who has answered it as fully as
   their faculty allows.
+- **Finishing step two does not finish the wizard.** The academic-context step is
+  what fills the name, university and faculty, so the profile becomes "complete"
+  while the module step is still unseen. A router guard that redirects a complete
+  profile off `/onboarding` at that moment skips the third step entirely. The
+  guard therefore leaves a signed-in account on `/onboarding`, and the wizard
+  navigates home itself once its last step has saved.
 - Declared units are a matching input and a precondition of nothing else. No
   endpoint reads them as a gate, so their absence cannot block anything else.
 
