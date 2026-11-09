@@ -260,7 +260,14 @@ class _Action extends StatelessWidget {
     // says a rating exists for the session, which is not the same claim as "you
     // gave one", and on a tutor's screen it is the other party's rating.
     final given = state.ratingGiven;
-    if (given != null) return _RatingReadOnly(rating: given);
+    // Only the person who submitted it may be told they did. `ratingGiven` is
+    // kept in this controller for the session's lifetime, and the controller
+    // outlives a sign-out, so a stale value from the previous account would
+    // otherwise be shown back to the tutor as their own rating. The rater id is
+    // on the response precisely so this can be checked rather than assumed.
+    if (given != null && given.raterId == viewerId) {
+      return _RatingReadOnly(rating: given);
+    }
     if (session.isRated) return const _RatedBySomeoneElse();
 
     return switch (session.status) {

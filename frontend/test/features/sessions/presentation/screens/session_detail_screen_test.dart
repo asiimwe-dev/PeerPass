@@ -10,9 +10,11 @@ import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/theme/app_theme.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
+import 'package:peerpass/features/sessions/data/models/rating_model.dart';
 import 'package:peerpass/features/sessions/data/models/session_model.dart';
 import 'package:peerpass/features/sessions/data/repositories/fake_sessions_repository.dart';
 import 'package:peerpass/features/sessions/data/repositories/sessions_repository.dart';
+import 'package:peerpass/features/sessions/presentation/providers/session_providers.dart';
 import 'package:peerpass/features/sessions/presentation/screens/session_detail_screen.dart';
 
 /// The student in the sessions below.
@@ -469,4 +471,54 @@ void main() {
 
     expect(find.text('Home after the session'), findsOneWidget);
   });
+
+  testWidgets(
+    'a rating given by the previous account is not shown to the next',
+    (tester) async {
+      // Two people share a handset in the pilot, and this controller outlives a
+      // sign-out. The tutee's submission must not come back as the tutor's own
+      // "you rated this" after the account changes.
+      final repository = FakeSessionsRepository(
+        sessions: [session(status: 'completed')],
+      )..currentUser = _tutee.publicId;
+      final container = _container(repository, _tutee);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light,
+            home: const SessionDetailScreen(sessionId: _sessionId),
+          ),
+        ),
+      );
+      await _settle(tester);
+
+      container
+          .read(sessionDetailProvider(_sessionId).notifier)
+          .recordRating(
+            RatingModel(
+              id: 'rating-1',
+              sessionId: _sessionId,
+              raterId: _tutee.publicId,
+              rateeId: _tutor.publicId,
+              score: 5,
+              comprehensionHelped: true,
+              createdAt: DateTime.utc(2026, 3, 4, 9),
+            ),
+          );
+      await _settle(tester);
+      expect(find.text('You rated this 5 out of 5'), findsOneWidget);
+
+      repository.currentUser = _tutor.publicId;
+      container.read(sessionControllerProvider.notifier).signedIn(_tutor);
+      await _settle(tester);
+
+      expect(find.textContaining('You rated this'), findsNothing);
+      expect(
+        find.text('Waiting for the student to rate this session.'),
+        findsOneWidget,
+      );
+    },
+  );
 }
