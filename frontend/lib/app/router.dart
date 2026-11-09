@@ -8,9 +8,11 @@ import 'package:peerpass/core/constants/app_dimens.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
+import 'package:peerpass/features/auth/presentation/providers/onboarding_providers.dart';
 import 'package:peerpass/features/auth/presentation/screens/onboarding_screen.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_in_screen.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
+import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 import 'package:peerpass/features/competencies/presentation/screens/my_applications_screen.dart';
 import 'package:peerpass/features/competencies/presentation/screens/submit_claim_screen.dart';
 import 'package:peerpass/features/home/presentation/screens/home_screen.dart';
@@ -26,6 +28,7 @@ import 'package:peerpass/features/matching/presentation/screens/match_results_sc
 import 'package:peerpass/features/matching/presentation/screens/tutor_requests_screen.dart';
 import 'package:peerpass/features/matching/presentation/widgets/ask_composer.dart';
 import 'package:peerpass/features/matching/presentation/widgets/tutor_waiting_requests_section.dart';
+import 'package:peerpass/features/notifications/presentation/providers/notification_providers.dart';
 import 'package:peerpass/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:peerpass/features/notifications/presentation/widgets/notification_tab_icon.dart';
 import 'package:peerpass/features/sessions/presentation/providers/session_providers.dart';
@@ -553,10 +556,50 @@ String _landingFor(UserProfile? profile) =>
 /// supplies one rather than adding a dependency for a single interface.
 class _SessionChangeNotifier extends ChangeNotifier {
   _SessionChangeNotifier(Ref ref) {
-    _subscription = ref.listen<SessionState>(
-      sessionControllerProvider,
-      (previous, next) => notifyListeners(),
-    );
+    _subscription = ref.listen<SessionState>(sessionControllerProvider, (
+      previous,
+      next,
+    ) {
+      final before = previous?.profile?.publicId;
+      final after = next.profile?.publicId;
+      // Only on sign-in, which is also the moment a different account may
+      // have taken over the handset. Invalidating on sign-out would rebuild
+      // still-mounted providers after the token is gone, which is a request
+      // nobody asked for; the stale answers are hidden by the redirect and
+      // dropped here before the next account can read them.
+      if (after != null && after != before) {
+        _forgetAccountScopedAnswers(ref);
+      }
+      notifyListeners();
+    });
+  }
+
+  /// Drops every cached answer that belonged to the account that signed in
+  /// before this one.
+  ///
+  /// These providers live for the app container's lifetime, which is longer
+  /// than a session. Without this, the next person to sign in on a shared
+  /// handset is shown the previous student's inbox, sessions, tutor dashboard,
+  /// or submitted rating until each screen happens to refresh -- a data leak,
+  /// not just a stale label. Reference data is deliberately left alone:
+  /// universities, course units, and public tutor profiles answer the same for
+  /// everyone.
+  void _forgetAccountScopedAnswers(Ref ref) {
+    ref
+      ..invalidate(sessionListProvider)
+      ..invalidate(activeSessionProvider)
+      ..invalidate(sessionDetailProvider)
+      ..invalidate(receivedRatingProvider)
+      ..invalidate(ratingFormProvider)
+      ..invalidate(confirmRequestProvider)
+      ..invalidate(notificationInboxProvider)
+      ..invalidate(myClaimsProvider)
+      ..invalidate(tutorHqProvider)
+      ..invalidate(tutorRequestsProvider)
+      ..invalidate(tutorChoiceProvider)
+      ..invalidate(tutorDecisionProvider)
+      ..invalidate(certificateEligibilityProvider)
+      ..invalidate(onboardingControllerProvider);
   }
 
   late final ProviderSubscription<SessionState> _subscription;
