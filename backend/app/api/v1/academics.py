@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DatabaseSession
 from app.core.exceptions import NotFoundProblem
+from app.core.pilot import PILOT_UNIVERSITY_NAME
 from app.models.course_unit import CourseUnit, Program, Subject, University
 from app.models.course_unit_topic import CourseUnitTopic
 from app.models.grading_scale import Grade, GradingScale
@@ -34,8 +35,6 @@ from app.schemas.academic import (
 from app.services import faculty_scope
 
 router = APIRouter(prefix="/academics", tags=["academics"])
-
-PILOT_UNIVERSITY_NAME = "Mbarara University of Science and Technology"
 
 
 @router.get(
