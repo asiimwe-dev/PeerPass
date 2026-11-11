@@ -6,6 +6,7 @@ import 'package:peerpass/core/models/course_unit_option.dart';
 import 'package:peerpass/core/models/grade_option.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
+import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 import 'package:peerpass/features/competencies/presentation/providers/competency_providers.dart';
 
 /// Submits proof of a grade for one course unit.
@@ -48,11 +49,31 @@ class _SubmitClaimScreenState extends ConsumerState<SubmitClaimScreen> {
     final courseUnitsAsync = ref.watch(claimCourseUnitsProvider(claimScope));
     final gradesAsync = ref.watch(claimGradesProvider(universityId));
     final isMustAsync = ref.watch(isMustUniversityProvider(universityId));
+    final claimsAsync = ref.watch(myClaimsProvider);
+    final limitsAsync = ref.watch(applicationLimitsProvider);
 
     final courseUnits = courseUnitsAsync.maybeWhen(
       data: (items) => items,
       orElse: () => const <CourseUnitOption>[],
     );
+
+    // A unit with a pending or verified claim is not an option: the API refuses
+    // it, so offering it would send a tutor into a form that can only fail. A
+    // rejected claim is deliberately left in, because answering a rejection is
+    // exactly what this form is for.
+    final liveUnitIds = claimsAsync.maybeWhen(
+      data: (items) => {
+        for (final claim in items)
+          if (claim.isLive) claim.courseUnitId,
+      },
+      orElse: () => const <String>{},
+    );
+    final availableUnits = [
+      for (final unit in courseUnits)
+        if (!liveUnitIds.contains(unit.publicId)) unit,
+    ];
+    final limits = limitsAsync.value;
+    final atCap = limits?.atCap ?? false;
     final liveGrades = gradesAsync.maybeWhen(
       data: (items) => items,
       orElse: () => const <GradeOption>[],
@@ -67,8 +88,14 @@ class _SubmitClaimScreenState extends ConsumerState<SubmitClaimScreen> {
     // fallback rather than the university's own.
     final grades = liveGrades;
 
-    if (_courseUnitId == null && courseUnits.isNotEmpty) {
-      _courseUnitId = courseUnits.first.publicId;
+    // The default is the first unit the tutor has not already claimed. Keeping a
+    // selection that claims filtered out would leave the dropdown pointing at a
+    // row it no longer renders, which reads as a broken form.
+    if (_courseUnitId == null ||
+        !availableUnits.any((unit) => unit.publicId == _courseUnitId)) {
+      _courseUnitId = availableUnits.isEmpty
+          ? null
+          : availableUnits.first.publicId;
     }
     if (liveGrades.isNotEmpty && isMustFallbackGrade(_gradeId)) {
       _gradeId = null;
@@ -76,10 +103,11 @@ class _SubmitClaimScreenState extends ConsumerState<SubmitClaimScreen> {
 
     final canSubmit =
         !_submitting &&
+        !atCap &&
         profile != null &&
         profile.universityId != null &&
         profile.facultyId != null &&
-        courseUnits.any((unit) => unit.publicId == _courseUnitId) &&
+        availableUnits.any((unit) => unit.publicId == _courseUnitId) &&
         _courseUnitId != null &&
         _gradeId != null;
 
@@ -91,10 +119,14 @@ class _SubmitClaimScreenState extends ConsumerState<SubmitClaimScreen> {
             ref
               ..invalidate(claimCourseUnitsProvider(claimScope))
               ..invalidate(claimGradesProvider(universityId))
-              ..invalidate(isMustUniversityProvider(universityId));
+              ..invalidate(isMustUniversityProvider(universityId))
+              ..invalidate(myClaimsProvider)
+              ..invalidate(applicationLimitsProvider);
             await Future.wait([
               ref.read(claimCourseUnitsProvider(claimScope).future),
               ref.read(claimGradesProvider(universityId).future),
+              ref.read(myClaimsProvider.future),
+              ref.read(applicationLimitsProvider.future),
             ]);
           },
           child: SingleChildScrollView(
@@ -123,25 +155,61 @@ class _SubmitClaimScreenState extends ConsumerState<SubmitClaimScreen> {
                     ),
                   )
                 else ...[
+                  // The cap is the server's, so it is explained before a tutor
+                  // fills in a form rather than after the API refuses it. The
+                  // form stays visible below with its button disabled, so the
+                  // reason and the control are on the same screen.
+                  if (limits != null && atCap) ...[
+                    _NoticeCard(
+                      icon: Icons.lock_clock_outlined,
+                      title: 'Application limit reached',
+                      message:
+                          'You are holding ${limits.activeCount} of '
+                          '${limits.maxActiveCourseUnits} active course '
+                          'applications. Wait for a reviewer to decide one '
+                          'before applying for another course.',
+                    ),
+                    const SizedBox(height: AppDimens.md),
+                  ] else if (availableUnits.isEmpty &&
+                      liveUnitIds.isNotEmpty) ...[
+                    // A faculty can publish fewer units than the cap. Saying so
+                    // is the difference between "nothing left to apply for" and
+                    // a dropdown that silently has no options.
+                    const _NoticeCard(
+                      icon: Icons.checklist_rounded,
+                      title: 'Every course is already claimed',
+                      message:
+                          'You have an application in for every course in your '
+                          'faculty. You can apply again if one is not accepted.',
+                    ),
+                    const SizedBox(height: AppDimens.md),
+                  ],
                   _buildDropdown<String>(
                     label: 'Course unit',
                     value:
-                        courseUnits.any(
+                        availableUnits.any(
                           (unit) => unit.publicId == _courseUnitId,
                         )
                         ? _courseUnitId
                         : null,
                     items: [
-                      for (final unit in courseUnits)
+                      for (final unit in availableUnits)
                         DropdownMenuItem(
                           value: unit.publicId,
                           child: Text('${unit.code} · ${unit.name}'),
                         ),
                     ],
-                    onChanged: courseUnits.isEmpty
+                    onChanged: availableUnits.isEmpty || atCap
                         ? null
                         : (value) => setState(() => _courseUnitId = value),
                   ),
+                  if (liveUnitIds.isNotEmpty && availableUnits.isNotEmpty) ...[
+                    const SizedBox(height: AppDimens.sm),
+                    Text(
+                      'Courses you already have an application for are not listed.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                   const SizedBox(height: AppDimens.md),
                   _buildDropdown<String>(
                     label: 'Grade',
@@ -354,6 +422,57 @@ class _SubmitClaimScreenState extends ConsumerState<SubmitClaimScreen> {
       decoration: InputDecoration(labelText: label, hintText: hint),
       items: items,
       onChanged: onChanged,
+    );
+  }
+}
+
+/// A plain explanation, shown when the form cannot be used as it stands.
+class _NoticeCard extends StatelessWidget {
+  const _NoticeCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      color: theme.colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(AppDimens.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: theme.colorScheme.onSecondaryContainer),
+            const SizedBox(width: AppDimens.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.onSecondaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: AppDimens.xxs),
+                  Text(
+                    message,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSecondaryContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/network/network_exceptions.dart';
 import 'package:peerpass/features/competencies/data/datasources/remote_competencies_datasource.dart';
+import 'package:peerpass/features/competencies/data/models/application_limits.dart';
 import 'package:peerpass/features/competencies/data/models/tutor_claim.dart';
 import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 
@@ -19,6 +20,10 @@ class RemoteCompetenciesRepository implements CompetenciesRepository {
 
   @override
   Future<List<TutorClaim>> myClaims() => _guard(datasource.myClaims);
+
+  @override
+  Future<ApplicationLimits> applicationLimits() =>
+      _guard(datasource.applicationLimits);
 
   @override
   Future<TutorClaim> submitClaim({

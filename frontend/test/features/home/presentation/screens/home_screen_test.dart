@@ -286,7 +286,9 @@ void main() {
     expect(find.byType(HomeScreen), findsNothing);
   });
 
-  testWidgets('a tutor is offered the HQ, and a student is not', (tester) async {
+  testWidgets('a tutor is offered the HQ, and a student is not', (
+    tester,
+  ) async {
     // The dashboard is the one entry that summarises the tutor's whole standing,
     // so a tutor must be able to find it and a student must not be sent to a
     // screen whose honest answer is "you are not a tutor yet".
@@ -297,10 +299,7 @@ void main() {
     await _pumpHome(tester, _harness(_tutor));
 
     expect(find.text('Your tutor HQ'), findsOneWidget);
-    expect(
-      find.text('Progress, requests, and availability'),
-      findsOneWidget,
-    );
+    expect(find.text('Progress, requests, and availability'), findsOneWidget);
   });
 
   testWidgets('tapping the HQ entry opens the dashboard', (tester) async {
@@ -332,6 +331,47 @@ void main() {
     await _settle(tester);
 
     expect(find.text('Tutor HQ here'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
+  });
+
+  testWidgets('a tutor can reach their course applications from home', (
+    tester,
+  ) async {
+    // A tutor could not apply for a second course anywhere in the app once the
+    // first claim was approved. Home carries the entry for the whole tutor
+    // lifetime, and it opens the status screen where the cap is explained.
+    final harness = _harness(_enrolled);
+    await _pumpHome(tester, harness);
+
+    expect(find.text('Course applications'), findsNothing);
+
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+        GoRoute(
+          path: AppRoutes.myApplications,
+          builder: (_, _) => const Scaffold(body: Text('Applications here')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: _harness(_tutor).container,
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await _settle(tester);
+
+    expect(find.text('Course applications'), findsOneWidget);
+    expect(find.text('Your courses, and applying for another'), findsOneWidget);
+
+    await tester.tap(find.text('Course applications'));
+    await _settle(tester);
+
+    expect(find.text('Applications here'), findsOneWidget);
     expect(find.byType(HomeScreen), findsNothing);
   });
 }

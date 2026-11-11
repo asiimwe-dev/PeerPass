@@ -282,6 +282,46 @@ void main() {
     });
   });
 
+  group('applicationLimits', () {
+    test('reads the live count and the configured cap', () async {
+      // Both numbers are the server's. A client that counted for itself could
+      // offer a form the submission endpoint would then refuse.
+      server.reply(200, {'active_count': 2, 'max_active_course_units': 3});
+
+      final limits = await repository.applicationLimits();
+
+      expect(server.calls.single.method, 'GET');
+      expect(server.calls.single.path, '/v1/competencies/limits');
+      expect(limits.activeCount, 2);
+      expect(limits.maxActiveCourseUnits, 3);
+      expect(limits.atCap, isFalse);
+      expect(limits.remainingSlots, 1);
+    });
+
+    test('a body missing the cap is unreadable, not zero', () async {
+      // Guessing here would either hide an application the tutor may make or
+      // offer one the API will refuse, so an incomplete body is a server fault.
+      server.reply(200, {'active_count': 2});
+
+      expect(
+        repository.applicationLimits,
+        throwsA(
+          isA<ServerFailure>().having(
+            (failure) => failure.message,
+            'message',
+            contains('could not read'),
+          ),
+        ),
+      );
+    });
+
+    test('an expired token becomes an auth failure', () async {
+      server.reply(401, _problem(status: 401, detail: 'Not authenticated.'));
+
+      expect(repository.applicationLimits, throwsA(isA<AuthFailure>()));
+    });
+  });
+
   group('submitClaim', () {
     test('posts to the collection and returns the stored claim', () async {
       // The response body is used rather than a locally-built pending claim, so a

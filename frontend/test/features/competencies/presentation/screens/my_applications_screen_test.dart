@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/theme/app_theme.dart';
+import 'package:peerpass/features/competencies/data/models/application_limits.dart';
 import 'package:peerpass/features/competencies/data/models/tutor_claim.dart';
 import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 import 'package:peerpass/features/competencies/data/repositories/fake_competencies_repository.dart';
@@ -185,6 +186,75 @@ void main() {
       expect(find.text('Verified'), findsOneWidget);
     });
 
+    testWidgets('a tutor with room is offered another course', (tester) async {
+      // The entry that used to disappear. Once a claim was verified there was no
+      // apply control anywhere in the app, so a tutor could never add a second
+      // course -- even though the API accepted it.
+      await _pump(
+        tester,
+        _container(
+          FakeCompetenciesRepository(claims: [claim(status: 'verified')]),
+        ),
+      );
+
+      expect(find.text('Teach another course'), findsOneWidget);
+      expect(
+        find.text(
+          'You have 1 of 3 active course applications. 2 slots are open.',
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Apply for another course'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('submission form'), findsOneWidget);
+    });
+
+    testWidgets('the cap is explained instead of offering another course', (
+      tester,
+    ) async {
+      // At the cap the API would refuse the submission, so the screen says so
+      // rather than sending the tutor into a form that can only fail.
+      await _pump(
+        tester,
+        _container(
+          FakeCompetenciesRepository(
+            claims: [
+              claim(id: 'a', status: 'verified'),
+              claim(id: 'b'),
+              claim(id: 'c', status: 'verified'),
+            ],
+          ),
+        ),
+      );
+
+      expect(find.text('Application limit reached'), findsOneWidget);
+      expect(
+        find.text(
+          'You are holding 3 of 3 active course applications. Wait for a '
+          'reviewer to decide one before applying for another course.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Apply for another course'), findsNothing);
+    });
+
+    testWidgets('an unreadable limit does not hide the apply action', (
+      tester,
+    ) async {
+      // The claims list is still true when the limit endpoint is not, and the
+      // API enforces the cap itself. Hiding the action would strand a tutor who
+      // does have room because the screen merely could not count.
+      final repository = FakeCompetenciesRepository(
+        claims: [claim(status: 'verified')],
+      )..limitsError = const NetworkFailure('No connection.');
+      await _pump(tester, _container(repository));
+
+      expect(find.text('Apply for another course'), findsOneWidget);
+      expect(find.textContaining('active course applications'), findsNothing);
+    });
+
     testWidgets('a tutor who has not applied is offered the form', (
       tester,
     ) async {
@@ -258,6 +328,10 @@ void main() {
 class _ExplodingRepository implements CompetenciesRepository {
   @override
   Future<List<TutorClaim>> myClaims() async =>
+      throw StateError('something the client did not expect');
+
+  @override
+  Future<ApplicationLimits> applicationLimits() async =>
       throw StateError('something the client did not expect');
 
   @override

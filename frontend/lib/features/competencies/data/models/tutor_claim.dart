@@ -176,6 +176,16 @@ class TutorClaim {
   /// Whether this claim is still with an operator.
   bool get isPending => status == TutorClaimStatus.pending;
 
+  /// Whether the reviewer accepted the proof.
+  bool get isVerified => status == TutorClaimStatus.verified;
+
+  /// Whether this claim still occupies an application slot.
+  ///
+  /// A rejection is deliberately excluded: it is the one state a tutor is
+  /// expected to answer, and counting it would let a refusal both consume a slot
+  /// and need one to resubmit.
+  bool get isLive => isPending || isVerified;
+
   /// Whether the claim was refused, and whether a reason came with it.
   ///
   /// Split because the two need different words on screen: a refusal with no

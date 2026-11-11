@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:peerpass/features/competencies/data/models/application_limits.dart';
 import 'package:peerpass/features/competencies/data/models/tutor_claim.dart';
 
 /// The remote shape of a tutor's own competency claims.
@@ -6,6 +7,22 @@ class RemoteCompetenciesDatasource {
   const RemoteCompetenciesDatasource(this._dio);
 
   final Dio _dio;
+
+  /// How many live claims the caller holds and the configured cap.
+  ///
+  /// Read from the API rather than counted from [myClaims] locally, because the
+  /// two must agree with the rule the submission endpoint enforces. A client
+  /// that counted for itself could offer a form the API would then refuse.
+  Future<ApplicationLimits> applicationLimits() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/v1/competencies/limits',
+    );
+    final body = response.data;
+    if (body == null) {
+      throw const FormatException('the limits response carried no body');
+    }
+    return ApplicationLimits.fromJson(body);
+  }
 
   /// Every proof the signed-in tutor has submitted, newest first.
   ///

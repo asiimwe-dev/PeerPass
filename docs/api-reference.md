@@ -593,6 +593,16 @@ The claim is a claim until reviewed; nothing here grants standing.
 
 The caller's own competencies.
 
+### `GET /v1/competencies/limits`
+
+How many live course applications the caller holds, and the configured cap:
+`{"active_count": 2, "max_active_course_units": 3}`. Live means `pending` or
+`verified`; a rejected claim does not count, so answering a rejection always
+remains possible. The same count is enforced on submission, so a screen can
+explain the limit rather than offering a form the API would refuse. The cap is
+`MAX_ACTIVE_COURSE_UNITS` (default 3) because the catalogue is scoped to a
+faculty and one account should not be able to queue the whole catalogue.
+
 ### `GET /v1/competencies/{competency_id}`
 
 One competency, by public id.

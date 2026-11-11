@@ -506,6 +506,19 @@ There is no `reviewed_at` column. `verified_at` covers the verified case, and a
 rejection has no timestamp of its own — a gap the pilot accepts rather than
 paper over with a field that would lie about the verified case.
 
+**The application cap.** A tutor may hold at most `MAX_ACTIVE_COURSE_UNITS`
+(default 3) live claims at a time, counting `pending` and `verified`. A rejected
+claim does not consume a slot: it is the one state a tutor is expected to answer,
+and counting it would make a refusal both cost a slot and require one to
+resubmit. The check lives in the service and runs on a new claim *and* on
+reopening a rejected one, because the submission endpoint is open to any
+signed-in student and the catalogue is scoped to a faculty rather than to a
+shortlist; without it one account can put every unit in its faculty into the
+review queue. `GET /v1/competencies/limits` reports the same `active_count` and
+the configured cap so the client can explain the limit before a tutor fills in a
+form. The client never enforces it — it only avoids offering a request the API
+would refuse.
+
 **What a reviewer is shown.** The review queue row carries the decision context
 rather than making the operator assemble it: `grade_label`, `grade_points`, the
 university scale's `competency_min_points`, and the server's own `meets_threshold`

@@ -11,6 +11,7 @@ import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/theme/app_theme.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
+import 'package:peerpass/features/competencies/data/models/tutor_claim.dart';
 import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 import 'package:peerpass/features/competencies/data/repositories/fake_competencies_repository.dart';
 import 'package:peerpass/features/competencies/presentation/screens/submit_claim_screen.dart';
@@ -43,6 +44,22 @@ const List<GradeOption> _gradeOptions = <GradeOption>[
   // ignore: prefer_int_literals
   GradeOption(publicId: 'grade-2', label: 'A', gradePoints: 5.0),
 ];
+
+TutorClaim _claimFor(String courseUnitId, {String status = 'pending'}) {
+  return TutorClaim(
+    id: 'claim-$courseUnitId',
+    courseUnitId: courseUnitId,
+    courseUnitCode: 'BIT 221',
+    courseUnitName: 'Database Programming',
+    gradeId: 'grade-1',
+    gradeLabel: 'A',
+    statusWire: status,
+    status: TutorClaimStatus.fromWire(status),
+    gradePoints: 5,
+    meetsThreshold: status == 'verified',
+    createdAt: DateTime.utc(2026, 11),
+  );
+}
 
 Future<void> _pumpScreen(
   WidgetTester tester,
@@ -149,6 +166,76 @@ void main() {
       'https://drive.example/transcript.pdf',
     );
     expect(claims.submitted.single.notes, 'I completed this in my final year.');
+  });
+
+  testWidgets('a course already applied for is not offered again', (
+    tester,
+  ) async {
+    // The API refuses a second claim for the same unit, so listing it would send
+    // a tutor into a submission that can only be rejected.
+    final repository = FakeAuthRepository(
+      session: _student,
+      refreshToken: 'refresh',
+      courseUnitOptions: _courseUnits,
+      gradeOptions: _gradeOptions,
+    );
+    final claims = FakeCompetenciesRepository(
+      claims: [_claimFor('unit-1', status: 'verified')],
+    );
+
+    await _pumpScreen(tester, repository, claims: claims);
+
+    expect(find.text('BIT 221 · Database Programming'), findsNothing);
+    expect(find.text('BIT 311 · Software Engineering'), findsOneWidget);
+    expect(
+      find.text('Courses you already have an application for are not listed.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a rejected course can be applied for again', (tester) async {
+    // A rejection is the one state a tutor is expected to answer, so hiding the
+    // unit would make the reviewer's reason impossible to act on.
+    final repository = FakeAuthRepository(
+      session: _student,
+      refreshToken: 'refresh',
+      courseUnitOptions: _courseUnits,
+      gradeOptions: _gradeOptions,
+    );
+    final claims = FakeCompetenciesRepository(
+      claims: [_claimFor('unit-1', status: 'rejected')],
+    );
+
+    await _pumpScreen(tester, repository, claims: claims);
+
+    expect(find.text('BIT 221 · Database Programming'), findsOneWidget);
+  });
+
+  testWidgets('at the cap the form explains why it cannot submit', (
+    tester,
+  ) async {
+    final repository = FakeAuthRepository(
+      session: _student,
+      refreshToken: 'refresh',
+      courseUnitOptions: _courseUnits,
+      gradeOptions: _gradeOptions,
+    );
+    final claims = FakeCompetenciesRepository(
+      maxActiveCourseUnits: 1,
+      claims: [_claimFor('unit-1')],
+    );
+
+    await _pumpScreen(tester, repository, claims: claims);
+
+    expect(find.text('Application limit reached'), findsOneWidget);
+    expect(
+      find.textContaining('You are holding 1 of 1 active course applications.'),
+      findsOneWidget,
+    );
+    final submit = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Submit proof'),
+    );
+    expect(submit.onPressed, isNull);
   });
 
   testWidgets('requires an explicit grade selection', (tester) async {
