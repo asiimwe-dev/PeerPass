@@ -91,11 +91,16 @@ async def notify(
 def _display_name(user: User | None, fallback: str) -> str:
     """A name safe to put in a sentence.
 
-    `full_name` is nullable because an account exists before onboarding finishes.
-    Falling back rather than saying "None" matters here: this text is shown to
-    the other party, who cannot correct it.
+    `full_name` is nullable because an account exists before onboarding finishes,
+    and a deleted account is a tombstone whose name has been scrubbed. Both cases
+    are shown to the other party, who cannot correct them, so the model's
+    `display_name` decides the words: the email for an unfinished profile, and
+    "Deleted user" for a tombstone. A fallback is still needed for the template
+    paths that have no user row at all.
     """
-    name = user.full_name.strip() if user is not None and user.full_name else ""
+    if user is None:
+        return fallback
+    name = user.display_name.strip()
     return name or fallback
 
 

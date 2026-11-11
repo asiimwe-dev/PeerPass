@@ -284,6 +284,60 @@ class TestEvidenceSurvives:
         assert survivor is not None, "a session must outlive one of its parties"
         assert survivor.duration_minutes == 90
 
+    async def test_the_surviving_session_names_a_deleted_counterparty(
+        self, client, db_session
+    ):
+        """The tutor's history must not show a blank where a person was.
+
+        A tombstone has no `full_name`, so the session read used to return
+        `null` and the tutor's detail screen rendered nothing beside "Student".
+        The session is evidence and it names the other party as "Deleted user" --
+        enough to see whose session this was without pretending the account is
+        still live.
+        """
+        _university, unit, _grade = await _institution(db_session)
+        tutor_body, tutor = await _account(
+            client,
+            db_session,
+            "grace@student.makerere.ac.ug",
+            full_name="Grace Hopper",
+        )
+        _body, student = await _account(
+            client,
+            db_session,
+            "ada@student.makerere.ac.ug",
+            full_name="Ada Lovelace",
+        )
+        session = Session(
+            tutee_id=student.id,
+            tutor_id=tutor.id,
+            course_unit_id=unit.id,
+            topic="Recursion",
+            duration_minutes=90,
+            status=SessionStatus.COMPLETED,
+            started_at=datetime.now(UTC),
+            ended_at=datetime.now(UTC),
+            tutor_checked_in_at=datetime.now(UTC),
+            tutee_checked_in_at=datetime.now(UTC),
+            tutor_finished_at=datetime.now(UTC),
+            tutee_finished_at=datetime.now(UTC),
+        )
+        db_session.add(session)
+        await db_session.commit()
+        session_public_id = session.public_id
+
+        await delete_account(db_session, student)
+        await db_session.commit()
+
+        response = await client.get(
+            f"/v1/sessions/{session_public_id}", headers=_bearer(tutor_body)
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["tutee_name"] == "Deleted user"
+        assert payload["tutor_name"] == "Grace Hopper"
+        assert payload["duration_minutes"] == 90
+
     async def test_a_tutors_certificate_minutes_survive_their_own_deletion(
         self, client, db_session
     ):

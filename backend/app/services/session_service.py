@@ -473,8 +473,12 @@ async def _session_response(db: AsyncSession, session: Session) -> SessionRespon
         course_unit_id=session.course_unit.public_id,
         course_unit_code=session.course_unit.code,
         course_unit_name=session.course_unit.name,
-        tutee_name=session.tutee.full_name,
-        tutor_name=session.tutor.full_name,
+        # `display_name`, not `full_name`: a deleted account is anonymised to a
+        # tombstone with no name, and the other party still has a session with
+        # that person in their history. Showing a blank row would erase the
+        # evidence from the tutor's screen as surely as deleting the session.
+        tutee_name=session.tutee.display_name,
+        tutor_name=session.tutor.display_name,
         topic=session.topic,
         status=session.status,
         scheduled_start=session.scheduled_start,

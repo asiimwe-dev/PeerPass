@@ -693,6 +693,24 @@ tutor out with `not_accepting_requests`. There is no slot model and nothing to
 expire, so pausing is immediate and real rather than a label the next deploy
 honours.
 
+### 6.2 A deleted account still has a name in the record it left behind
+
+Deletion anonymises the user row rather than removing it, because a session is the
+source of truth for a tutor's hours and certificate (see the `users.deleted_at`
+comment). The row is scrubbed, so `full_name` is `NULL` and the email is rewritten
+to an undeliverable tombstone address. Every surface that names a person to
+somebody else therefore reads `User.display_name`, not `full_name`: the model
+returns `"Deleted user"` for a tombstone, the email for an unfinished profile, and
+the name otherwise.
+
+This matters on the session record. The tutor still has the session in their
+history, and a serializer that read `full_name` returned `null` — a blank beside
+"Student" on the detail screen, which reads as a rendering fault and quietly
+erases the record. The session response, the help-request response, and the
+notification sentences all go through `display_name` for that reason. The session's
+topic, course unit, timestamps, and duration remain, so the tutor can still see
+what the session was even when the other party is gone.
+
 ---
 
 ## 7. Matching Engine
