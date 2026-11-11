@@ -40,8 +40,8 @@ from app.services import incentive_service, rating_service, session_service
 GOOD_PASSWORD = "correct horse battery staple"
 
 #: The defaults the pilot ships with, stated here so the boundary tests below say
-#: "2400 and 2399" rather than "the configured value and one less".
-DEFAULT_REQUIRED_MINUTES = 2400
+#: "900 and 899" rather than "the configured value and one less".
+DEFAULT_REQUIRED_MINUTES = 900
 DEFAULT_REQUIRED_SESSIONS = 10
 DEFAULT_MINIMUM_AVERAGE = Decimal("4.10")
 
@@ -52,7 +52,7 @@ def _threshold_from_the_environment(monkeypatch: pytest.MonkeyPatch):
 
     `get_settings` reads the environment and a local `.env`, so a developer's own
     `CERTIFICATE_REQUIRED_MINUTES` would otherwise decide whether a test that
-    states 2400 and 2399 passed. The cache is cleared on the way out as well as
+    states 900 and 899 passed. The cache is cleared on the way out as well as
     on the way in, because the settings object is process-wide and a threshold
     left behind here would answer the rest of the suite.
     """
@@ -193,7 +193,7 @@ async def _session(
 async def test_exactly_the_required_minutes_is_eligible(client, db_session):
     """The boundary, from the inside. A threshold met is a threshold met."""
     body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=2400
+        client, db_session, "tutor@mak.ac.ug", certified_minutes=900
     )
 
     response = await client.get("/v1/incentives/certificate", headers=_bearer(body))
@@ -201,14 +201,14 @@ async def test_exactly_the_required_minutes_is_eligible(client, db_session):
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["eligible"] is True
-    assert payload["certified_minutes"] == 2400
+    assert payload["certified_minutes"] == 900
     assert payload["remaining_minutes"] == 0
 
 
 async def test_one_minute_short_is_not_eligible(client, db_session):
     """The boundary, from the outside. This is the case that must not round."""
     body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=2399
+        client, db_session, "tutor@mak.ac.ug", certified_minutes=899
     )
 
     payload = (
@@ -217,9 +217,9 @@ async def test_one_minute_short_is_not_eligible(client, db_session):
 
     assert payload["eligible"] is False
     assert payload["remaining_minutes"] == 1
-    # Not one hour of progress, and not a rounded 40: a bar built from either
+    # Not one hour of progress, and not a rounded 15: a bar built from either
     # would tell a tutor one minute from the threshold that they are done.
-    assert payload["progress"] == pytest.approx(2399 / 2400)
+    assert payload["progress"] == pytest.approx(899 / 900)
 
 
 async def test_well_past_the_threshold_is_eligible_and_capped(client, db_session):
@@ -363,7 +363,7 @@ async def test_the_threshold_comes_from_settings_not_a_constant(
     """The whole reason it is configuration: a pilot can lower it.
 
     The same tutor is eligible under one setting and not under the other, which
-    is what a hardcoded 2400 cannot do.
+    is what a hardcoded threshold cannot do.
     """
     body, _user = await _tutor(
         client, db_session, "tutor@mak.ac.ug", certified_minutes=600
@@ -375,12 +375,12 @@ async def test_the_threshold_comes_from_settings_not_a_constant(
     ).json()
 
     _set_threshold(monkeypatch, DEFAULT_REQUIRED_MINUTES)
-    under_2400 = (
+    under_900 = (
         await client.get("/v1/incentives/certificate", headers=_bearer(body))
     ).json()
 
     assert under_600["eligible"] is True
-    assert under_2400["eligible"] is False
+    assert under_900["eligible"] is False
 
 
 @pytest.mark.parametrize("configured", [600, 1200, DEFAULT_REQUIRED_MINUTES])
@@ -445,7 +445,7 @@ async def test_the_session_and_rating_thresholds_come_from_settings(
     assert restored["eligible"] is False
 
 
-def test_the_shipped_defaults_are_forty_hours_ten_sessions_and_410() -> None:
+def test_the_shipped_defaults_are_fifteen_hours_ten_sessions_and_410() -> None:
     """The numbers in the docs are the numbers the code ships with."""
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 

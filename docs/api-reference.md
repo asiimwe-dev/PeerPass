@@ -631,10 +631,10 @@ HQ.
   "average_rating": "5.00",
   "rating_count": 1,
   "certified_minutes": 600,
-  "certificate_required_minutes": 2400,
-  "certificate_remaining_minutes": 1800,
+  "certificate_required_minutes": 900,
+  "certificate_remaining_minutes": 300,
   "certificate_eligible": false,
-  "certificate_progress": 0.25,
+  "certificate_progress": 0.6667,
   "accepting_requests": true,
   "promotion": {
     "verified": false,
@@ -1347,8 +1347,8 @@ maintained average rating over enough rated sessions.
 {
   "has_tutor_profile": true,
   "eligible": false,
-  "certified_minutes": 2400,
-  "required_minutes": 2400,
+  "certified_minutes": 900,
+  "required_minutes": 900,
   "remaining_minutes": 0,
   "completed_sessions": 4,
   "required_sessions": 10,
@@ -1379,8 +1379,8 @@ has not maintained anything over ten sessions yet.
 
 `progress` is the smallest of the three requirement fractions, clamped to
 `1.0`. It is deliberately the limiting condition rather than the hours alone, so
-a tutor who has taught forty hours in four sittings does not see a full bar
-beside `eligible: false`.
+a tutor who has taught the hours in four long sittings does not see a full
+bar beside `eligible: false`.
 
 `average_rating` is `null` with no ratings and is a JSON string otherwise, like
 every decimal; see

@@ -652,10 +652,18 @@ answer rather than repeated in the client.
 tutor who taught four very long sessions collect a certificate that claims a
 sustained teaching record. Eligibility now requires:
 
-- `certificate_required_minutes` (40h by default) of completed teaching,
+- `certificate_required_minutes` (15h by default) of completed teaching,
 - `certificate_required_sessions` (10 by default) completed sessions, and
 - `certificate_minimum_average` (4.10 by default) over at least the same number of
   ratings.
+
+The defaults are semester-scale, because the certificate is awarded at the end of
+a four-month teaching semester. Fifteen hours is roughly an hour a week across a
+fifteen-week semester; ten sessions is a sitting every week and a half; 4.10 is
+the same quality bar as promotion. The first default, 40 hours, was a
+professional-services number: at a typical one-hour session it silently required
+forty sessions, which made the session gate redundant and left the certificate
+unreachable for the pilot cohort.
 
 All three are configuration, like the minutes threshold, because a pilot tunes
 them between cohorts. Each condition's verdict travels as `minutes_met`,

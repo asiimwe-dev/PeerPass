@@ -260,7 +260,7 @@ class CertificateEligibilityResponse(OrmSchema):
         description=(
             "Whether the caller has a tutor profile at all. Sent rather than "
             "left for the client to infer, because a student with no profile and "
-            "a new tutor with zero minutes are both `0 of 2400` arithmetically "
+            "a new tutor with zero minutes are both `0 of 900` arithmetically "
             "and are not the same thing to the person reading it: the first is "
             "not on this path, the second has not started. Mirrors the `None` "
             "rather than zero that `average_rating` uses for the same reason."
@@ -273,8 +273,8 @@ class CertificateEligibilityResponse(OrmSchema):
         description=(
             "The configured threshold in minutes, sent so the client renders "
             "the operator's number rather than one of its own. A client that "
-            "hardcoded the default would keep showing 40 hours after the "
-            "threshold was lowered for a pilot."
+            "hardcoded the default would keep showing 15 hours after the "
+            "threshold was tuned for a pilot."
         ),
     )
     remaining_minutes: int = Field(ge=0)
