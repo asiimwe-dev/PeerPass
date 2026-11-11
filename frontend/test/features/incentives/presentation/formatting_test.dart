@@ -85,6 +85,39 @@ void main() {
         'Certificate earned',
       );
     });
+
+    test('names the sessions once the hours are already banked', () {
+      // The bar is the limiting fraction. Continuing to describe the hours here
+      // would put "135h 52m of 40h" over a half-full bar.
+      expect(
+        certificateProgressLabel(
+          _eligibility(
+            certifiedMinutes: 8152,
+            completedSessions: 4,
+            remainingSessions: 6,
+          ),
+        ),
+        '4 of 10 sessions',
+      );
+    });
+
+    test('names the ratings while the count is still short', () {
+      expect(
+        certificateProgressLabel(
+          _eligibility(certifiedMinutes: 2400, ratingCount: 8),
+        ),
+        '8 of 10 ratings',
+      );
+    });
+
+    test('names the average when only the average is short', () {
+      expect(
+        certificateProgressLabel(
+          _eligibility(certifiedMinutes: 2400, averageRating: 3.5),
+        ),
+        'Average 3.50 of 4.10',
+      );
+    });
   });
 
   group('remainingLabel', () {

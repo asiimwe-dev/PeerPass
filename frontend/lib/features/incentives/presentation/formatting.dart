@@ -7,7 +7,7 @@ typedef CertificateRequirement = ({String label, String value, bool met});
 /// How many minutes read as in this app.
 ///
 /// Hours and minutes rather than a rounded number of hours, because rounding is
-/// what makes this screen lie: 2399 minutes displayed as "40 of 40h" looks
+/// what makes this screen lie: 899 minutes displayed as "15 of 15h" looks
 /// earned, and it is not. The shortfall is the whole reason the API reports it,
 /// so the label has to carry it exactly.
 ///
@@ -27,9 +27,41 @@ String hoursAndMinutes(int minutes) {
 /// were applied with.
 String ratingLabel(double rating) => rating.toStringAsFixed(2);
 
-/// The headline under the bar: either the verdict or the hours tally.
+/// The headline under the bar: the verdict, or the condition holding the tutor
+/// back.
+///
+/// The bar is the limiting fraction (see [progressValue]), so the line beside it
+/// has to name the same condition. A tutor with 135h banked and four sessions
+/// read "135h 52m of 15h" over a half-full bar, which looks like a rendering
+/// fault rather than the session shortfall it is. Only while the hours are the
+/// limiter does the headline talk about them.
 String certificateProgressLabel(CertificateEligibility eligibility) {
   if (eligibility.eligible) return 'Certificate earned';
+
+  if (!eligibility.minutesMet) {
+    return '${hoursAndMinutes(eligibility.certifiedMinutes)} of '
+        '${hoursAndMinutes(eligibility.requiredMinutes)}';
+  }
+
+  if (!eligibility.sessionsMet) {
+    return '${eligibility.completedSessions} of '
+        '${eligibility.requiredSessions} sessions';
+  }
+
+  final average = eligibility.averageRating;
+  if (!eligibility.ratingMet) {
+    if (eligibility.ratingCount < eligibility.requiredSessions) {
+      return '${eligibility.ratingCount} of '
+          '${eligibility.requiredSessions} ratings';
+    }
+    if (average != null) {
+      return 'Average ${ratingLabel(average)} of '
+          '${ratingLabel(eligibility.requiredAverageRating)}';
+    }
+  }
+
+  // Every condition is met but the API did not call it eligible. Fall back to
+  // the hours rather than inventing a verdict or a shortfall here.
   return '${hoursAndMinutes(eligibility.certifiedMinutes)} of '
       '${hoursAndMinutes(eligibility.requiredMinutes)}';
 }

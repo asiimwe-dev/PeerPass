@@ -150,6 +150,8 @@ void main() {
 
     expect(find.text('Certificate earned'), findsNothing);
     expect(find.text('6 more sessions to go'), findsOneWidget);
+    // The headline names the same condition the half-full bar measures.
+    expect(find.text('4 of 10 sessions'), findsOneWidget);
     expect(find.text('Sessions completed'), findsOneWidget);
     expect(find.text('4 of 10'), findsOneWidget);
   });
