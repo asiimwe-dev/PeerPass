@@ -507,7 +507,12 @@ String? _redirectForSignedIn(UserProfile? profile, String location) {
       _isTutorRoute(location) ||
       _isMatchingRoute(location) ||
       location == AppRoutes.certificate ||
-      location == AppRoutes.tutorHq) {
+      location == AppRoutes.tutorHq ||
+      // The applications screen answers about the caller's own claims and only
+      // the caller's. It was registered and linked from Profile, but left out of
+      // this list, so the guard sent every tutor who tapped the row back to home
+      // -- the screen existed and could never be reached.
+      location == AppRoutes.myApplications) {
     return null;
   }
 
