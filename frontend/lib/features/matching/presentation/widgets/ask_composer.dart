@@ -26,8 +26,12 @@ import 'package:peerpass/features/matching/presentation/providers/matching_provi
 class AskComposer extends ConsumerStatefulWidget {
   const AskComposer({super.key});
 
-  /// How many course chips fit before the rest are behind "More".
-  static const int visibleUnitCount = 4;
+  /// How many course chips are shown before the rest are behind "View more".
+  ///
+  /// Three keeps the composer compact. The row wraps rather than scrolling
+  /// sideways, so the "View more" chip is fully visible on a phone even when the
+  /// three codes fill the first line.
+  static const int visibleUnitCount = 3;
 
   @override
   ConsumerState<AskComposer> createState() => _AskComposerState();
@@ -58,10 +62,35 @@ class _AskComposerState extends ConsumerState<AskComposer> {
       return;
     }
     unawaited(
-      context.push(
-        AppRoutes.matchResultsPath(unitId, topic: _topic.text),
+      context.push(AppRoutes.matchResultsPath(unitId, topic: _topic.text)),
+    );
+  }
+
+  /// Opens the whole catalogue as a list and keeps the student on this screen.
+  ///
+  /// A bottom sheet rather than the full picker screen because the composer may
+  /// already hold a typed question: navigating away and coming back would throw
+  /// it away, and a student who has just described their problem should not have
+  /// to type it again to change course. Choosing a unit only sets the selection;
+  /// "Find me a tutor" still submits, with the question intact.
+  Future<void> _chooseFromList(List<CourseUnit> units) async {
+    if (units.isEmpty) return;
+
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => _UnitPickerSheet(
+        units: units,
+        selectedUnitId:
+            _selectedUnitId ?? (units.isEmpty ? null : units.first.publicId),
       ),
     );
+
+    if (chosen != null && mounted) {
+      setState(() => _selectedUnitId = chosen);
+    }
   }
 
   @override
@@ -70,8 +99,8 @@ class _AskComposerState extends ConsumerState<AskComposer> {
     final palette = AppPalette.of(context);
     final catalogue = ref.watch(courseUnitOptionsProvider);
     final units = catalogue.value ?? const [];
-    final effectiveUnitId = _selectedUnitId ??
-        (units.isEmpty ? null : units.first.publicId);
+    final effectiveUnitId =
+        _selectedUnitId ?? (units.isEmpty ? null : units.first.publicId);
     CourseUnit? selectedUnit;
     for (final unit in units) {
       if (unit.publicId == effectiveUnitId) {
@@ -109,6 +138,7 @@ class _AskComposerState extends ConsumerState<AskComposer> {
               units: units,
               selectedUnitId: effectiveUnitId,
               onSelected: (unitId) => setState(() => _selectedUnitId = unitId),
+              onViewMore: () => _chooseFromList(units),
             ),
           if (selectedUnit != null) ...[
             const SizedBox(height: AppDimens.xs),
@@ -151,11 +181,13 @@ class _UnitChips extends StatelessWidget {
     required this.units,
     required this.selectedUnitId,
     required this.onSelected,
+    required this.onViewMore,
   });
 
   final List<CourseUnit> units;
   final String? selectedUnitId;
   final ValueChanged<String> onSelected;
+  final VoidCallback onViewMore;
 
   @override
   Widget build(BuildContext context) {
@@ -171,27 +203,92 @@ class _UnitChips extends StatelessWidget {
     }
 
     final visible = units.take(AskComposer.visibleUnitCount).toList();
-    final hiddenCount = units.length - visible.length;
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
-      child: Row(
+    return Wrap(
+      spacing: AppDimens.sm,
+      runSpacing: AppDimens.sm,
+      children: [
+        for (final unit in visible)
+          _CourseChip(
+            label: unit.code,
+            selected: unit.publicId == selectedUnitId,
+            onTap: () => onSelected(unit.publicId),
+          ),
+        // Always present, even when every unit already fits. A catalogue that
+        // is three units today and thirty next term should not need a client
+        // change before students can see the rest of it.
+        _CourseChip(label: 'View more', selected: false, onTap: onViewMore),
+      ],
+    );
+  }
+}
+
+/// Every course unit, as a list, in a sheet the composer can return from.
+///
+/// The same catalogue the chips are cut from, not a second fetch: a sheet that
+/// loaded its own page could disagree with the row the student just tapped.
+class _UnitPickerSheet extends StatelessWidget {
+  const _UnitPickerSheet({required this.units, required this.selectedUnitId});
+
+  final List<CourseUnit> units;
+  final String? selectedUnitId;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return FractionallySizedBox(
+      heightFactor: 0.8,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final unit in visible) ...[
-            _CourseChip(
-              label: unit.code,
-              selected: unit.publicId == selectedUnitId,
-              onTap: () => onSelected(unit.publicId),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppDimens.lg,
+              AppDimens.sm,
+              AppDimens.lg,
+              AppDimens.sm,
             ),
-            const SizedBox(width: AppDimens.sm),
-          ],
-          if (hiddenCount > 0)
-            _CourseChip(
-              label: '+$hiddenCount more',
-              selected: false,
-              onTap: () => context.push(AppRoutes.matching),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('All course units', style: theme.textTheme.titleLarge),
+                const SizedBox(height: AppDimens.xs),
+                Text(
+                  '${units.length} in your faculty. Pick the one you need help '
+                  'with.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              itemCount: units.length,
+              itemBuilder: (context, index) {
+                final unit = units[index];
+                final selected = unit.publicId == selectedUnitId;
+
+                return ListTile(
+                  selected: selected,
+                  leading: Icon(
+                    selected
+                        ? Icons.check_circle_rounded
+                        : Icons.circle_outlined,
+                    color: selected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  title: Text(unit.code, style: theme.textTheme.titleMedium),
+                  subtitle: Text(unit.name),
+                  onTap: () => Navigator.of(context).pop(unit.publicId),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -291,9 +388,8 @@ class _CatalogueFailure extends StatelessWidget {
         Expanded(
           child: Text(
             "Couldn't load your courses.",
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: palette.muted),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: palette.muted),
           ),
         ),
         TextButton(onPressed: onRetry, child: const Text('Retry')),

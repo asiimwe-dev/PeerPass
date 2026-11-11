@@ -134,7 +134,8 @@ Feature-specific components stay in their feature:
 **Home**
 
 1. Greeting and notification bell.
-2. The composer: course chips, one free-text field, one amber CTA.
+2. The composer: course chips plus a "View more" chip that opens the full
+   catalogue as a list, one free-text field, one amber CTA.
 3. The live session pass, if there is one.
 4. A short tutor rail.
 5. A tutor-only nudge.

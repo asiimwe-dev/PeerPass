@@ -211,7 +211,10 @@ Kept current so the plan and the code do not drift apart.
       doc.
 - [x] **Home composer.** Course chips from the faculty catalogue, one question
       field, one amber action. The question travels to the results screen and
-      prefills the request sheet. Home no longer repeats the sessions tab.
+      prefills the request sheet. A **View more** chip opens the full catalogue
+      as a list in a sheet, so a faculty that outgrows three chips is still
+      reachable and a typed question is not lost by changing course. Home no
+      longer repeats the sessions tab.
 - [x] **Onboarding restyle.** Step counter, segmented progress, display
       headings, pinned action bar, tinted failure and consent surfaces.
 - [x] **Find a tutor cards.** Rail and candidate cards read the tutor as a
