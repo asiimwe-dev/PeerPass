@@ -20,6 +20,7 @@ Collapsing any two of them into one would mean one rotation takes out two
 independent protections at the same time.
 """
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Annotated, Literal
 
@@ -307,6 +308,26 @@ class Settings(BaseSettings):
         default=2400,
         gt=0,
         description="Teaching minutes required for certificate eligibility.",
+    )
+
+    #: Completed sessions a tutor must have taught before a certificate is
+    #: issued, alongside the hours. Hours alone let a tutor who taught four very
+    #: long sessions read as experienced; the certificate is meant to represent
+    #: a sustained record, not volume banked in a handful of sittings.
+    certificate_required_sessions: int = Field(
+        default=10,
+        gt=0,
+        description="Completed sessions required for certificate eligibility.",
+    )
+
+    #: The average rating a tutor must maintain over those sessions. The same
+    #: bar as promotion, because "good enough to earn the certificate" and
+    #: "good enough to be offered work" should not be two different standards.
+    certificate_minimum_average: Decimal = Field(
+        default=Decimal("4.10"),
+        ge=0,
+        le=5,
+        description="Minimum average rating required for certificate eligibility.",
     )
 
     @property

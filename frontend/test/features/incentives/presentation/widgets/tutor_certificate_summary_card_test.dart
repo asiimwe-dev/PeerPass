@@ -78,6 +78,19 @@ void main() {
     expect(bar.value, closeTo(0.25, 0.0001));
   });
 
+  testWidgets('does not call it earned on hours alone', (tester) async {
+    // The compact dashboard card has to carry the same three-condition verdict
+    // as the full screen; a summary that rounded forty hours in four sittings
+    // into "earned" would be the bug in a smaller font.
+    await _pump(
+      tester,
+      FakeIncentivesRepository(certifiedMinutes: 2400, completedSessions: 4),
+    );
+
+    expect(find.text('Certificate earned'), findsNothing);
+    expect(find.text('6 more sessions to go'), findsOneWidget);
+  });
+
   testWidgets('View certificate opens the certificate screen', (tester) async {
     await _pump(tester, FakeIncentivesRepository(certifiedMinutes: 600));
 

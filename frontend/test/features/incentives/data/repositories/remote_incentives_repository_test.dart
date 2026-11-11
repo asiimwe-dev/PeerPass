@@ -97,6 +97,15 @@ Map<String, dynamic> _certificate({
     'certified_minutes': certifiedMinutes,
     'required_minutes': requiredMinutes,
     'remaining_minutes': requiredMinutes - certifiedMinutes,
+    'completed_sessions': 10,
+    'required_sessions': 10,
+    'remaining_sessions': 0,
+    'rating_count': 10,
+    'average_rating': '4.80',
+    'required_average_rating': '4.10',
+    'minutes_met': certifiedMinutes >= requiredMinutes,
+    'sessions_met': true,
+    'rating_met': true,
     'progress': certifiedMinutes / requiredMinutes,
     'generated_at': '2026-03-04T11:00:00Z',
   };
@@ -136,17 +145,20 @@ void main() {
     repository = RemoteIncentivesRepository(RemoteIncentivesDatasource(dio));
   });
 
-  test("asks for the caller's own certificate, with nothing identifying it", () async {
-    // No user id in the path and no query: these are the caller's own hours, so a
-    // test that saw a parameter here would be seeing a client that could be asked
-    // about somebody else.
-    server.reply(200, _certificate());
+  test(
+    "asks for the caller's own certificate, with nothing identifying it",
+    () async {
+      // No user id in the path and no query: these are the caller's own hours, so a
+      // test that saw a parameter here would be seeing a client that could be asked
+      // about somebody else.
+      server.reply(200, _certificate());
 
-    await repository.myCertificate();
+      await repository.myCertificate();
 
-    expect(server.calls.single.method, 'GET');
-    expect(server.calls.single.path, '/v1/incentives/certificate');
-  });
+      expect(server.calls.single.method, 'GET');
+      expect(server.calls.single.path, '/v1/incentives/certificate');
+    },
+  );
 
   test("returns the API's answer, threshold included", () async {
     server.reply(
@@ -163,7 +175,10 @@ void main() {
   });
 
   test('returns a caller with no tutor profile, rather than failing', () async {
-    server.reply(200, _certificate(hasTutorProfile: false, certifiedMinutes: 0));
+    server.reply(
+      200,
+      _certificate(hasTutorProfile: false, certifiedMinutes: 0),
+    );
 
     final eligibility = await repository.myCertificate();
 
@@ -171,14 +186,23 @@ void main() {
     expect(eligibility.eligible, isFalse);
   });
 
-  test('an expired session surfaces as an auth failure, not a number', () async {
-    server.reply(401, _problem());
+  test(
+    'an expired session surfaces as an auth failure, not a number',
+    () async {
+      server.reply(401, _problem());
 
-    await expectLater(repository.myCertificate(), throwsA(isA<AuthFailure>()));
-  });
+      await expectLater(
+        repository.myCertificate(),
+        throwsA(isA<AuthFailure>()),
+      );
+    },
+  );
 
   test("a server fault keeps the API's own wording", () async {
-    server.reply(500, _problem(status: 500, detail: 'Upstream is unavailable.'));
+    server.reply(
+      500,
+      _problem(status: 500, detail: 'Upstream is unavailable.'),
+    );
 
     await expectLater(
       repository.myCertificate(),
@@ -227,17 +251,18 @@ void main() {
   test(
     'a body that is not JSON at all never reaches the screen as raw text',
     () async {
-    server.replyRaw(200, '<html>gateway timeout</html>');
+      server.replyRaw(200, '<html>gateway timeout</html>');
 
-    await expectLater(
-      repository.myCertificate(),
-      throwsA(
-        isA<Failure>().having(
-          (failure) => failure.message,
-          'message',
-          allOf(isNotEmpty, isNot(contains('<'))),
+      await expectLater(
+        repository.myCertificate(),
+        throwsA(
+          isA<Failure>().having(
+            (failure) => failure.message,
+            'message',
+            allOf(isNotEmpty, isNot(contains('<'))),
+          ),
         ),
-      ),
-    );
-  });
+      );
+    },
+  );
 }

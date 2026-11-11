@@ -684,7 +684,11 @@ every decimal; see
 
 The certificate fields are produced by the same service as
 `GET /v1/incentives/certificate`, so the HQ and the certificate screen cannot
-disagree about the threshold, the remaining minutes, or the clamp.
+disagree about the thresholds, the remaining counts, or the clamp. Since the
+certificate now requires minutes, sessions, and a maintained average,
+`certificate_eligible` is true only when all three are met and
+`certificate_progress` is the limiting fraction; the certificate endpoint is what
+carries the per-condition verdicts.
 
 `accepting_requests` is the beta's availability switch, not a calendar. Matching
 reads it per query and leaves a paused tutor out with `not_accepting_requests`, so
@@ -1335,14 +1339,52 @@ tutor's standing to `suspended` and records the action in the admin audit log.
 
 ### `GET /v1/incentives/certificate`
 
-The caller's own certificate eligibility: `certified_minutes` and the
-`required_minutes` the university requires. *Auth.*
+The caller's own certificate eligibility. *Auth.* A certificate needs **all
+three** conditions, not just hours: teaching minutes, completed sessions, and a
+maintained average rating over enough rated sessions.
 
-`required_minutes` is configuration, not a constant, and it is returned with the
-answer so the client renders the number the server will actually judge against.
-A client that hardcodes the threshold shows a tutor who is two hours short a
-progress bar that says they are done, and the failure lands on them at the moment
-they are relying on it.
+```json
+{
+  "has_tutor_profile": true,
+  "eligible": false,
+  "certified_minutes": 2400,
+  "required_minutes": 2400,
+  "remaining_minutes": 0,
+  "completed_sessions": 4,
+  "required_sessions": 10,
+  "remaining_sessions": 6,
+  "rating_count": 8,
+  "average_rating": "4.75",
+  "required_average_rating": "4.10",
+  "minutes_met": true,
+  "sessions_met": false,
+  "rating_met": false,
+  "progress": 0.4,
+  "generated_at": "2026-11-11T09:15:00Z"
+}
+```
+
+`required_minutes`, `required_sessions`, and `required_average_rating` are
+configuration, not constants, and are returned with the answer so the client
+renders the numbers the server will actually judge against. A client that
+hardcodes a threshold shows a tutor who is short a progress bar that says they
+are done, and the failure lands on them at the moment they are relying on it.
+
+Each `*_met` flag is that condition's verdict on its own, so the screen can name
+the outstanding one instead of leaving the tutor to compare three unrelated
+numbers. `eligible` is true only when all three are true. The rating condition
+needs **both** enough ratings (`rating_count >= required_sessions`) and an
+average at least `required_average_rating`; a tutor with four five-star ratings
+has not maintained anything over ten sessions yet.
+
+`progress` is the smallest of the three requirement fractions, clamped to
+`1.0`. It is deliberately the limiting condition rather than the hours alone, so
+a tutor who has taught forty hours in four sittings does not see a full bar
+beside `eligible: false`.
+
+`average_rating` is `null` with no ratings and is a JSON string otherwise, like
+every decimal; see
+[Decimals are JSON strings](#decimals-are-json-strings-not-numbers).
 
 ## Health
 

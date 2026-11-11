@@ -244,13 +244,16 @@ class CertificateEligibilityResponse(OrmSchema):
     yet" cannot tell whether they need one more session or forty, and the
     incentive that motivates teaching disappears.
 
-    `certified_minutes` is sent as the exact stored integer, not rounded to a
-    display scale. `MeanRating` exists because a mean of integer scores need not
-    fit in the two decimal places a rating wire declares; minutes are a count with
-    no fractional part, so there is nothing to round and rounding would only put
-    a second number on the wire that the verdict was not computed from. The
-    threshold is a `>=` against this integer and is applied server-side, so a
-    client cannot round its way to an answer the platform did not give.
+    The certificate has three conditions -- minutes, completed sessions, and a
+    maintained average over enough rated sessions -- and each travels with its
+    own `*_met` flag so the screen can name the outstanding one. The three
+    verdicts are `>=` comparisons applied server-side against the stored
+    integers and the exact `Decimal` mean. `certified_minutes` is sent as the
+    stored integer, not rounded to a display scale: rounding would put a number
+    on the wire that the verdict was not computed from. `MeanRating` exists
+    because a mean of integer scores need not fit in two decimal places; it is
+    serialised as a decimal string so no value is silently rounded on its way
+    to the client.
     """
 
     has_tutor_profile: bool = Field(
@@ -275,13 +278,53 @@ class CertificateEligibilityResponse(OrmSchema):
         ),
     )
     remaining_minutes: int = Field(ge=0)
+    completed_sessions: int = Field(
+        ge=0,
+        description="Sessions the tutor has completed, across every course unit.",
+    )
+    required_sessions: int = Field(
+        gt=0,
+        description=(
+            "The configured session threshold. Sent for the same reason as "
+            "`required_minutes`: the client must render the operator's number, "
+            "not a shipped default."
+        ),
+    )
+    remaining_sessions: int = Field(ge=0)
+    rating_count: int = Field(
+        ge=0,
+        description=(
+            "How many ratings back `average_rating`. The rating condition needs "
+            "both a count and an average; a tutor with one five-star session has "
+            "not maintained anything yet."
+        ),
+    )
+    average_rating: MeanRating | None = Field(
+        default=None,
+        description="The stored mean, or null when the tutor has no ratings.",
+    )
+    required_average_rating: MeanRating = Field(
+        description="The configured minimum mean, as the operator set it."
+    )
+    minutes_met: bool = Field(
+        description="Whether the teaching-hours condition is met on its own."
+    )
+    sessions_met: bool = Field(
+        description="Whether the completed-session condition is met on its own."
+    )
+    rating_met: bool = Field(
+        description=(
+            "Whether the rating condition is met on its own: enough ratings and "
+            "a high enough average."
+        )
+    )
     progress: float = Field(
         ge=0.0,
         le=1.0,
         description=(
-            "How far along the tutor is, as a fraction of `required_minutes`. "
-            "Clamped at 1.0, so a tutor well over the threshold is shown as "
-            "complete instead of as a bar that overflows."
+            "How far along the tutor is: the smallest of the three requirement "
+            "fractions, so the bar cannot read complete while any condition is "
+            "outstanding. Clamped at 1.0."
         ),
     )
     generated_at: datetime

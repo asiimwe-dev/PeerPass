@@ -648,6 +648,24 @@ short. `progress` is the rated-session fraction, clamped, and is display only;
 `meets_average` and `verified` are the verdicts. The thresholds are sent with the
 answer rather than repeated in the client.
 
+**The certificate is three conditions, not one.** `certified_minutes` alone let a
+tutor who taught four very long sessions collect a certificate that claims a
+sustained teaching record. Eligibility now requires:
+
+- `certificate_required_minutes` (40h by default) of completed teaching,
+- `certificate_required_sessions` (10 by default) completed sessions, and
+- `certificate_minimum_average` (4.10 by default) over at least the same number of
+  ratings.
+
+All three are configuration, like the minutes threshold, because a pilot tunes
+them between cohorts. Each condition's verdict travels as `minutes_met`,
+`sessions_met`, and `rating_met`, so the certificate screen can name the
+outstanding one. `progress` is the smallest of the three fractions, deliberately
+the limiting requirement rather than the hours alone: a tutor with the hours but
+not the sessions must not see a full bar beside `eligible: false`. The certificate
+is still one institution-wide teaching certificate; per-course certificates would
+be a separate product decision and schema change.
+
 `verified` is read from the stored standing rather than recomputed from the two
 thresholds. A verified tutor keeps the badge until the explicit demotion bar is
 crossed (Tier 3 above), so their current average can sit below the promotion bar

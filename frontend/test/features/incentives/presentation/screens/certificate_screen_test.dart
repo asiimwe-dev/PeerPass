@@ -32,7 +32,10 @@ Future<void> _pumpScreen(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(theme: AppTheme.light, home: const CertificateScreen()),
+      child: MaterialApp(
+        theme: AppTheme.light,
+        home: const CertificateScreen(),
+      ),
     ),
   );
   await _settle(tester);
@@ -93,9 +96,7 @@ void main() {
   ) async {
     await _pumpScreen(
       tester,
-      _container(
-        FakeIncentivesRepository(certifiedMinutes: 2400),
-      ),
+      _container(FakeIncentivesRepository(certifiedMinutes: 2400)),
     );
 
     expect(find.text('Certificate earned'), findsOneWidget);
@@ -135,22 +136,74 @@ void main() {
     expect(find.textContaining('to go'), findsNothing);
   });
 
-  testWidgets('a caller with no tutor profile is offered the way to become one', (
+  testWidgets('the hours do not earn it while the sessions are short', (
     tester,
   ) async {
-    // Not a bar at zero, and not an error: they are not a tutor yet, which is a
-    // state with a next step.
+    // The regression this change exists for: forty hours taught in four long
+    // sittings used to read as "Certificate earned".
     await _pumpScreen(
       tester,
       _container(
-        FakeIncentivesRepository(hasTutorProfile: false),
+        FakeIncentivesRepository(certifiedMinutes: 2400, completedSessions: 4),
       ),
     );
 
-    expect(find.text('You are not a tutor yet'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
-    expect(find.text('Apply to teach'), findsOneWidget);
+    expect(find.text('Certificate earned'), findsNothing);
+    expect(find.text('6 more sessions to go'), findsOneWidget);
+    expect(find.text('Sessions completed'), findsOneWidget);
+    expect(find.text('4 of 10'), findsOneWidget);
   });
+
+  testWidgets('the rating gate is named when the sessions are already there', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      _container(
+        FakeIncentivesRepository(certifiedMinutes: 2400, ratingCount: 8),
+      ),
+    );
+
+    expect(find.text('Certificate earned'), findsNothing);
+    expect(find.text('2 more ratings needed'), findsOneWidget);
+    expect(find.text('4.80 from 8 of 10 ratings'), findsOneWidget);
+  });
+
+  testWidgets('a poor average is a rating shortfall, not a session one', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      _container(
+        FakeIncentivesRepository(
+          certifiedMinutes: 2400,
+          completedSessions: 10,
+          ratingCount: 10,
+          averageRating: 3.5,
+        ),
+      ),
+    );
+
+    expect(find.text('Certificate earned'), findsNothing);
+    expect(find.text('Average needs to reach 4.10'), findsOneWidget);
+    expect(find.text('3.50 — needs 4.10'), findsOneWidget);
+  });
+
+  testWidgets(
+    'a caller with no tutor profile is offered the way to become one',
+    (tester) async {
+      // Not a bar at zero, and not an error: they are not a tutor yet, which is a
+      // state with a next step.
+      await _pumpScreen(
+        tester,
+        _container(FakeIncentivesRepository(hasTutorProfile: false)),
+      );
+
+      expect(find.text('You are not a tutor yet'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      expect(find.text('Apply to teach'), findsOneWidget);
+    },
+  );
 
   testWidgets('says so while the answer is still on its way', (tester) async {
     // A repository that will not answer until the test says so, because a fake
@@ -160,7 +213,10 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: _container(repository),
-        child: MaterialApp(theme: AppTheme.light, home: const CertificateScreen()),
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const CertificateScreen(),
+        ),
       ),
     );
     await tester.pump();
@@ -179,9 +235,7 @@ void main() {
   ) async {
     await _pumpScreen(
       tester,
-      _container(
-        FakeIncentivesRepository(failure: const NetworkFailure()),
-      ),
+      _container(FakeIncentivesRepository(failure: const NetworkFailure())),
     );
 
     expect(find.byType(CertificateProgressCard), findsNothing);

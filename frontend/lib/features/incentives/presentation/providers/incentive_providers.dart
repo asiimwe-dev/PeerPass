@@ -12,12 +12,13 @@ import 'package:peerpass/features/incentives/data/repositories/incentives_reposi
 /// switches it off: a screen that offers a "Try again" button must not also be
 /// re-requesting underneath the user's finger. The button is the retry.
 final certificateEligibilityProvider =
-    AsyncNotifierProvider<CertificateEligibilityNotifier, CertificateEligibility>(
-      CertificateEligibilityNotifier.new,
-      retry: (retryCount, error) => null,
-    );
+    AsyncNotifierProvider<
+      CertificateEligibilityNotifier,
+      CertificateEligibility
+    >(CertificateEligibilityNotifier.new, retry: (retryCount, error) => null);
 
-class CertificateEligibilityNotifier extends AsyncNotifier<CertificateEligibility> {
+class CertificateEligibilityNotifier
+    extends AsyncNotifier<CertificateEligibility> {
   @override
   Future<CertificateEligibility> build() =>
       ref.read(incentivesRepositoryProvider).myCertificate();

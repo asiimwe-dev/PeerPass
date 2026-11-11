@@ -32,7 +32,10 @@ class CertificateProgressCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Certificate progress', style: theme.textTheme.titleMedium),
+                Text(
+                  'Certificate progress',
+                  style: theme.textTheme.titleMedium,
+                ),
                 if (earned)
                   const Chip(
                     label: Text('Earned'),
@@ -68,8 +71,62 @@ class CertificateProgressCard extends StatelessWidget {
                 ),
               ),
             ],
+            const SizedBox(height: AppDimens.md),
+            const Divider(height: 1),
+            const SizedBox(height: AppDimens.sm),
+            // The certificate is three conditions, and the tutor is entitled to
+            // see which one is holding them back rather than one bar that hides
+            // the other two.
+            for (final requirement in certificateRequirements(eligibility))
+              _RequirementRow(requirement: requirement),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// One condition, with the API's answer for it carried in the icon.
+class _RequirementRow extends StatelessWidget {
+  const _RequirementRow({required this.requirement});
+
+  final CertificateRequirement requirement;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final met = requirement.met;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppDimens.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            met
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
+            size: 18,
+            color: met
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: AppDimens.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(requirement.label, style: theme.textTheme.bodyMedium),
+                Text(
+                  requirement.value,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
