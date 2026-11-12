@@ -151,6 +151,25 @@ async def test_unread_count_reading_one_and_reading_all(committed_env):
     )
     assert empty.json() == {"count": 0}
 
+    # The bulk clear has to have stamped the rows themselves, not just answered
+    # with a count. Checked in the database because the unread count could agree
+    # with a response that never wrote anything.
+    async with committed_env.session() as session:
+        unread = await session.scalar(
+            select(func.count())
+            .select_from(Notification)
+            .where(Notification.user_id == me.id, Notification.read_at.is_(None))
+        )
+    assert unread == 0
+
+    # A second clear is a no-op rather than a failure: the button is tappable and
+    # an empty badge is not an error.
+    again_all = await committed_env.client.post(
+        "/v1/notifications/read-all", headers=headers
+    )
+    assert again_all.status_code == 200, again_all.text
+    assert again_all.json() == {"marked": 0}
+
 
 async def test_another_persons_notification_is_not_found(committed_env):
     """A 404 rather than a 403, because a 403 confirms the id exists."""

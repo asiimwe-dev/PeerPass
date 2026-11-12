@@ -686,7 +686,9 @@ def help_request_response(request: HelpRequest) -> HelpRequestResponse:
         {
             "id": request.public_id,
             "tutee_id": request.tutee_public_id,
-            "tutee_name": request.tutee.full_name,
+            # The display name, not the raw column: a deleted tutee has no
+            # `full_name`, and their request can still be in a tutor's history.
+            "tutee_name": request.tutee.display_name,
             "course_unit_id": request.course_unit_public_id,
             "course_unit_code": request.course_unit.code,
             "course_unit_name": request.course_unit.name,
@@ -695,7 +697,7 @@ def help_request_response(request: HelpRequest) -> HelpRequestResponse:
             "status": request.status,
             "matched_tutor_id": request.matched_tutor_public_id,
             "matched_tutor_name": (
-                request.matched_tutor.full_name if request.matched_tutor else None
+                request.matched_tutor.display_name if request.matched_tutor else None
             ),
             "created_at": request.created_at,
         }

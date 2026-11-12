@@ -5,12 +5,13 @@ import 'package:peerpass/core/models/academic_fallback.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
+
 /// Which step of the wizard the student is on.
 ///
-/// Two steps in this release. A third, the units they want help with, is
-/// deferred: the units a tutor can be matched on depend on the matching rules
-/// being settled, and a student who picks units the API will not match them
-/// against has been told something untrue.
+/// Three steps: name, academic context, and the units the student expects to
+/// need help with. The last one is not part of the profile-completeness gate
+/// (`UserProfile.needsOnboarding`) because a faculty may publish no units; it is
+/// asked here, and finishing it is what ends the wizard.
 enum OnboardingStep {
   name,
   academicContext,
@@ -342,8 +343,9 @@ class OnboardingController extends Notifier<OnboardingState> {
 
     final next = state.step.next;
     if (next == null) {
-      // The last step. The router takes it from here: once the profile no longer
-      // needs onboarding, the guard sends the student home on its own.
+      // The last step. The controller only reports that the save succeeded; the
+      // screen ends the wizard, because the router cannot tell this profile from
+      // one that has merely finished step two.
       state = state.copyWith(saving: false, clearFailure: true);
       return true;
     }

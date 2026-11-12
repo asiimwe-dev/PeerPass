@@ -32,6 +32,24 @@ class SessionDetailScreen extends ConsumerWidget {
 
   final String sessionId;
 
+  /// The bar every state of this screen carries.
+  ///
+  /// A session reached by `go` -- which is how the tutor arrives after
+  /// confirming a request -- replaces the stack, so there is nothing to pop back
+  /// to and the app bar's automatic leading control is absent. The tutor would be
+  /// stranded on the session they just booked. When there is a stack (opened from
+  /// the sessions list) the usual back button is what belongs here.
+  AppBar _appBar(BuildContext context) => AppBar(
+    title: const Text('Session'),
+    leading: Navigator.of(context).canPop()
+        ? null
+        : IconButton(
+            tooltip: 'Back to Home',
+            icon: const Icon(Icons.home_outlined),
+            onPressed: () => context.go(AppRoutes.home),
+          ),
+  );
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(sessionDetailProvider(sessionId));
@@ -44,14 +62,7 @@ class SessionDetailScreen extends ConsumerWidget {
       final failure = state.loadFailure;
       if (failure != null) {
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Session'),
-            leading: IconButton(
-              tooltip: 'Back to Home',
-              icon: const Icon(Icons.home_outlined),
-              onPressed: () => context.go(AppRoutes.home),
-            ),
-          ),
+          appBar: _appBar(context),
           body: SafeArea(
             child: Center(
               child: ContentWidthLimiter(
@@ -66,13 +77,14 @@ class SessionDetailScreen extends ConsumerWidget {
           ),
         );
       }
-      return const Scaffold(
-        body: SafeArea(child: Center(child: LoadingView())),
+      return Scaffold(
+        appBar: _appBar(context),
+        body: const SafeArea(child: Center(child: LoadingView())),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Session')),
+      appBar: _appBar(context),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -248,7 +260,14 @@ class _Action extends StatelessWidget {
     // says a rating exists for the session, which is not the same claim as "you
     // gave one", and on a tutor's screen it is the other party's rating.
     final given = state.ratingGiven;
-    if (given != null) return _RatingReadOnly(rating: given);
+    // Only the person who submitted it may be told they did. `ratingGiven` is
+    // kept in this controller for the session's lifetime, and the controller
+    // outlives a sign-out, so a stale value from the previous account would
+    // otherwise be shown back to the tutor as their own rating. The rater id is
+    // on the response precisely so this can be checked rather than assumed.
+    if (given != null && given.raterId == viewerId) {
+      return _RatingReadOnly(rating: given);
+    }
     if (session.isRated) return const _RatedBySomeoneElse();
 
     return switch (session.status) {

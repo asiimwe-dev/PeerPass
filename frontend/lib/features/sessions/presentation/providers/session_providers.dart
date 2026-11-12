@@ -206,6 +206,17 @@ class SessionDetailController extends Notifier<SessionDetailState> {
 
   @override
   SessionDetailState build() {
+    // The detail belongs to whoever is signed in. Watching the viewer's id makes
+    // the controller rebuild -- clearing a recorded rating and re-reading the
+    // session -- when the account changes on this device, instead of handing
+    // one student's submitted feedback to the next person who signs in.
+    final viewerId = ref.watch(
+      sessionControllerProvider.select((session) => session.profile?.publicId),
+    );
+    if (viewerId == null) {
+      return const SessionDetailState(loading: false);
+    }
+
     // Kicked off rather than awaited: `build` is synchronous, and awaiting inside
     // it would make the first frame wait on the network before anything is on
     // screen. Nothing writes to `state` before the first `await` below, because

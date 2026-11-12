@@ -648,6 +648,32 @@ short. `progress` is the rated-session fraction, clamped, and is display only;
 `meets_average` and `verified` are the verdicts. The thresholds are sent with the
 answer rather than repeated in the client.
 
+**The certificate is three conditions, not one.** `certified_minutes` alone let a
+tutor who taught four very long sessions collect a certificate that claims a
+sustained teaching record. Eligibility now requires:
+
+- `certificate_required_minutes` (15h by default) of completed teaching,
+- `certificate_required_sessions` (10 by default) completed sessions, and
+- `certificate_minimum_average` (4.10 by default) over at least the same number of
+  ratings.
+
+The defaults are semester-scale, because the certificate is awarded at the end of
+a four-month teaching semester. Fifteen hours is roughly an hour a week across a
+fifteen-week semester; ten sessions is a sitting every week and a half; 4.10 is
+the same quality bar as promotion. The first default, 40 hours, was a
+professional-services number: at a typical one-hour session it silently required
+forty sessions, which made the session gate redundant and left the certificate
+unreachable for the pilot cohort.
+
+All three are configuration, like the minutes threshold, because a pilot tunes
+them between cohorts. Each condition's verdict travels as `minutes_met`,
+`sessions_met`, and `rating_met`, so the certificate screen can name the
+outstanding one. `progress` is the smallest of the three fractions, deliberately
+the limiting requirement rather than the hours alone: a tutor with the hours but
+not the sessions must not see a full bar beside `eligible: false`. The certificate
+is still one institution-wide teaching certificate; per-course certificates would
+be a separate product decision and schema change.
+
 `verified` is read from the stored standing rather than recomputed from the two
 thresholds. A verified tutor keeps the badge until the explicit demotion bar is
 crossed (Tier 3 above), so their current average can sit below the promotion bar
@@ -674,6 +700,24 @@ never offered.
 tutor out with `not_accepting_requests`. There is no slot model and nothing to
 expire, so pausing is immediate and real rather than a label the next deploy
 honours.
+
+### 6.2 A deleted account still has a name in the record it left behind
+
+Deletion anonymises the user row rather than removing it, because a session is the
+source of truth for a tutor's hours and certificate (see the `users.deleted_at`
+comment). The row is scrubbed, so `full_name` is `NULL` and the email is rewritten
+to an undeliverable tombstone address. Every surface that names a person to
+somebody else therefore reads `User.display_name`, not `full_name`: the model
+returns `"Deleted user"` for a tombstone, the email for an unfinished profile, and
+the name otherwise.
+
+This matters on the session record. The tutor still has the session in their
+history, and a serializer that read `full_name` returned `null` — a blank beside
+"Student" on the detail screen, which reads as a rendering fault and quietly
+erases the record. The session response, the help-request response, and the
+notification sentences all go through `display_name` for that reason. The session's
+topic, course unit, timestamps, and duration remain, so the tutor can still see
+what the session was even when the other party is gone.
 
 ---
 
@@ -845,6 +889,12 @@ rather than treat it as damage:
   step still asks the question and still has to be answered to leave the wizard;
   what it must not do is bar the app to a student who has answered it as fully as
   their faculty allows.
+- **Finishing step two does not finish the wizard.** The academic-context step is
+  what fills the name, university and faculty, so the profile becomes "complete"
+  while the module step is still unseen. A router guard that redirects a complete
+  profile off `/onboarding` at that moment skips the third step entirely. The
+  guard therefore leaves a signed-in account on `/onboarding`, and the wizard
+  navigates home itself once its last step has saved.
 - Declared units are a matching input and a precondition of nothing else. No
   endpoint reads them as a gate, so their absence cannot block anything else.
 

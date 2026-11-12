@@ -8,6 +8,7 @@ import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/providers/onboarding_providers.dart';
+
 /// A student midway through the wizard: signed in, no name, no university. This
 /// is the state the router hands to onboarding, and the state the fake merges
 /// every partial update into.
@@ -118,11 +119,13 @@ void main() {
       return harness;
     }
 
-    test('sends the academic context and the consent, and reports done', () async {
-      // The last step returns true so the screen can hand over, and the router
-      // then sends the student home because the profile no longer needs
-      // onboarding. Consent travels with it because there is nowhere else for a
-      // data-processing decision to be recorded.
+    test('sends the academic context and the consent, and advances', () async {
+      // Step two completes the profile's academic fields, so the router would
+      // treat the account as usable from here. The wizard must still move to its
+      // third step: the units a student needs help with are asked separately and
+      // are not part of the profile gate. Consent travels with the context
+      // because there is nowhere else for a data-processing decision to be
+      // recorded.
       final harness = await atAcademicContext();
       _controller(harness.container)
         ..setUniversity(_university)
@@ -134,6 +137,7 @@ void main() {
 
       expect(advanced, isTrue);
       expect(_state(harness.container).saving, isFalse);
+      expect(_state(harness.container).step, OnboardingStep.primaryModules);
       final sent = harness.repository.profileUpdates.single;
       expect(sent['university_id'], _university);
       expect(sent['faculty_id'], _faculty);

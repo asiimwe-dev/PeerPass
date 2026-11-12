@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
@@ -8,9 +10,11 @@ import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/theme/app_theme.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
+import 'package:peerpass/features/sessions/data/models/rating_model.dart';
 import 'package:peerpass/features/sessions/data/models/session_model.dart';
 import 'package:peerpass/features/sessions/data/repositories/fake_sessions_repository.dart';
 import 'package:peerpass/features/sessions/data/repositories/sessions_repository.dart';
+import 'package:peerpass/features/sessions/presentation/providers/session_providers.dart';
 import 'package:peerpass/features/sessions/presentation/screens/session_detail_screen.dart';
 
 /// The student in the sessions below.
@@ -426,4 +430,95 @@ void main() {
       },
     );
   });
+
+  testWidgets('a session opened with no back stack offers a way home', (
+    tester,
+  ) async {
+    // The tutor lands here by `go` after confirming a help request, which
+    // replaces the stack. The app bar's automatic back control therefore does not
+    // appear, and without an explicit home control the tutor is stranded on the
+    // session they just booked.
+    final repository = FakeSessionsRepository(sessions: [session()])
+      ..currentUser = _tutor.publicId;
+    final router = GoRouter(
+      initialLocation: AppRoutes.sessionDetailPath(_sessionId),
+      routes: [
+        GoRoute(
+          path: AppRoutes.sessionDetailPath(_sessionId),
+          builder: (context, state) =>
+              const SessionDetailScreen(sessionId: _sessionId),
+        ),
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) =>
+              const Scaffold(body: Text('Home after the session')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: _container(repository, _tutor),
+        child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
+      ),
+    );
+    await _settle(tester);
+
+    expect(find.byTooltip('Back to Home'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back to Home'));
+    await _settle(tester);
+
+    expect(find.text('Home after the session'), findsOneWidget);
+  });
+
+  testWidgets(
+    'a rating given by the previous account is not shown to the next',
+    (tester) async {
+      // Two people share a handset in the pilot, and this controller outlives a
+      // sign-out. The tutee's submission must not come back as the tutor's own
+      // "you rated this" after the account changes.
+      final repository = FakeSessionsRepository(
+        sessions: [session(status: 'completed')],
+      )..currentUser = _tutee.publicId;
+      final container = _container(repository, _tutee);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: AppTheme.light,
+            home: const SessionDetailScreen(sessionId: _sessionId),
+          ),
+        ),
+      );
+      await _settle(tester);
+
+      container
+          .read(sessionDetailProvider(_sessionId).notifier)
+          .recordRating(
+            RatingModel(
+              id: 'rating-1',
+              sessionId: _sessionId,
+              raterId: _tutee.publicId,
+              rateeId: _tutor.publicId,
+              score: 5,
+              comprehensionHelped: true,
+              createdAt: DateTime.utc(2026, 3, 4, 9),
+            ),
+          );
+      await _settle(tester);
+      expect(find.text('You rated this 5 out of 5'), findsOneWidget);
+
+      repository.currentUser = _tutor.publicId;
+      container.read(sessionControllerProvider.notifier).signedIn(_tutor);
+      await _settle(tester);
+
+      expect(find.textContaining('You rated this'), findsNothing);
+      expect(
+        find.text('Waiting for the student to rate this session.'),
+        findsOneWidget,
+      );
+    },
+  );
 }

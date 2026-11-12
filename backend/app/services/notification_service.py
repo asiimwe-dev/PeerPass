@@ -14,7 +14,7 @@ changing a single call site.
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -91,11 +91,16 @@ async def notify(
 def _display_name(user: User | None, fallback: str) -> str:
     """A name safe to put in a sentence.
 
-    `full_name` is nullable because an account exists before onboarding finishes.
-    Falling back rather than saying "None" matters here: this text is shown to
-    the other party, who cannot correct it.
+    `full_name` is nullable because an account exists before onboarding finishes,
+    and a deleted account is a tombstone whose name has been scrubbed. Both cases
+    are shown to the other party, who cannot correct them, so the model's
+    `display_name` decides the words: the email for an unfinished profile, and
+    "Deleted user" for a tombstone. A fallback is still needed for the template
+    paths that have no user row at all.
     """
-    name = user.full_name.strip() if user is not None and user.full_name else ""
+    if user is None:
+        return fallback
+    name = user.display_name.strip()
     return name or fallback
 
 
@@ -346,19 +351,25 @@ async def mark_read(
 
 
 async def mark_all_read(db: AsyncSession, user: User) -> int:
-    """Mark every unread row the caller owns, and say how many changed."""
+    """Mark every unread row the caller owns, and say how many changed.
+
+    One statement rather than a read followed by per-row writes in Python. The
+    clear is a single fact -- "everything unread of mine is read now" -- so it
+    does not need the rows themselves, and loading an inbox of a few hundred
+    objects to stamp one column would put them all in memory for no answer the
+    server did not already have. `read_at` is one timestamp for the whole batch,
+    which is what the row loop did too; only the ordering by row disappeared.
+    """
     result = await db.execute(
-        select(Notification).where(
+        update(Notification)
+        .where(
             Notification.user_id == user.id,
             Notification.read_at.is_(None),
         )
+        .values(read_at=datetime.now(UTC))
     )
-    rows = list(result.scalars())
-    now = datetime.now(UTC)
-    for row in rows:
-        row.read_at = now
     await db.commit()
-    return len(rows)
+    return result.rowcount or 0
 
 
 async def register_device(

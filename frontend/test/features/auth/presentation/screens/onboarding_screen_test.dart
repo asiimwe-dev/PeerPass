@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/academic_fallback.dart';
 import 'package:peerpass/core/models/course_unit_option.dart';
@@ -159,10 +161,25 @@ _Harness _harness(FakeAuthRepository repository) {
 }
 
 Future<void> _pumpWizard(WidgetTester tester, _Harness harness) async {
+  // The wizard finishes by navigating home itself, so the harness carries a
+  // router. Pumping the screen straight into a `MaterialApp` would leave the
+  // last step's navigation with nowhere to go and say nothing about whether a
+  // student can actually leave the wizard.
+  final router = GoRouter(
+    routes: [
+      GoRoute(path: '/', builder: (context, state) => const OnboardingScreen()),
+      GoRoute(
+        path: AppRoutes.home,
+        builder: (context, state) =>
+            const Scaffold(body: Text('Home after onboarding')),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: harness.container,
-      child: MaterialApp(theme: AppTheme.light, home: const OnboardingScreen()),
+      child: MaterialApp.router(theme: AppTheme.light, routerConfig: router),
     ),
   );
   await _settle(tester);
@@ -289,6 +306,7 @@ void main() {
       reason:
           'the router sends a profile that still needs onboarding back here',
     );
+    expect(find.text('Home after onboarding'), findsOneWidget);
   });
 
   testWidgets('a module step whose catalogue failed to load stays closed', (

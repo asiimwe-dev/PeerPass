@@ -7,6 +7,15 @@ Map<String, dynamic> _body({
   int certifiedMinutes = 240,
   int requiredMinutes = 2400,
   int? remainingMinutes,
+  int completedSessions = 0,
+  int requiredSessions = 10,
+  int? remainingSessions,
+  int ratingCount = 0,
+  String? averageRating,
+  String requiredAverageRating = '4.10',
+  bool minutesMet = false,
+  bool sessionsMet = false,
+  bool ratingMet = false,
   double? progress,
   Object? progressOverride,
 }) {
@@ -16,7 +25,18 @@ Map<String, dynamic> _body({
     'certified_minutes': certifiedMinutes,
     'required_minutes': requiredMinutes,
     'remaining_minutes': remainingMinutes ?? requiredMinutes - certifiedMinutes,
-    'progress': progressOverride ?? progress ?? certifiedMinutes / requiredMinutes,
+    'completed_sessions': completedSessions,
+    'required_sessions': requiredSessions,
+    'remaining_sessions':
+        remainingSessions ?? requiredSessions - completedSessions,
+    'rating_count': ratingCount,
+    'average_rating': averageRating,
+    'required_average_rating': requiredAverageRating,
+    'minutes_met': minutesMet,
+    'sessions_met': sessionsMet,
+    'rating_met': ratingMet,
+    'progress':
+        progressOverride ?? progress ?? certifiedMinutes / requiredMinutes,
     'generated_at': '2026-03-04T11:00:00Z',
   };
 }
@@ -25,7 +45,14 @@ void main() {
   group('fromJson', () {
     test('reads every field the screen renders', () {
       final eligibility = CertificateEligibility.fromJson(
-        _body(certifiedMinutes: 2399, remainingMinutes: 1, progress: 2399 / 2400),
+        _body(
+          certifiedMinutes: 2399,
+          remainingMinutes: 1,
+          completedSessions: 4,
+          ratingCount: 7,
+          averageRating: '4.75',
+          progress: 0.4,
+        ),
       );
 
       expect(eligibility.hasTutorProfile, isTrue);
@@ -33,7 +60,27 @@ void main() {
       expect(eligibility.certifiedMinutes, 2399);
       expect(eligibility.requiredMinutes, 2400);
       expect(eligibility.remainingMinutes, 1);
-      expect(eligibility.progress, closeTo(0.99958, 0.00001));
+      expect(eligibility.completedSessions, 4);
+      expect(eligibility.requiredSessions, 10);
+      expect(eligibility.remainingSessions, 6);
+      expect(eligibility.ratingCount, 7);
+      expect(eligibility.averageRating, 4.75);
+      expect(eligibility.requiredAverageRating, 4.10);
+      expect(eligibility.minutesMet, isFalse);
+      expect(eligibility.sessionsMet, isFalse);
+      expect(eligibility.ratingMet, isFalse);
+      expect(eligibility.progress, 0.4);
+    });
+
+    test('reads the average rating from the decimal string the API sends', () {
+      // `MeanRating` is a `Decimal` and Pydantic serialises it as a JSON
+      // string, so the client must not assume a JSON number arrives.
+      final eligibility = CertificateEligibility.fromJson(
+        _body(averageRating: '4.10', requiredAverageRating: '4.50'),
+      );
+
+      expect(eligibility.averageRating, 4.10);
+      expect(eligibility.requiredAverageRating, 4.50);
     });
 
     test('reads the threshold the operator configured, not a shipped one', () {
@@ -76,6 +123,14 @@ void main() {
       'certified_minutes',
       'required_minutes',
       'remaining_minutes',
+      'completed_sessions',
+      'required_sessions',
+      'remaining_sessions',
+      'rating_count',
+      'required_average_rating',
+      'minutes_met',
+      'sessions_met',
+      'rating_met',
       'progress',
     ]) {
       test('throws when $field is absent, rather than inventing it', () {

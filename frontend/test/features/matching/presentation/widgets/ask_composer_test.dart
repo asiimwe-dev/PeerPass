@@ -25,11 +25,7 @@ const UserProfile _student = UserProfile(
 );
 
 const List<CourseUnit> _units = [
-  CourseUnit(
-    publicId: 'unit-mat',
-    code: 'MAT 221',
-    name: 'Linear Algebra',
-  ),
+  CourseUnit(publicId: 'unit-mat', code: 'MAT 221', name: 'Linear Algebra'),
   CourseUnit(
     publicId: 'unit-csc',
     code: 'CSC 202',
@@ -109,6 +105,42 @@ void main() {
     // The selected unit's full name, so a student who only recognises the code
     // is not asked to remember it.
     expect(find.text('Linear Algebra'), findsOneWidget);
+    // The catalogue is never a dead end, even when every unit fits.
+    expect(find.text('View more'), findsOneWidget);
+  });
+
+  testWidgets('View more lists the whole catalogue and keeps the question', (
+    tester,
+  ) async {
+    final units = List<CourseUnit>.generate(
+      6,
+      (index) => CourseUnit(
+        publicId: 'unit-$index',
+        code: 'CSC 50$index',
+        name: 'Course unit $index',
+      ),
+    );
+    final router = await _pump(tester, units: units);
+
+    await tester.enterText(find.byType(TextField), 'indexing');
+    await tester.tap(find.text('View more'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('All course units'), findsOneWidget);
+    // The fourth unit is behind the three visible chips, and the sheet is how a
+    // student reaches it without losing the question they already typed.
+    expect(find.text('CSC 503'), findsOneWidget);
+
+    await tester.tap(find.text('CSC 503'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('All course units'), findsNothing);
+    expect(find.text('Course unit 3'), findsOneWidget);
+
+    await tester.tap(find.text('Find me a tutor'));
+    await tester.pumpAndSettle();
+
+    expect(router.state.uri.toString(), '/matching/unit-3?topic=indexing');
   });
 
   testWidgets('sends the preselected unit and the question in the route', (
@@ -116,10 +148,7 @@ void main() {
   ) async {
     final router = await _pump(tester);
 
-    await tester.enterText(
-      find.byType(TextField),
-      'eigenvalues before Friday',
-    );
+    await tester.enterText(find.byType(TextField), 'eigenvalues before Friday');
     await tester.tap(find.text('Find me a tutor'));
     await tester.pumpAndSettle();
 

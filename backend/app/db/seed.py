@@ -19,11 +19,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session_factory
+from app.core.pilot import PILOT_UNIVERSITY_NAME
 from app.models.course_unit import CourseUnit, Program, Subject, University
 from app.models.course_unit_topic import CourseUnitTopic
 from app.models.grading_scale import Grade, GradingScale
 
-UNIVERSITY_NAME = "Mbarara University of Science and Technology"
+UNIVERSITY_NAME = PILOT_UNIVERSITY_NAME
 
 #: MUST's undergraduate scale is a five-point scale, not a percentage one, and
 #: the difference is load-bearing. A tutor's standing is stored as points, so a

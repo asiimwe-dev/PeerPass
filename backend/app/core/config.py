@@ -20,6 +20,7 @@ Collapsing any two of them into one would mean one rotation takes out two
 independent protections at the same time.
 """
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Annotated, Literal
 
@@ -295,18 +296,44 @@ class Settings(BaseSettings):
     )
 
     #: Hours of completed tutoring a tutor must accumulate to be issued a
-    #: certificate, in minutes. The default is 40 hours.
+    #: certificate, in minutes. The default is 15 hours.
+    #:
+    #: Fifteen is semester-scale: a tutor who teaches roughly an hour a week
+    #: across a fifteen-week teaching semester reaches it. Forty hours, the
+    #: first default, was a professional-services number: at a typical one-hour
+    #: session it silently demanded forty sessions, which made the ten-session
+    #: gate redundant and left the certificate unreachable in the pilot.
     #:
     #: Configuration rather than a constant beside `PROMOTION_MIN_SESSIONS` in
     #: the rating service, and the reason is who changes it. Promotion is a
     #: quality rule an engineering decision should be able to defend in review;
     #: the certificate is an incentive a product owner tunes between pilots.
-    #: A pilot that found 40 hours unreachable should be able to lower it with
+    #: A pilot that found 15 hours unreachable should be able to lower it with
     #: an environment variable rather than a code change and a migration.
     certificate_required_minutes: int = Field(
-        default=2400,
+        default=900,
         gt=0,
         description="Teaching minutes required for certificate eligibility.",
+    )
+
+    #: Completed sessions a tutor must have taught before a certificate is
+    #: issued, alongside the hours. Hours alone let a tutor who taught four very
+    #: long sessions read as experienced; the certificate is meant to represent
+    #: a sustained record, not volume banked in a handful of sittings.
+    certificate_required_sessions: int = Field(
+        default=10,
+        gt=0,
+        description="Completed sessions required for certificate eligibility.",
+    )
+
+    #: The average rating a tutor must maintain over those sessions. The same
+    #: bar as promotion, because "good enough to earn the certificate" and
+    #: "good enough to be offered work" should not be two different standards.
+    certificate_minimum_average: Decimal = Field(
+        default=Decimal("4.10"),
+        ge=0,
+        le=5,
+        description="Minimum average rating required for certificate eligibility.",
     )
 
     @property

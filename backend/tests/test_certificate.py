@@ -39,22 +39,26 @@ from app.services import incentive_service, rating_service, session_service
 
 GOOD_PASSWORD = "correct horse battery staple"
 
-#: The default the pilot ships with, stated here so the boundary tests below say
-#: "2400 and 2399" rather than "the configured value and one less".
-DEFAULT_REQUIRED_MINUTES = 2400
+#: The defaults the pilot ships with, stated here so the boundary tests below say
+#: "900 and 899" rather than "the configured value and one less".
+DEFAULT_REQUIRED_MINUTES = 900
+DEFAULT_REQUIRED_SESSIONS = 10
+DEFAULT_MINIMUM_AVERAGE = Decimal("4.10")
 
 
 @pytest.fixture(autouse=True)
 def _threshold_from_the_environment(monkeypatch: pytest.MonkeyPatch):
-    """Pin the threshold to its default for every test in this file.
+    """Pin all three thresholds to their defaults for every test in this file.
 
     `get_settings` reads the environment and a local `.env`, so a developer's own
     `CERTIFICATE_REQUIRED_MINUTES` would otherwise decide whether a test that
-    states 2400 and 2399 passed. The cache is cleared on the way out as well as
+    states 900 and 899 passed. The cache is cleared on the way out as well as
     on the way in, because the settings object is process-wide and a threshold
     left behind here would answer the rest of the suite.
     """
     monkeypatch.setenv("CERTIFICATE_REQUIRED_MINUTES", str(DEFAULT_REQUIRED_MINUTES))
+    monkeypatch.setenv("CERTIFICATE_REQUIRED_SESSIONS", str(DEFAULT_REQUIRED_SESSIONS))
+    monkeypatch.setenv("CERTIFICATE_MINIMUM_AVERAGE", str(DEFAULT_MINIMUM_AVERAGE))
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -90,23 +94,39 @@ async def _account(client, db_session, email: str) -> tuple[dict, User]:
 
 
 async def _tutor(
-    client, db_session, email: str, *, certified_minutes: int
+    client,
+    db_session,
+    email: str,
+    *,
+    certified_minutes: int,
+    completed_sessions: int = 28,
+    rating_count: int | None = None,
+    rating_total: Decimal | None = None,
 ) -> tuple[dict, User]:
-    """An account with the stored hours a tutor of that standing would have.
+    """An account with the stored totals a tutor of that standing would have.
 
     The profile row is written directly rather than earned through a verified
     competency and twenty-eight completed sessions. These tests are about the
     read, and the accrual is tested separately against the code that does it.
+
+    The defaults describe a tutor who meets the session and rating conditions, so
+    a test that is about the *minutes* boundary still reaches an eligible answer
+    and fails only for the minute it is testing. Tests about the other two gates
+    pass the count or total they want short.
     """
     body, user = await _account(client, db_session, email)
+    if rating_count is None:
+        rating_count = completed_sessions
+    if rating_total is None:
+        rating_total = Decimal(rating_count) * Decimal("5")
     db_session.add(
         TutorProfile(
             user_id=user.id,
             standing=TutorStanding.PROBATIONARY,
-            completed_sessions=28,
+            completed_sessions=completed_sessions,
             certified_minutes=certified_minutes,
-            rating_total=Decimal("0"),
-            rating_count=0,
+            rating_total=rating_total,
+            rating_count=rating_count,
         )
     )
     await db_session.commit()
@@ -173,7 +193,7 @@ async def _session(
 async def test_exactly_the_required_minutes_is_eligible(client, db_session):
     """The boundary, from the inside. A threshold met is a threshold met."""
     body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=2400
+        client, db_session, "tutor@mak.ac.ug", certified_minutes=900
     )
 
     response = await client.get("/v1/incentives/certificate", headers=_bearer(body))
@@ -181,14 +201,14 @@ async def test_exactly_the_required_minutes_is_eligible(client, db_session):
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["eligible"] is True
-    assert payload["certified_minutes"] == 2400
+    assert payload["certified_minutes"] == 900
     assert payload["remaining_minutes"] == 0
 
 
 async def test_one_minute_short_is_not_eligible(client, db_session):
     """The boundary, from the outside. This is the case that must not round."""
     body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=2399
+        client, db_session, "tutor@mak.ac.ug", certified_minutes=899
     )
 
     payload = (
@@ -197,9 +217,9 @@ async def test_one_minute_short_is_not_eligible(client, db_session):
 
     assert payload["eligible"] is False
     assert payload["remaining_minutes"] == 1
-    # Not one hour of progress, and not a rounded 40: a bar built from either
+    # Not one hour of progress, and not a rounded 15: a bar built from either
     # would tell a tutor one minute from the threshold that they are done.
-    assert payload["progress"] == pytest.approx(2399 / 2400)
+    assert payload["progress"] == pytest.approx(899 / 900)
 
 
 async def test_well_past_the_threshold_is_eligible_and_capped(client, db_session):
@@ -215,6 +235,108 @@ async def test_well_past_the_threshold_is_eligible_and_capped(client, db_session
     assert payload["eligible"] is True
     assert payload["progress"] == 1.0
     assert payload["remaining_minutes"] == 0
+
+
+async def test_hours_alone_do_not_earn_a_certificate(client, db_session):
+    """The bug the session gate exists for.
+
+    A tutor with four very long sessions can pass the 40-hour threshold while
+    having taught only four times. That is volume, not a sustained record, and
+    the certificate must not call it one.
+    """
+    body, _user = await _tutor(
+        client,
+        db_session,
+        "tutor@mak.ac.ug",
+        certified_minutes=4800,
+        completed_sessions=4,
+        rating_count=4,
+        rating_total=Decimal("20"),
+    )
+
+    payload = (
+        await client.get("/v1/incentives/certificate", headers=_bearer(body))
+    ).json()
+
+    assert payload["eligible"] is False
+    assert payload["minutes_met"] is True
+    assert payload["sessions_met"] is False
+    # Four ratings is also short of the ten-rating condition; the point here is
+    # that the completed sessions and the ratings are the same four.
+    assert payload["rating_met"] is False
+    assert payload["remaining_sessions"] == DEFAULT_REQUIRED_SESSIONS - 4
+    # The bar is drawn from the limiting requirement, not from the hours that
+    # happened to be complete.
+    assert payload["progress"] == pytest.approx(4 / DEFAULT_REQUIRED_SESSIONS)
+
+
+async def test_enough_sessions_but_too_few_ratings_is_not_eligible(client, db_session):
+    """A completed session is not rated evidence until the student rates it."""
+    body, _user = await _tutor(
+        client,
+        db_session,
+        "tutor@mak.ac.ug",
+        certified_minutes=4800,
+        completed_sessions=DEFAULT_REQUIRED_SESSIONS,
+        rating_count=3,
+        rating_total=Decimal("15"),
+    )
+
+    payload = (
+        await client.get("/v1/incentives/certificate", headers=_bearer(body))
+    ).json()
+
+    assert payload["eligible"] is False
+    assert payload["sessions_met"] is True
+    assert payload["rating_met"] is False
+    assert payload["rating_count"] == 3
+    assert payload["progress"] == pytest.approx(3 / DEFAULT_REQUIRED_SESSIONS)
+
+
+async def test_enough_ratings_but_a_low_average_is_not_eligible(client, db_session):
+    """Maintaining the rating bar is the second half of the rating condition."""
+    body, _user = await _tutor(
+        client,
+        db_session,
+        "tutor@mak.ac.ug",
+        certified_minutes=4800,
+        completed_sessions=DEFAULT_REQUIRED_SESSIONS,
+        rating_count=DEFAULT_REQUIRED_SESSIONS,
+        rating_total=Decimal("35.00"),  # 3.50 average
+    )
+
+    payload = (
+        await client.get("/v1/incentives/certificate", headers=_bearer(body))
+    ).json()
+
+    assert payload["eligible"] is False
+    assert payload["sessions_met"] is True
+    assert payload["rating_met"] is False
+    assert payload["average_rating"] == "3.50"
+    assert payload["progress"] == pytest.approx(3.5 / 4.1)
+
+
+async def test_exactly_the_bar_on_all_three_conditions_is_eligible(client, db_session):
+    """The boundary is inclusive on every requirement, not just the minutes."""
+    body, _user = await _tutor(
+        client,
+        db_session,
+        "tutor@mak.ac.ug",
+        certified_minutes=DEFAULT_REQUIRED_MINUTES,
+        completed_sessions=DEFAULT_REQUIRED_SESSIONS,
+        rating_count=DEFAULT_REQUIRED_SESSIONS,
+        rating_total=DEFAULT_MINIMUM_AVERAGE * DEFAULT_REQUIRED_SESSIONS,
+    )
+
+    payload = (
+        await client.get("/v1/incentives/certificate", headers=_bearer(body))
+    ).json()
+
+    assert payload["eligible"] is True
+    assert payload["minutes_met"] is True
+    assert payload["sessions_met"] is True
+    assert payload["rating_met"] is True
+    assert payload["progress"] == 1.0
 
 
 async def test_minutes_are_sent_exactly_as_stored(client, db_session):
@@ -241,7 +363,7 @@ async def test_the_threshold_comes_from_settings_not_a_constant(
     """The whole reason it is configuration: a pilot can lower it.
 
     The same tutor is eligible under one setting and not under the other, which
-    is what a hardcoded 2400 cannot do.
+    is what a hardcoded threshold cannot do.
     """
     body, _user = await _tutor(
         client, db_session, "tutor@mak.ac.ug", certified_minutes=600
@@ -253,12 +375,12 @@ async def test_the_threshold_comes_from_settings_not_a_constant(
     ).json()
 
     _set_threshold(monkeypatch, DEFAULT_REQUIRED_MINUTES)
-    under_2400 = (
+    under_900 = (
         await client.get("/v1/incentives/certificate", headers=_bearer(body))
     ).json()
 
     assert under_600["eligible"] is True
-    assert under_2400["eligible"] is False
+    assert under_900["eligible"] is False
 
 
 @pytest.mark.parametrize("configured", [600, 1200, DEFAULT_REQUIRED_MINUTES])
@@ -281,19 +403,72 @@ async def test_the_wire_reports_the_configured_threshold(
 
     assert payload["required_minutes"] == configured
     assert payload["remaining_minutes"] == configured
+    assert payload["required_sessions"] == DEFAULT_REQUIRED_SESSIONS
+    assert Decimal(payload["required_average_rating"]) == DEFAULT_MINIMUM_AVERAGE
 
 
-def test_the_shipped_default_is_forty_hours() -> None:
-    """The number in the docs is the number the code ships with."""
+async def test_the_session_and_rating_thresholds_come_from_settings(
+    client, db_session, monkeypatch: pytest.MonkeyPatch
+):
+    """The same promise the minutes threshold makes, for the other two gates.
+
+    A pilot with a small cohort has to be able to lower the session count without
+    a deploy, and a stricter one has to be able to raise it.
+    """
+    body, _user = await _tutor(
+        client,
+        db_session,
+        "tutor@mak.ac.ug",
+        certified_minutes=4800,
+        completed_sessions=6,
+        rating_count=6,
+        rating_total=Decimal("30.00"),
+    )
+
+    monkeypatch.setenv("CERTIFICATE_REQUIRED_SESSIONS", "6")
+    monkeypatch.setenv("CERTIFICATE_MINIMUM_AVERAGE", "4.50")
+    get_settings.cache_clear()
+    lowered = (
+        await client.get("/v1/incentives/certificate", headers=_bearer(body))
+    ).json()
+
+    monkeypatch.setenv("CERTIFICATE_REQUIRED_SESSIONS", str(DEFAULT_REQUIRED_SESSIONS))
+    monkeypatch.setenv("CERTIFICATE_MINIMUM_AVERAGE", str(DEFAULT_MINIMUM_AVERAGE))
+    get_settings.cache_clear()
+    restored = (
+        await client.get("/v1/incentives/certificate", headers=_bearer(body))
+    ).json()
+
+    assert lowered["required_sessions"] == 6
+    assert lowered["eligible"] is True
+    assert restored["required_sessions"] == DEFAULT_REQUIRED_SESSIONS
+    assert restored["eligible"] is False
+
+
+def test_the_shipped_defaults_are_fifteen_hours_ten_sessions_and_410() -> None:
+    """The numbers in the docs are the numbers the code ships with."""
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.certificate_required_minutes == DEFAULT_REQUIRED_MINUTES
+    assert settings.certificate_required_sessions == DEFAULT_REQUIRED_SESSIONS
+    assert settings.certificate_minimum_average == DEFAULT_MINIMUM_AVERAGE
 
 
-def test_a_zero_threshold_is_refused_at_startup() -> None:
+def test_a_zero_minutes_threshold_is_refused_at_startup() -> None:
     """Otherwise the progress division is a division by zero on every request."""
     with pytest.raises(ValueError):
         Settings(_env_file=None, certificate_required_minutes=0)  # type: ignore[call-arg]
+
+
+def test_a_zero_session_threshold_is_refused_at_startup() -> None:
+    """A zero would make the certificate's session record vacuous.
+
+    The division in the progress helper is also a guard, but the setting is
+    refused for the product reason: "earned over zero sessions" is not a thing
+    the certificate is supposed to mean.
+    """
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, certificate_required_sessions=0)  # type: ignore[call-arg]
 
 
 # --- a user with no tutor profile -------------------------------------------
@@ -316,6 +491,13 @@ async def test_a_user_with_no_tutor_profile_gets_a_real_answer(client, db_sessio
     assert payload["eligible"] is False
     assert payload["certified_minutes"] == 0
     assert payload["remaining_minutes"] == payload["required_minutes"]
+    assert payload["completed_sessions"] == 0
+    assert payload["remaining_sessions"] == payload["required_sessions"]
+    assert payload["rating_count"] == 0
+    assert payload["average_rating"] is None
+    assert payload["minutes_met"] is False
+    assert payload["sessions_met"] is False
+    assert payload["rating_met"] is False
     assert payload["progress"] == 0.0
 
 

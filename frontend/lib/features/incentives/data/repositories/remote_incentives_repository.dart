@@ -24,7 +24,10 @@ class RemoteIncentivesRepository implements IncentivesRepository {
     // response is a server fault, and a `fromJson` that ran after the guard
     // returned would throw past every translation here and reach the screen as a
     // bare `FormatException`.
-    return _guard(() async => CertificateEligibility.fromJson(await _remote.myCertificate()));
+    return _guard(
+      () async =>
+          CertificateEligibility.fromJson(await _remote.myCertificate()),
+    );
   }
 
   /// Runs a call and translates whatever comes back into a [Failure].
