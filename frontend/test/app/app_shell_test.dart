@@ -563,13 +563,13 @@ void main() {
     // to be there instead of the entry -- which reads as a broken tile rather than
     // as a test that did not scroll.
     await tester.scrollUntilVisible(
-      find.text('My certificate'),
+      find.text('My certificates'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
     await _settle(tester);
 
-    await tester.tap(find.text('My certificate'));
+    await tester.tap(find.text('My certificates'));
     await _settle(tester);
 
     expect(find.byType(CertificateScreen), findsOneWidget);

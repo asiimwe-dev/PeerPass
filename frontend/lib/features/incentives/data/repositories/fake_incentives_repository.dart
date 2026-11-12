@@ -1,23 +1,25 @@
 import 'dart:math' as math;
 
 import 'package:peerpass/core/error/failures.dart';
-import 'package:peerpass/features/incentives/data/models/certificate_eligibility.dart';
+import 'package:peerpass/features/incentives/data/models/certificate_portfolio.dart';
 import 'package:peerpass/features/incentives/data/repositories/incentives_repository.dart';
 
-/// In-memory stand-in for the incentives endpoints.
+/// In-memory stand-in for the incentives endpoint.
 ///
 /// Resolved by widget tests, which have no server to talk to, and seeded rather
 /// than computed so a test states the numbers it wants to see on screen. The
 /// eligible flag is set from the same three tallies the API would use, rather
 /// than being a second field a test has to keep consistent by hand.
 ///
-/// The defaults describe a tutor whose session and rating conditions are already
-/// met, so a test that lowers [certifiedMinutes] is testing the minutes gate and
-/// nothing else. Pass [completedSessions] or [ratingCount] to make one of the
-/// other gates the short one.
+/// By default it describes one course whose session and rating conditions are
+/// already met, so a test that lowers [certifiedMinutes] is testing the minutes
+/// gate and nothing else. Pass [courses] to state a portfolio directly, or
+/// [hasCourses] to describe a tutor who has no verified course yet.
 class FakeIncentivesRepository implements IncentivesRepository {
   FakeIncentivesRepository({
-    this.eligibility,
+    this.portfolio,
+    this.courses,
+    this.hasCourses = true,
     this.failure,
     this.hasTutorProfile = true,
     this.certifiedMinutes = 0,
@@ -27,10 +29,19 @@ class FakeIncentivesRepository implements IncentivesRepository {
     this.ratingCount,
     this.averageRating = 4.8,
     this.requiredAverageRating = 4.10,
+    this.courseUnitCode = 'BIT 221',
+    this.courseUnitName = 'Operating Systems',
   });
 
   /// The answer to return, when the call should succeed.
-  final CertificateEligibility? eligibility;
+  final CertificatePortfolio? portfolio;
+
+  /// A portfolio stated directly, for a multi-course test.
+  final List<CourseCertificate>? courses;
+
+  /// Whether the default single course exists. False is a tutor with no verified
+  /// course, which is distinct from not being a tutor at all.
+  final bool hasCourses;
 
   /// The failure to throw, when the call should fail.
   final Failure? failure;
@@ -38,7 +49,7 @@ class FakeIncentivesRepository implements IncentivesRepository {
   /// Whether the fake caller is treated as having a tutor profile.
   final bool hasTutorProfile;
 
-  /// The tally the fake builds its answer from, the way the API would.
+  /// The tally the fake builds its one course from, the way the API would.
   final int certifiedMinutes;
 
   /// The threshold the fake reports, so a test can state a lowered one.
@@ -53,22 +64,34 @@ class FakeIncentivesRepository implements IncentivesRepository {
   /// Ratings, or null to match the completed-session count.
   final int? ratingCount;
 
-  /// The stored mean, or null for a tutor with no ratings.
+  /// The stored mean, or null for a course with no ratings.
   final double? averageRating;
 
   /// The configured minimum mean.
   final double requiredAverageRating;
 
-  /// How many times [myCertificate] has been called.
+  final String courseUnitCode;
+  final String courseUnitName;
+
+  /// How many times [myCertificates] has been called.
   int calls = 0;
 
   @override
-  Future<CertificateEligibility> myCertificate() async {
+  Future<CertificatePortfolio> myCertificates() async {
     calls++;
     final thrown = failure;
     if (thrown != null) throw thrown;
-    if (eligibility != null) return eligibility!;
+    if (portfolio != null) return portfolio!;
 
+    return CertificatePortfolio(
+      hasTutorProfile: hasTutorProfile,
+      courses:
+          courses ??
+          (hasTutorProfile && hasCourses ? [_buildCourse()] : const []),
+    );
+  }
+
+  CourseCertificate _buildCourse() {
     final sessions = completedSessions ?? requiredSessions;
     final ratings = ratingCount ?? sessions;
     final average = averageRating;
@@ -80,8 +103,10 @@ class FakeIncentivesRepository implements IncentivesRepository {
         average != null &&
         average >= requiredAverageRating;
 
-    return CertificateEligibility(
-      hasTutorProfile: hasTutorProfile,
+    return CourseCertificate(
+      courseUnitId: 'unit-1',
+      courseUnitCode: courseUnitCode,
+      courseUnitName: courseUnitName,
       eligible: minutesMet && sessionsMet && ratingMet,
       certifiedMinutes: certifiedMinutes,
       requiredMinutes: requiredMinutes,

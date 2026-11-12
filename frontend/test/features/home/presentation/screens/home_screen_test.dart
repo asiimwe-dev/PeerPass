@@ -183,11 +183,11 @@ void main() {
     // is that they have not applied yet.
     await _pumpHome(tester, _harness(_enrolled));
 
-    expect(find.text('My certificate'), findsNothing);
+    expect(find.text('My certificates'), findsNothing);
 
     await _pumpHome(tester, _harness(_tutor));
 
-    expect(find.text('My certificate'), findsOneWidget);
+    expect(find.text('My certificates'), findsOneWidget);
   });
 
   testWidgets('tapping the certificate entry opens the certificate screen', (
@@ -218,7 +218,7 @@ void main() {
     );
     await _settle(tester);
 
-    await tester.tap(find.text('My certificate'));
+    await tester.tap(find.text('My certificates'));
     await _settle(tester);
 
     expect(find.text('Certificate screen here'), findsOneWidget);
@@ -249,7 +249,7 @@ void main() {
     await _pumpHome(tester, _harness(_tutor));
 
     final waiting = tester.getTopLeft(find.text('Waiting on you')).dy;
-    final certificate = tester.getTopLeft(find.text('My certificate')).dy;
+    final certificate = tester.getTopLeft(find.text('My certificates')).dy;
 
     expect(waiting, lessThan(certificate));
   });

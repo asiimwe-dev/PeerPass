@@ -150,7 +150,8 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: AppDimens.sm),
                 _HomeEntry(
                   icon: Icons.workspace_premium_outlined,
-                  title: 'My certificate',
+                  title: 'My certificates',
+                  subtitle: 'One per course you teach',
                   onTap: () => context.push(AppRoutes.certificate),
                 ),
               ] else ...[

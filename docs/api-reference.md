@@ -694,11 +694,15 @@ every decimal; see
 
 The certificate fields are produced by the same service as
 `GET /v1/incentives/certificate`, so the HQ and the certificate screen cannot
-disagree about the thresholds, the remaining counts, or the clamp. Since the
-certificate now requires minutes, sessions, and a maintained average,
-`certificate_eligible` is true only when all three are met and
-`certificate_progress` is the limiting fraction; the certificate endpoint is what
-carries the per-condition verdicts.
+disagree about the thresholds, the remaining counts, or the clamp. They summarise
+the **first course in the caller's certificate portfolio** — the course the
+server orders as earned first, then closest to earned — rather than a tutor-wide
+total, because a certificate is earned per course. A tutor with no verified
+course yet reads `certified_minutes: 0`, `certificate_eligible: false`, and a
+full shortfall; the certificate endpoint is what lists every course and carries
+the per-condition verdicts. `certificate_eligible` is true only when all three
+conditions are met for that course, and `certificate_progress` is its limiting
+fraction.
 
 `accepting_requests` is the beta's availability switch, not a calendar. Matching
 reads it per query and leaves a paused tutor out with `not_accepting_requests`, so
@@ -1349,33 +1353,63 @@ tutor's standing to `suspended` and records the action in the admin audit log.
 
 ### `GET /v1/incentives/certificate`
 
-The caller's own certificate eligibility. *Auth.* A certificate needs **all
-three** conditions, not just hours: teaching minutes, completed sessions, and a
-maintained average rating over enough rated sessions.
+The caller's own certificates, one entry per course. *Auth.* A certificate is
+earned **per course**: the minutes, completed sessions, and ratings that count are
+the ones recorded against that course unit, so 600 minutes in one course and 900
+in another is not 1500 minutes towards either.
 
 ```json
 {
   "has_tutor_profile": true,
-  "eligible": false,
-  "certified_minutes": 900,
-  "required_minutes": 900,
-  "remaining_minutes": 0,
-  "completed_sessions": 4,
-  "required_sessions": 10,
-  "remaining_sessions": 6,
-  "rating_count": 8,
-  "average_rating": "4.75",
-  "required_average_rating": "4.10",
-  "minutes_met": true,
-  "sessions_met": false,
-  "rating_met": false,
-  "progress": 0.4,
+  "courses": [
+    {
+      "course_unit_id": "0192a1b2-…",
+      "course_unit_code": "BIT 221",
+      "course_unit_name": "Operating Systems",
+      "eligible": false,
+      "certified_minutes": 600,
+      "required_minutes": 900,
+      "remaining_minutes": 300,
+      "completed_sessions": 4,
+      "required_sessions": 10,
+      "remaining_sessions": 6,
+      "rating_count": 8,
+      "average_rating": "4.75",
+      "required_average_rating": "4.10",
+      "minutes_met": false,
+      "sessions_met": false,
+      "rating_met": false,
+      "progress": 0.4
+    }
+  ],
   "generated_at": "2026-11-11T09:15:00Z"
 }
 ```
 
+Which courses appear:
+
+- every course with a **verified** competency, even with no sessions yet, so a new
+  tutor sees the target they are working towards;
+- every course with at least one completed session as tutor, even if the
+  competency's status has since changed, because the teaching happened and a
+  status change must not erase the evidence;
+- nothing else. A pending or rejected claim with no sessions is an application,
+  not a certificate in progress.
+
+The list is ordered by the server: eligible first, then highest `progress`, then
+course code and name. The client renders that order rather than sorting for
+itself, and the dashboard's single certificate card shows the first entry.
+
+`has_tutor_profile` distinguishes a student (false) from a tutor with no verified
+course yet (true, empty list). Both are `200` answers about a real state, not
+errors; a student is offered the way to apply.
+
+A certificate needs **all three** conditions in its course, not just hours:
+teaching minutes, completed sessions, and a maintained average rating over enough
+rated sessions.
+
 `required_minutes`, `required_sessions`, and `required_average_rating` are
-configuration, not constants, and are returned with the answer so the client
+configuration, not constants, and are returned on every entry so the client
 renders the numbers the server will actually judge against. A client that
 hardcodes a threshold shows a tutor who is short a progress bar that says they
 are done, and the failure lands on them at the moment they are relying on it.

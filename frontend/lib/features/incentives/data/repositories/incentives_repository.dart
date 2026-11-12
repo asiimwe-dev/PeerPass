@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peerpass/core/error/failures.dart';
-import 'package:peerpass/features/incentives/data/models/certificate_eligibility.dart';
+import 'package:peerpass/features/incentives/data/models/certificate_portfolio.dart';
 
 /// The incentives contract the screens depend on.
 ///
@@ -10,7 +10,7 @@ import 'package:peerpass/features/incentives/data/models/certificate_eligibility
 /// renders a message and never has to know whether the API answered with a
 /// socket error, a 401, or a body that was not the shape it documents.
 abstract interface class IncentivesRepository {
-  /// The signed-in user's own certificate eligibility.
+  /// The signed-in user's certificates, one per course.
   ///
   /// There is no user parameter, and that is the contract rather than an
   /// omission: these are the caller's own hours, the API will answer about
@@ -19,8 +19,9 @@ abstract interface class IncentivesRepository {
   ///
   /// A caller with no tutor profile is a normal answer and not a failure: they
   /// are not a tutor yet, which is a state the screen renders rather than an
-  /// error it apologises for.
-  Future<CertificateEligibility> myCertificate();
+  /// error it apologises for. A tutor with a profile but no verified course is
+  /// also normal, and comes back with an empty list.
+  Future<CertificatePortfolio> myCertificates();
 }
 
 /// The incentives contract, as a live instance.

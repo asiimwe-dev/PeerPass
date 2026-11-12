@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/network/network_exceptions.dart';
 import 'package:peerpass/features/incentives/data/datasources/remote_incentives_datasource.dart';
-import 'package:peerpass/features/incentives/data/models/certificate_eligibility.dart';
+import 'package:peerpass/features/incentives/data/models/certificate_portfolio.dart';
 import 'package:peerpass/features/incentives/data/repositories/incentives_repository.dart';
 
 /// [IncentivesRepository] over the real API.
@@ -19,14 +19,13 @@ class RemoteIncentivesRepository implements IncentivesRepository {
   final RemoteIncentivesDatasource _remote;
 
   @override
-  Future<CertificateEligibility> myCertificate() {
+  Future<CertificatePortfolio> myCertificates() {
     // The whole body is inside the guard, including the parse. A malformed
     // response is a server fault, and a `fromJson` that ran after the guard
     // returned would throw past every translation here and reach the screen as a
     // bare `FormatException`.
     return _guard(
-      () async =>
-          CertificateEligibility.fromJson(await _remote.myCertificate()),
+      () async => CertificatePortfolio.fromJson(await _remote.myCertificates()),
     );
   }
 

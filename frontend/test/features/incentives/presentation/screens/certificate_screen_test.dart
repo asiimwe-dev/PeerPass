@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/theme/app_theme.dart';
-import 'package:peerpass/features/incentives/data/models/certificate_eligibility.dart';
+import 'package:peerpass/features/incentives/data/models/certificate_portfolio.dart';
 import 'package:peerpass/features/incentives/data/repositories/fake_incentives_repository.dart';
 import 'package:peerpass/features/incentives/data/repositories/incentives_repository.dart';
 import 'package:peerpass/features/incentives/presentation/screens/certificate_screen.dart';
@@ -47,6 +47,50 @@ Future<void> _settle(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Two courses with different, believable evidence.
+List<CourseCertificate> _twoCourses() {
+  return [
+    const CourseCertificate(
+      courseUnitId: 'unit-1',
+      courseUnitCode: 'BIT 221',
+      courseUnitName: 'Operating Systems',
+      eligible: false,
+      certifiedMinutes: 600,
+      requiredMinutes: 900,
+      remainingMinutes: 300,
+      completedSessions: 6,
+      requiredSessions: 10,
+      remainingSessions: 4,
+      ratingCount: 6,
+      averageRating: 4.8,
+      requiredAverageRating: 4.10,
+      minutesMet: false,
+      sessionsMet: false,
+      ratingMet: false,
+      progress: 600 / 900,
+    ),
+    const CourseCertificate(
+      courseUnitId: 'unit-2',
+      courseUnitCode: 'BIT 223',
+      courseUnitName: 'Computer Networks',
+      eligible: true,
+      certifiedMinutes: 1200,
+      requiredMinutes: 900,
+      remainingMinutes: 0,
+      completedSessions: 12,
+      requiredSessions: 10,
+      remainingSessions: 0,
+      ratingCount: 12,
+      averageRating: 4.5,
+      requiredAverageRating: 4.10,
+      minutesMet: true,
+      sessionsMet: true,
+      ratingMet: true,
+      progress: 1,
+    ),
+  ];
+}
+
 void main() {
   testWidgets('shows the hours banked against the hours a certificate needs', (
     tester,
@@ -56,9 +100,20 @@ void main() {
       _container(FakeIncentivesRepository(certifiedMinutes: 600)),
     );
 
-    expect(find.text('My certificate'), findsOneWidget);
+    expect(find.text('My certificates'), findsOneWidget);
     expect(find.text('10h of 40h'), findsOneWidget);
     expect(find.text('30h to go'), findsOneWidget);
+  });
+
+  testWidgets('names the course the numbers belong to', (tester) async {
+    // A per-course certificate is only readable if the screen says which course
+    // it is about; two bars with no labels are indistinguishable.
+    await _pumpScreen(
+      tester,
+      _container(FakeIncentivesRepository(certifiedMinutes: 600)),
+    );
+
+    expect(find.text('BIT 221 · Operating Systems'), findsOneWidget);
   });
 
   testWidgets('the bar is drawn at the fraction the API reported', (
@@ -191,6 +246,33 @@ void main() {
     expect(find.text('3.50 — needs 4.10'), findsOneWidget);
   });
 
+  testWidgets('draws one card per course, each with its own numbers', (
+    tester,
+  ) async {
+    // Two courses is the ordinary case for a tutor, and the totals must not be
+    // pooled. The API orders earned first; the screen renders that order rather
+    // than sorting for itself.
+    await _pumpScreen(
+      tester,
+      _container(FakeIncentivesRepository(courses: _twoCourses())),
+    );
+
+    expect(find.byType(CertificateProgressCard), findsNWidgets(2));
+    expect(find.text('BIT 221 · Operating Systems'), findsOneWidget);
+    expect(find.text('BIT 223 · Computer Networks'), findsOneWidget);
+    expect(find.text('10h of 15h'), findsOneWidget);
+    expect(find.text('5h to go'), findsOneWidget);
+    expect(find.text('Certificate earned'), findsOneWidget);
+
+    final bars = tester
+        .widgetList<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator),
+        )
+        .toList();
+    expect(bars[0].value, closeTo(600 / 900, 0.0001));
+    expect(bars[1].value, 1.0);
+  });
+
   testWidgets(
     'a caller with no tutor profile is offered the way to become one',
     (tester) async {
@@ -206,6 +288,21 @@ void main() {
       expect(find.text('Apply to teach'), findsOneWidget);
     },
   );
+
+  testWidgets('a tutor with no verified course sees what to do next', (
+    tester,
+  ) async {
+    // Distinct from not being a tutor: they hold the role and have nothing to
+    // count yet, so an empty bar would be the wrong answer.
+    await _pumpScreen(
+      tester,
+      _container(FakeIncentivesRepository(hasCourses: false)),
+    );
+
+    expect(find.text('No course certificate yet'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.text('View my course applications'), findsOneWidget);
+  });
 
   testWidgets('says so while the answer is still on its way', (tester) async {
     // A repository that will not answer until the test says so, because a fake
@@ -265,15 +362,15 @@ void main() {
 
 /// A repository that holds the fetch open until the test releases it.
 class _PendingIncentivesRepository implements IncentivesRepository {
-  final Completer<CertificateEligibility> _completer =
-      Completer<CertificateEligibility>();
+  final Completer<CertificatePortfolio> _completer =
+      Completer<CertificatePortfolio>();
 
   Future<void> answer(IncentivesRepository repository) async {
-    _completer.complete(await repository.myCertificate());
+    _completer.complete(await repository.myCertificates());
   }
 
   @override
-  Future<CertificateEligibility> myCertificate() => _completer.future;
+  Future<CertificatePortfolio> myCertificates() => _completer.future;
 }
 
 /// A repository whose first fetch fails and whose second answers.
@@ -286,9 +383,9 @@ class _FlakyIncentivesRepository implements IncentivesRepository {
   int get calls => _attempts;
 
   @override
-  Future<CertificateEligibility> myCertificate() {
+  Future<CertificatePortfolio> myCertificates() {
     _attempts++;
     if (_attempts == 1) throw const NetworkFailure();
-    return recovered.myCertificate();
+    return recovered.myCertificates();
   }
 }

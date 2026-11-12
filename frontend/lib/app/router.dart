@@ -383,11 +383,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             ref
               ..invalidate(tutorHqProvider)
               ..invalidate(tutorRequestsProvider)
-              ..invalidate(certificateEligibilityProvider);
+              ..invalidate(certificatePortfolioProvider);
             await Future.wait([
               ref.read(tutorHqProvider.future),
               ref.read(tutorRequestsProvider.future),
-              ref.read(certificateEligibilityProvider.future),
+              ref.read(certificatePortfolioProvider.future),
             ]);
           },
         ),
@@ -599,11 +599,12 @@ class _SessionChangeNotifier extends ChangeNotifier {
       ..invalidate(confirmRequestProvider)
       ..invalidate(notificationInboxProvider)
       ..invalidate(myClaimsProvider)
+      ..invalidate(applicationLimitsProvider)
       ..invalidate(tutorHqProvider)
       ..invalidate(tutorRequestsProvider)
       ..invalidate(tutorChoiceProvider)
       ..invalidate(tutorDecisionProvider)
-      ..invalidate(certificateEligibilityProvider)
+      ..invalidate(certificatePortfolioProvider)
       ..invalidate(onboardingControllerProvider);
   }
 

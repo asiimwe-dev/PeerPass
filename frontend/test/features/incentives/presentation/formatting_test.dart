@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:peerpass/features/incentives/data/models/certificate_eligibility.dart';
+import 'package:peerpass/features/incentives/data/models/certificate_portfolio.dart';
 import 'package:peerpass/features/incentives/presentation/formatting.dart';
 
-CertificateEligibility _eligibility({
+CourseCertificate _course({
   bool eligible = false,
   int certifiedMinutes = 0,
   int requiredMinutes = 2400,
@@ -18,8 +18,10 @@ CertificateEligibility _eligibility({
   bool? ratingMet,
   double progress = 0,
 }) {
-  return CertificateEligibility(
-    hasTutorProfile: true,
+  return CourseCertificate(
+    courseUnitId: 'unit-1',
+    courseUnitCode: 'BIT 221',
+    courseUnitName: 'Operating Systems',
     eligible: eligible,
     certifiedMinutes: certifiedMinutes,
     requiredMinutes: requiredMinutes,
@@ -68,7 +70,7 @@ void main() {
   group('certificateProgressLabel', () {
     test('counts the hours banked against the hours required', () {
       expect(
-        certificateProgressLabel(_eligibility(certifiedMinutes: 600)),
+        certificateProgressLabel(_course(certifiedMinutes: 600)),
         '10h of 40h',
       );
     });
@@ -76,11 +78,7 @@ void main() {
     test('says earned and nothing else once the API says so', () {
       expect(
         certificateProgressLabel(
-          _eligibility(
-            eligible: true,
-            certifiedMinutes: 2400,
-            remainingMinutes: 0,
-          ),
+          _course(eligible: true, certifiedMinutes: 2400, remainingMinutes: 0),
         ),
         'Certificate earned',
       );
@@ -91,7 +89,7 @@ void main() {
       // would put "135h 52m of 40h" over a half-full bar.
       expect(
         certificateProgressLabel(
-          _eligibility(
+          _course(
             certifiedMinutes: 8152,
             completedSessions: 4,
             remainingSessions: 6,
@@ -104,7 +102,7 @@ void main() {
     test('names the ratings while the count is still short', () {
       expect(
         certificateProgressLabel(
-          _eligibility(certifiedMinutes: 2400, ratingCount: 8),
+          _course(certifiedMinutes: 2400, ratingCount: 8),
         ),
         '8 of 10 ratings',
       );
@@ -113,7 +111,7 @@ void main() {
     test('names the average when only the average is short', () {
       expect(
         certificateProgressLabel(
-          _eligibility(certifiedMinutes: 2400, averageRating: 3.5),
+          _course(certifiedMinutes: 2400, averageRating: 3.5),
         ),
         'Average 3.50 of 4.10',
       );
@@ -124,35 +122,25 @@ void main() {
     test('is nothing once earned, so no count can contradict the verdict', () {
       expect(
         remainingLabel(
-          _eligibility(
-            eligible: true,
-            certifiedMinutes: 3000,
-            remainingMinutes: 0,
-          ),
+          _course(eligible: true, certifiedMinutes: 3000, remainingMinutes: 0),
         ),
         isNull,
       );
     });
 
     test('reads in hours when the shortfall is more than an hour', () {
-      expect(remainingLabel(_eligibility(certifiedMinutes: 1800)), '10h to go');
+      expect(remainingLabel(_course(certifiedMinutes: 1800)), '10h to go');
     });
 
     test('reads in minutes when the shortfall is under an hour', () {
-      expect(
-        remainingLabel(_eligibility(remainingMinutes: 30)),
-        '30 minutes to go',
-      );
-      expect(
-        remainingLabel(_eligibility(remainingMinutes: 1)),
-        '1 minute to go',
-      );
+      expect(remainingLabel(_course(remainingMinutes: 30)), '30 minutes to go');
+      expect(remainingLabel(_course(remainingMinutes: 1)), '1 minute to go');
     });
 
     test('counts sessions once the hours are in', () {
       expect(
         remainingLabel(
-          _eligibility(
+          _course(
             certifiedMinutes: 2400,
             completedSessions: 4,
             remainingSessions: 6,
@@ -164,16 +152,14 @@ void main() {
 
     test('counts the ratings still needed', () {
       expect(
-        remainingLabel(_eligibility(certifiedMinutes: 2400, ratingCount: 8)),
+        remainingLabel(_course(certifiedMinutes: 2400, ratingCount: 8)),
         '2 more ratings needed',
       );
     });
 
     test('names the average when the rating count is already there', () {
       expect(
-        remainingLabel(
-          _eligibility(certifiedMinutes: 2400, averageRating: 3.5),
-        ),
+        remainingLabel(_course(certifiedMinutes: 2400, averageRating: 3.5)),
         'Average needs to reach 4.10',
       );
     });
@@ -182,7 +168,7 @@ void main() {
   group('certificateRequirements', () {
     test('lists all three conditions with the API verdict for each', () {
       final requirements = certificateRequirements(
-        _eligibility(
+        _course(
           certifiedMinutes: 2400,
           completedSessions: 4,
           remainingSessions: 6,
@@ -205,11 +191,7 @@ void main() {
 
     test('says "no ratings yet" rather than showing a made-up mean', () {
       final requirements = certificateRequirements(
-        _eligibility(
-          certifiedMinutes: 2400,
-          ratingCount: 0,
-          averageRating: null,
-        ),
+        _course(certifiedMinutes: 2400, ratingCount: 0, averageRating: null),
       );
 
       expect(requirements[2].value, 'No ratings yet — needs 4.10');
@@ -218,12 +200,12 @@ void main() {
 
     test('reads the maintained average once the count is met', () {
       expect(
-        certificateRequirements(_eligibility(certifiedMinutes: 2400))[2].value,
+        certificateRequirements(_course(certifiedMinutes: 2400))[2].value,
         '4.80 over 10 ratings',
       );
       expect(
         certificateRequirements(
-          _eligibility(certifiedMinutes: 2400, averageRating: 3.5),
+          _course(certifiedMinutes: 2400, averageRating: 3.5),
         )[2].value,
         '3.50 — needs 4.10',
       );
@@ -232,13 +214,13 @@ void main() {
 
   group('progressValue', () {
     test('passes a value inside the scale through', () {
-      expect(progressValue(_eligibility(progress: 0.5)), 0.5);
+      expect(progressValue(_course(progress: 0.5)), 0.5);
     });
 
     test('clamps a value outside it rather than letting the bar throw', () {
-      expect(progressValue(_eligibility(progress: 1.4)), 1.0);
-      expect(progressValue(_eligibility(progress: -0.2)), 0.0);
-      expect(progressValue(_eligibility(progress: double.nan)), 0.0);
+      expect(progressValue(_course(progress: 1.4)), 1.0);
+      expect(progressValue(_course(progress: -0.2)), 0.0);
+      expect(progressValue(_course(progress: double.nan)), 0.0);
     });
   });
 }

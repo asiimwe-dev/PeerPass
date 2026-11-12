@@ -88,7 +88,7 @@ Organized in a **feature-first** structure:
   sign-out, and account deletion
 - `matching` — Create topic requests, view candidates, select or decline matches
 - `tutor_validation` — Declare competency evidence and view verification status
-- `incentives` — View logged hours and certificate eligibility
+- `incentives` — View per-course certificate progress
 - `admin_web` — Responsive MUST operations console for users, competencies,
   tutor standing, and append-only audit events
 
@@ -217,7 +217,7 @@ core/         → Config, security, database session, exceptions
 - `ValidationService` — Implements the three-tier tutor quality gate
 - `TutorService` — The discovery rail and one tutor's public profile
 - `SessionService` — Lifecycle of a tutoring session + logging
-- `IncentiveService` — Aggregates hours and prepares certificate data
+- `IncentiveService` — Aggregates per-course hours, sessions, and ratings into the certificate portfolio
 - `AdminService` — Least-privilege MUST operations and append-only audit records
 
 Administrative access is a separately provisioned `admin` role in the existing
@@ -649,9 +649,12 @@ This logic lives in `ValidationService` and is consulted by `MatchingService` be
 progress, and availability in one round trip. It is a read model: every number is
 either read from `tutor_profiles` or produced by the service that already owns the
 rule. The certificate figures call `incentive_service.get_certificate_eligibility`,
-so the HQ and `GET /v1/incentives/certificate` cannot disagree about the threshold,
-the clamp, or the verdict. A second calculation here would make the dashboard the
-screen a tutor believed.
+which summarises the first course in the caller's certificate portfolio — the
+course the server orders as earned first, then closest to earned. That is derived
+from the same per-course portfolio as `GET /v1/incentives/certificate`, so the HQ
+and the certificate screen cannot disagree about the threshold, the clamp, or the
+verdict. A second calculation here would make the dashboard the screen a tutor
+believed.
 
 **Promotion is two conditions, not one.** A tutor needs at least
 `PROMOTION_MIN_SESSIONS` (3) rated sessions *and* an average of at least
@@ -663,7 +666,7 @@ answer rather than repeated in the client.
 
 **The certificate is three conditions, not one.** `certified_minutes` alone let a
 tutor who taught four very long sessions collect a certificate that claims a
-sustained teaching record. Eligibility now requires:
+sustained teaching record. Eligibility now requires, **within one course**:
 
 - `certificate_required_minutes` (15h by default) of completed teaching,
 - `certificate_required_sessions` (10 by default) completed sessions, and
@@ -683,9 +686,24 @@ them between cohorts. Each condition's verdict travels as `minutes_met`,
 `sessions_met`, and `rating_met`, so the certificate screen can name the
 outstanding one. `progress` is the smallest of the three fractions, deliberately
 the limiting requirement rather than the hours alone: a tutor with the hours but
-not the sessions must not see a full bar beside `eligible: false`. The certificate
-is still one institution-wide teaching certificate; per-course certificates would
-be a separate product decision and schema change.
+not the sessions must not see a full bar beside `eligible: false`.
+
+**A certificate is per course, not per tutor.** The hours, sessions, and ratings
+are counted from `sessions.course_unit_id` and the ratings attached to those
+sessions, not from `TutorProfile`'s counters, which are a tutor-wide total and
+exactly the number a per-course answer must not use. Pooling would let one very
+long course carry the others over the bar and hand out a certificate for a course
+the tutor barely taught. `GET /v1/incentives/certificate` therefore returns a
+portfolio envelope — `has_tutor_profile`, `courses[]`, `generated_at` — and each
+entry carries its own thresholds, tallies, flags, and `progress`.
+
+The portfolio contains every course with a verified competency (even with zero
+sessions, so a new tutor sees the target) and every course with completed sessions
+(even if the competency's status later changed, because the evidence is a record).
+A pending or rejected claim with no sessions is excluded: it is an application,
+not a certificate in progress. Ordering is server-side — eligible first, then
+highest progress, then course code and name — so the dashboard's single summary
+card can show the first entry without a second ordering rule.
 
 `verified` is read from the stored standing rather than recomputed from the two
 thresholds. A verified tutor keeps the badge until the explicit demotion bar is

@@ -85,14 +85,17 @@ class _Raw {
   final String text;
 }
 
-Map<String, dynamic> _certificate({
-  bool hasTutorProfile = true,
+Map<String, dynamic> _course({
+  String courseUnitCode = 'BIT 221',
+  String courseUnitName = 'Operating Systems',
   bool eligible = false,
   int certifiedMinutes = 240,
   int requiredMinutes = 2400,
 }) {
   return {
-    'has_tutor_profile': hasTutorProfile,
+    'course_unit_id': 'unit-$courseUnitCode',
+    'course_unit_code': courseUnitCode,
+    'course_unit_name': courseUnitName,
     'eligible': eligible,
     'certified_minutes': certifiedMinutes,
     'required_minutes': requiredMinutes,
@@ -107,6 +110,16 @@ Map<String, dynamic> _certificate({
     'sessions_met': true,
     'rating_met': true,
     'progress': certifiedMinutes / requiredMinutes,
+  };
+}
+
+Map<String, dynamic> _portfolio({
+  bool hasTutorProfile = true,
+  List<Map<String, dynamic>>? courses,
+}) {
+  return {
+    'has_tutor_profile': hasTutorProfile,
+    'courses': courses ?? [_course()],
     'generated_at': '2026-03-04T11:00:00Z',
   };
 }
@@ -145,15 +158,39 @@ void main() {
     repository = RemoteIncentivesRepository(RemoteIncentivesDatasource(dio));
   });
 
+  test('reads every course the API returns, in its order', () async {
+    // A certificate is per course. A client that collapsed the list into one
+    // total would be the bug the per-course rule exists to prevent.
+    server.reply(
+      200,
+      _portfolio(
+        courses: [
+          _course(eligible: true),
+          _course(courseUnitCode: 'BIT 223', certifiedMinutes: 120),
+        ],
+      ),
+    );
+
+    final portfolio = await repository.myCertificates();
+
+    expect(portfolio.courses.map((course) => course.courseUnitCode), [
+      'BIT 221',
+      'BIT 223',
+    ]);
+    expect(portfolio.courses[0].eligible, isTrue);
+    expect(portfolio.courses[1].certifiedMinutes, 120);
+    expect(portfolio.leadingCourse?.courseUnitCode, 'BIT 221');
+  });
+
   test(
     "asks for the caller's own certificate, with nothing identifying it",
     () async {
       // No user id in the path and no query: these are the caller's own hours, so a
       // test that saw a parameter here would be seeing a client that could be asked
       // about somebody else.
-      server.reply(200, _certificate());
+      server.reply(200, _portfolio());
 
-      await repository.myCertificate();
+      await repository.myCertificates();
 
       expect(server.calls.single.method, 'GET');
       expect(server.calls.single.path, '/v1/incentives/certificate');
@@ -163,27 +200,26 @@ void main() {
   test("returns the API's answer, threshold included", () async {
     server.reply(
       200,
-      _certificate(certifiedMinutes: 600, requiredMinutes: 600),
+      _portfolio(
+        courses: [_course(certifiedMinutes: 600, requiredMinutes: 600)],
+      ),
     );
 
-    final eligibility = await repository.myCertificate();
+    final portfolio = await repository.myCertificates();
 
-    expect(eligibility.hasTutorProfile, isTrue);
-    expect(eligibility.certifiedMinutes, 600);
-    expect(eligibility.requiredMinutes, 600);
-    expect(eligibility.remainingMinutes, 0);
+    expect(portfolio.hasTutorProfile, isTrue);
+    expect(portfolio.courses.single.certifiedMinutes, 600);
+    expect(portfolio.courses.single.requiredMinutes, 600);
+    expect(portfolio.courses.single.remainingMinutes, 0);
   });
 
   test('returns a caller with no tutor profile, rather than failing', () async {
-    server.reply(
-      200,
-      _certificate(hasTutorProfile: false, certifiedMinutes: 0),
-    );
+    server.reply(200, _portfolio(hasTutorProfile: false, courses: []));
 
-    final eligibility = await repository.myCertificate();
+    final portfolio = await repository.myCertificates();
 
-    expect(eligibility.hasTutorProfile, isFalse);
-    expect(eligibility.eligible, isFalse);
+    expect(portfolio.hasTutorProfile, isFalse);
+    expect(portfolio.courses, isEmpty);
   });
 
   test(
@@ -192,7 +228,7 @@ void main() {
       server.reply(401, _problem());
 
       await expectLater(
-        repository.myCertificate(),
+        repository.myCertificates(),
         throwsA(isA<AuthFailure>()),
       );
     },
@@ -205,7 +241,7 @@ void main() {
     );
 
     await expectLater(
-      repository.myCertificate(),
+      repository.myCertificates(),
       throwsA(
         isA<ServerFailure>().having(
           (failure) => failure.message,
@@ -225,7 +261,7 @@ void main() {
     );
 
     await expectLater(
-      repository.myCertificate(),
+      repository.myCertificates(),
       throwsA(isA<NetworkFailure>()),
     );
   });
@@ -237,7 +273,7 @@ void main() {
     server.reply(200, {'unexpected': true});
 
     await expectLater(
-      repository.myCertificate(),
+      repository.myCertificates(),
       throwsA(
         isA<ServerFailure>().having(
           (failure) => failure.message,
@@ -254,7 +290,7 @@ void main() {
       server.replyRaw(200, '<html>gateway timeout</html>');
 
       await expectLater(
-        repository.myCertificate(),
+        repository.myCertificates(),
         throwsA(
           isA<Failure>().having(
             (failure) => failure.message,

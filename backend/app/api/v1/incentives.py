@@ -1,4 +1,4 @@
-"""Certificate eligibility for the signed-in tutor.
+"""Per-course certificates for the signed-in tutor.
 
 One route, and it takes no subject. There is no path parameter, no query
 parameter, and no body: the caller is the only account this answers about, which
@@ -18,7 +18,7 @@ from one endpoint about their own account.
 from fastapi import APIRouter
 
 from app.api.deps import CurrentUser, DatabaseSession
-from app.schemas.tutor import CertificateEligibilityResponse
+from app.schemas.tutor import CertificatePortfolioResponse
 from app.services import incentive_service
 
 router = APIRouter(prefix="/incentives", tags=["incentives"])
@@ -26,23 +26,23 @@ router = APIRouter(prefix="/incentives", tags=["incentives"])
 
 @router.get(
     "/certificate",
-    response_model=CertificateEligibilityResponse,
-    summary="My certificate eligibility",
+    response_model=CertificatePortfolioResponse,
+    summary="My certificates",
 )
-async def my_certificate_eligibility(
+async def my_certificates(
     caller: CurrentUser,
     db: DatabaseSession,
-) -> CertificateEligibilityResponse:
-    """The caller's own hours, the configured threshold, and the verdict.
+) -> CertificatePortfolioResponse:
+    """One entry per course this tutor can earn a certificate for.
+
+    A certificate is awarded per course, so the answer is a portfolio rather
+    than a single total: 15 hours split across three courses is not 15 hours in
+    any of them. Each entry carries its own verdict and its own configured
+    thresholds, and the list is ordered earned first, then closest to earned.
 
     Answers for a user with no tutor profile too: `has_tutor_profile` says so,
-    and the arithmetic is all zero. That is a real answer about a real state --
-    they are not a tutor yet -- rather than a 404, which would put a signed-in
-    student's screen into an error state over something they did not do wrong.
-
-    The threshold travels on the wire. A client that carried its own copy of the
-    number would keep telling tutors the old one after the threshold was lowered
-    for a pilot, and the two answers would disagree with each other in the field
-    and nowhere in review.
+    and `courses` is empty. That is a real answer about a real state -- they are
+    not a tutor yet -- rather than a 404, which would put a signed-in student's
+    screen into an error state over something they did not do wrong.
     """
-    return await incentive_service.get_certificate_eligibility(db, caller.user)
+    return await incentive_service.get_certificate_portfolio(db, caller.user)
