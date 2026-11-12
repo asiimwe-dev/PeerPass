@@ -7,6 +7,7 @@ import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/widgets/empty_view.dart';
 import 'package:peerpass/core/widgets/failure_view.dart';
 import 'package:peerpass/core/widgets/loading_view.dart';
+import 'package:peerpass/features/competencies/data/models/application_limits.dart';
 import 'package:peerpass/features/competencies/data/models/tutor_claim.dart';
 import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 import 'package:peerpass/features/competencies/presentation/widgets/tutor_claim_status_chip.dart';
@@ -29,13 +30,22 @@ class MyApplicationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final claims = ref.watch(myClaimsProvider);
+    // Read separately from the claims list on purpose. A tutor can still read
+    // where their applications stand when the limit endpoint is unreachable;
+    // only the apply action becomes less specific.
+    final limits = ref.watch(applicationLimitsProvider).value;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Tutor applications')),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(myClaimsProvider);
-          await ref.read(myClaimsProvider.future);
+          ref
+            ..invalidate(myClaimsProvider)
+            ..invalidate(applicationLimitsProvider);
+          await Future.wait([
+            ref.read(myClaimsProvider.future),
+            ref.read(applicationLimitsProvider.future),
+          ]);
         },
         child: claims.when(
           loading: () => const LoadingView(
@@ -70,13 +80,122 @@ class MyApplicationsScreen extends ConsumerWidget {
                 ),
               );
             }
-            return ListView.separated(
+            return ListView(
               padding: const EdgeInsets.all(AppDimens.screenPadding),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: AppDimens.md),
-              itemBuilder: (context, index) => _ClaimCard(claim: items[index]),
+              children: [
+                // The way back into the form for a tutor who is already teaching.
+                // Before this existed, every apply entry disappeared once the
+                // first claim was verified, so a tutor could never add a second
+                // course. The count and the cap come from the API, and the same
+                // limit is enforced there.
+                _LimitCard(
+                  limits: limits,
+                  onApply: () => context.push(AppRoutes.tutorVerification),
+                ),
+                for (final claim in items) ...[
+                  const SizedBox(height: AppDimens.md),
+                  _ClaimCard(claim: claim),
+                ],
+              ],
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+/// Where the tutor stands against the application cap, and the way to use it.
+///
+/// [limits] is null when the limit endpoint could not be read. The apply action
+/// is still offered then rather than hidden: the API enforces the same cap, so a
+/// tutor with room should not be stopped by a screen that merely could not count.
+class _LimitCard extends StatelessWidget {
+  const _LimitCard({required this.limits, required this.onApply});
+
+  final ApplicationLimits? limits;
+  final VoidCallback onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final atCap = limits?.atCap ?? false;
+    final remaining = limits?.remainingSlots;
+    final openSlots = remaining == 1 ? 'One slot is' : '$remaining slots are';
+
+    if (atCap) {
+      return Card(
+        margin: EdgeInsets.zero,
+        color: theme.colorScheme.secondaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimens.lg),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lock_clock_outlined,
+                color: theme.colorScheme.onSecondaryContainer,
+              ),
+              const SizedBox(width: AppDimens.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Application limit reached',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onSecondaryContainer,
+                      ),
+                    ),
+                    const SizedBox(height: AppDimens.xxs),
+                    Text(
+                      'You are holding ${limits!.activeCount} of '
+                      '${limits!.maxActiveCourseUnits} active course '
+                      'applications. Wait for a reviewer to decide one before '
+                      'applying for another course.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSecondaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(AppDimens.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Teach another course', style: theme.textTheme.titleSmall),
+            const SizedBox(height: AppDimens.xxs),
+            Text(
+              limits == null
+                  ? 'Submit proof for another course unit and an operator will '
+                        'review it.'
+                  : 'You have ${limits!.activeCount} of '
+                        '${limits!.maxActiveCourseUnits} active course '
+                        'applications. $openSlots open.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppDimens.sm),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonalIcon(
+                onPressed: onApply,
+                icon: const Icon(Icons.add),
+                label: const Text('Apply for another course'),
+              ),
+            ),
+          ],
         ),
       ),
     );

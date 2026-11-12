@@ -1,18 +1,13 @@
-"""Certificate eligibility: the threshold, and whose hours it is.
+"""Per-course certificate eligibility: the thresholds, and whose hours it is.
 
-Two things are being pinned here, and the second is the reason the file goes
-through the real router.
+A certificate is awarded per course. These tests state that in the terms the
+product uses: the same tutor can be finished in one course and nowhere near in
+another, and the totals are not pooled until one course carries the others over
+the bar.
 
-The boundary is the product rule. The threshold is a configured number of
-minutes, eligibility is `certified_minutes >= required_minutes`, and a tutor
-exactly on the threshold is eligible while one minute short is not. That is one
-`>=`, and it is the kind of rule a later refactor turns into a `>` or a rounded
-comparison without anything failing.
-
-The wire contract is the rest. A service that computes the right answer behind a
-route wired without an auth guard, or pointed at a schema that drops the
-configured threshold, passes every service-level test and shows every tutor the
-same number.
+The boundary tests use sessions and ratings rather than `TutorProfile` counters,
+because that is where a per-course answer comes from. A test that wrote a
+tutor-wide total would be testing a number the endpoint must no longer read.
 
 The last group is the accrual rule, tested against what `record_completion`
 actually does rather than against what it ought to: only a session that is
@@ -30,8 +25,16 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import Settings, get_settings
+from app.models.competency import Competency
 from app.models.course_unit import CourseUnit, Subject, University
-from app.models.enums import SessionStatus, TutorStanding
+from app.models.enums import (
+    CompetencyStatus,
+    SessionStatus,
+    TutorStanding,
+    VerificationSource,
+)
+from app.models.grading_scale import Grade, GradingScale
+from app.models.rating import Rating
 from app.models.session import Session
 from app.models.tutor_profile import TutorProfile
 from app.models.user import User
@@ -70,7 +73,7 @@ def _set_threshold(monkeypatch: pytest.MonkeyPatch, minutes: int) -> None:
     get_settings.cache_clear()
 
 
-# --- fixtures ----------------------------------------------------------------
+# --- helpers -----------------------------------------------------------------
 
 
 async def _register(client, email: str) -> dict:
@@ -93,44 +96,131 @@ async def _account(client, db_session, email: str) -> tuple[dict, User]:
     return body, user
 
 
-async def _tutor(
-    client,
-    db_session,
-    email: str,
-    *,
-    certified_minutes: int,
-    completed_sessions: int = 28,
-    rating_count: int | None = None,
-    rating_total: Decimal | None = None,
-) -> tuple[dict, User]:
-    """An account with the stored totals a tutor of that standing would have.
+async def _tutor(client, db_session, email: str) -> tuple[dict, User]:
+    """An account with a tutor profile and no course evidence yet.
 
-    The profile row is written directly rather than earned through a verified
-    competency and twenty-eight completed sessions. These tests are about the
-    read, and the accrual is tested separately against the code that does it.
-
-    The defaults describe a tutor who meets the session and rating conditions, so
-    a test that is about the *minutes* boundary still reaches an eligible answer
-    and fails only for the minute it is testing. Tests about the other two gates
-    pass the count or total they want short.
+    A profile is what `has_tutor_profile` reports. It deliberately carries zero
+    counters: a per-course answer must come from sessions and ratings, so a test
+    that filled the profile totals instead would pass against the wrong source.
     """
     body, user = await _account(client, db_session, email)
-    if rating_count is None:
-        rating_count = completed_sessions
-    if rating_total is None:
-        rating_total = Decimal(rating_count) * Decimal("5")
     db_session.add(
         TutorProfile(
             user_id=user.id,
             standing=TutorStanding.PROBATIONARY,
-            completed_sessions=completed_sessions,
-            certified_minutes=certified_minutes,
-            rating_total=rating_total,
-            rating_count=rating_count,
+            completed_sessions=0,
+            certified_minutes=0,
+            rating_total=Decimal("0"),
+            rating_count=0,
         )
     )
     await db_session.commit()
     return body, user
+
+
+async def _unit(
+    db_session, *, code: str = "CSC 121", name: str = "Algorithms"
+) -> CourseUnit:
+    """A course unit with its own university and subject."""
+    suffix = uuid.uuid4().hex[:8]
+    university = University(name=f"University {suffix}")
+    subject = Subject(name=f"Computer Science {suffix}")
+    unit = CourseUnit(
+        code=code,
+        name=name,
+        subject=subject,
+        university=university,
+    )
+    db_session.add_all([university, subject, unit])
+    await db_session.flush()
+    return unit
+
+
+async def _teach(
+    db_session,
+    tutor: User,
+    unit: CourseUnit,
+    *,
+    minutes: int,
+    sessions: int,
+    scores: tuple[int, ...] = (),
+) -> None:
+    """Completed sessions in one course, with the ratings a tutee left.
+
+    Minutes are spread across the sessions so a test that wants 900 minutes over
+    ten sessions creates ten rows rather than one implausible one. Ratings are
+    attached to the first sessions in order, because a session may be completed
+    before its rating arrives and the certificate counts the rating wherever it
+    is.
+    """
+    assert sessions > 0
+    tutee = User(
+        email=f"tutee-{uuid.uuid4().hex}@mak.ac.ug",
+        password_hash="hashed-password",
+        full_name="Tutee Example",
+    )
+    db_session.add(tutee)
+    await db_session.flush()
+
+    base, remainder = divmod(minutes, sessions)
+    now = datetime.now(UTC)
+    for index in range(sessions):
+        duration = base + (1 if index < remainder else 0)
+        started = now - timedelta(minutes=max(duration, 1))
+        session = Session(
+            tutee_id=tutee.id,
+            tutor_id=tutor.id,
+            course_unit_id=unit.id,
+            topic="Quick sort",
+            status=SessionStatus.COMPLETED,
+            started_at=started,
+            ended_at=now,
+            tutor_checked_in_at=started,
+            tutee_checked_in_at=started,
+            tutor_finished_at=now,
+            tutee_finished_at=now,
+            duration_minutes=duration,
+        )
+        db_session.add(session)
+        await db_session.flush()
+        if index < len(scores):
+            db_session.add(
+                Rating(
+                    session_id=session.id,
+                    rater_id=tutee.id,
+                    ratee_id=tutor.id,
+                    score=scores[index],
+                )
+            )
+    await db_session.commit()
+
+
+async def _verified_competency(db_session, tutor: User, unit: CourseUnit) -> None:
+    """A verified claim for a course, with no sessions behind it yet."""
+    scale = GradingScale(
+        name=f"Scale {uuid.uuid4().hex[:8]}",
+        max_points=Decimal("5"),
+        competency_min_points=Decimal("4"),
+    )
+    grade = Grade(
+        label="A",
+        grade_points=Decimal("5"),
+        max_points=Decimal("5"),
+        grading_scale=scale,
+    )
+    db_session.add_all([scale, grade])
+    await db_session.flush()
+    db_session.add(
+        Competency(
+            user_id=tutor.id,
+            course_unit_id=unit.id,
+            grade_id=grade.id,
+            status=CompetencyStatus.VERIFIED,
+            source=VerificationSource.MANUAL,
+            verified_at=datetime.now(UTC),
+        )
+    )
+    await db_session.commit()
 
 
 async def _session(
@@ -141,27 +231,17 @@ async def _session(
     duration_minutes: int,
     started_at: datetime | None = None,
     ended_at: datetime | None = None,
+    unit: CourseUnit | None = None,
 ) -> Session:
-    """One session row, with the university a session's unit has to hang off."""
-    university = University(name="Makerere University")
-    subject = Subject(name="Computer Science")
-    unit = CourseUnit(
-        code="CSC 121",
-        name="Algorithms",
-        subject=subject,
-        university=university,
-    )
+    """One session row, with a unit and a tutee the schema accepts."""
+    unit = unit or await _unit(db_session)
     student = User(
-        email="student@mak.ac.ug",
+        email=f"student-{uuid.uuid4().hex}@mak.ac.ug",
         password_hash="hashed-password",
         full_name="Student Example",
     )
-    db_session.add_all([university, subject, unit, student])
+    db_session.add(student)
     await db_session.flush()
-    # The mutual check-in constraints are part of the schema now, so a row that
-    # claims to be live has to carry both arrivals and a completed row both
-    # departures. Tests that are about the certificate read, not attendance,
-    # still need rows the schema accepts.
     live = status in {SessionStatus.IN_PROGRESS, SessionStatus.COMPLETED}
     attendance_start = started_at or datetime.now(UTC)
     session = Session(
@@ -187,174 +267,189 @@ async def _session(
     return session
 
 
-# --- the threshold -----------------------------------------------------------
+async def _portfolio(client, body: dict) -> dict:
+    response = await client.get("/v1/incentives/certificate", headers=_bearer(body))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _course(payload: dict, code: str) -> dict:
+    for course in payload["courses"]:
+        if course["course_unit_code"] == code:
+            return course
+    raise AssertionError(f"{code} was not in {payload['courses']}")
+
+
+# --- the threshold, inside one course ----------------------------------------
 
 
 async def test_exactly_the_required_minutes_is_eligible(client, db_session):
     """The boundary, from the inside. A threshold met is a threshold met."""
-    body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=900
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
+        db_session,
+        tutor,
+        unit,
+        minutes=DEFAULT_REQUIRED_MINUTES,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(4,) * 9 + (5,),
     )
 
-    response = await client.get("/v1/incentives/certificate", headers=_bearer(body))
-
-    assert response.status_code == 200, response.text
-    payload = response.json()
-    assert payload["eligible"] is True
-    assert payload["certified_minutes"] == 900
-    assert payload["remaining_minutes"] == 0
+    course = _course(await _portfolio(client, body), "CSC 121")
+    assert course["eligible"] is True
+    assert course["certified_minutes"] == DEFAULT_REQUIRED_MINUTES
+    assert course["remaining_minutes"] == 0
+    assert course["progress"] == 1.0
 
 
 async def test_one_minute_short_is_not_eligible(client, db_session):
     """The boundary, from the outside. This is the case that must not round."""
-    body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=899
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
+        db_session,
+        tutor,
+        unit,
+        minutes=DEFAULT_REQUIRED_MINUTES - 1,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(4,) * 9 + (5,),
     )
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["eligible"] is False
-    assert payload["remaining_minutes"] == 1
+    course = _course(await _portfolio(client, body), "CSC 121")
+    assert course["eligible"] is False
+    assert course["remaining_minutes"] == 1
     # Not one hour of progress, and not a rounded 15: a bar built from either
     # would tell a tutor one minute from the threshold that they are done.
-    assert payload["progress"] == pytest.approx(899 / 900)
+    assert course["progress"] == pytest.approx(899 / 900)
 
 
 async def test_well_past_the_threshold_is_eligible_and_capped(client, db_session):
     """A tutor who taught twice the requirement is complete, not overflowing."""
-    body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=4800
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
+        db_session,
+        tutor,
+        unit,
+        minutes=DEFAULT_REQUIRED_MINUTES * 2,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(4,) * 9 + (5,),
     )
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["eligible"] is True
-    assert payload["progress"] == 1.0
-    assert payload["remaining_minutes"] == 0
+    course = _course(await _portfolio(client, body), "CSC 121")
+    assert course["eligible"] is True
+    assert course["progress"] == 1.0
+    assert course["remaining_minutes"] == 0
 
 
 async def test_hours_alone_do_not_earn_a_certificate(client, db_session):
     """The bug the session gate exists for.
 
-    A tutor with four very long sessions can pass the 40-hour threshold while
+    A tutor with four very long sessions can pass the minutes threshold while
     having taught only four times. That is volume, not a sustained record, and
     the certificate must not call it one.
     """
-    body, _user = await _tutor(
-        client,
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
         db_session,
-        "tutor@mak.ac.ug",
-        certified_minutes=4800,
-        completed_sessions=4,
-        rating_count=4,
-        rating_total=Decimal("20"),
+        tutor,
+        unit,
+        minutes=DEFAULT_REQUIRED_MINUTES * 2,
+        sessions=4,
+        scores=(5, 5, 5, 5),
     )
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["eligible"] is False
-    assert payload["minutes_met"] is True
-    assert payload["sessions_met"] is False
-    # Four ratings is also short of the ten-rating condition; the point here is
-    # that the completed sessions and the ratings are the same four.
-    assert payload["rating_met"] is False
-    assert payload["remaining_sessions"] == DEFAULT_REQUIRED_SESSIONS - 4
-    # The bar is drawn from the limiting requirement, not from the hours that
-    # happened to be complete.
-    assert payload["progress"] == pytest.approx(4 / DEFAULT_REQUIRED_SESSIONS)
+    course = _course(await _portfolio(client, body), "CSC 121")
+    assert course["eligible"] is False
+    assert course["minutes_met"] is True
+    assert course["sessions_met"] is False
+    assert course["rating_met"] is False
+    assert course["remaining_sessions"] == DEFAULT_REQUIRED_SESSIONS - 4
+    assert course["progress"] == pytest.approx(4 / DEFAULT_REQUIRED_SESSIONS)
 
 
 async def test_enough_sessions_but_too_few_ratings_is_not_eligible(client, db_session):
     """A completed session is not rated evidence until the student rates it."""
-    body, _user = await _tutor(
-        client,
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
         db_session,
-        "tutor@mak.ac.ug",
-        certified_minutes=4800,
-        completed_sessions=DEFAULT_REQUIRED_SESSIONS,
-        rating_count=3,
-        rating_total=Decimal("15"),
+        tutor,
+        unit,
+        minutes=DEFAULT_REQUIRED_MINUTES,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(5, 5, 5),
     )
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["eligible"] is False
-    assert payload["sessions_met"] is True
-    assert payload["rating_met"] is False
-    assert payload["rating_count"] == 3
-    assert payload["progress"] == pytest.approx(3 / DEFAULT_REQUIRED_SESSIONS)
+    course = _course(await _portfolio(client, body), "CSC 121")
+    assert course["eligible"] is False
+    assert course["sessions_met"] is True
+    assert course["rating_met"] is False
+    assert course["rating_count"] == 3
+    assert course["progress"] == pytest.approx(3 / DEFAULT_REQUIRED_SESSIONS)
 
 
 async def test_enough_ratings_but_a_low_average_is_not_eligible(client, db_session):
     """Maintaining the rating bar is the second half of the rating condition."""
-    body, _user = await _tutor(
-        client,
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
         db_session,
-        "tutor@mak.ac.ug",
-        certified_minutes=4800,
-        completed_sessions=DEFAULT_REQUIRED_SESSIONS,
-        rating_count=DEFAULT_REQUIRED_SESSIONS,
-        rating_total=Decimal("35.00"),  # 3.50 average
+        tutor,
+        unit,
+        minutes=DEFAULT_REQUIRED_MINUTES,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(3,) * 5 + (4,) * 5,
     )
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["eligible"] is False
-    assert payload["sessions_met"] is True
-    assert payload["rating_met"] is False
-    assert payload["average_rating"] == "3.50"
-    assert payload["progress"] == pytest.approx(3.5 / 4.1)
+    course = _course(await _portfolio(client, body), "CSC 121")
+    assert course["eligible"] is False
+    assert course["sessions_met"] is True
+    assert course["rating_met"] is False
+    assert course["average_rating"] == "3.50"
+    assert course["progress"] == pytest.approx(3.5 / 4.1)
 
 
 async def test_exactly_the_bar_on_all_three_conditions_is_eligible(client, db_session):
     """The boundary is inclusive on every requirement, not just the minutes."""
-    body, _user = await _tutor(
-        client,
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
         db_session,
-        "tutor@mak.ac.ug",
-        certified_minutes=DEFAULT_REQUIRED_MINUTES,
-        completed_sessions=DEFAULT_REQUIRED_SESSIONS,
-        rating_count=DEFAULT_REQUIRED_SESSIONS,
-        rating_total=DEFAULT_MINIMUM_AVERAGE * DEFAULT_REQUIRED_SESSIONS,
+        tutor,
+        unit,
+        minutes=DEFAULT_REQUIRED_MINUTES,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(4,) * 9 + (5,),
     )
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["eligible"] is True
-    assert payload["minutes_met"] is True
-    assert payload["sessions_met"] is True
-    assert payload["rating_met"] is True
-    assert payload["progress"] == 1.0
+    course = _course(await _portfolio(client, body), "CSC 121")
+    assert course["eligible"] is True
+    assert course["minutes_met"] is True
+    assert course["sessions_met"] is True
+    assert course["rating_met"] is True
+    assert course["average_rating"] == "4.10"
+    assert course["progress"] == 1.0
 
 
 async def test_minutes_are_sent_exactly_as_stored(client, db_session):
-    """The stored integer, not a value rounded to a display scale.
-
-    `certified_minutes` is an `Integer` column and the verdict is a `>=` against
-    it, so a second number on the wire that the verdict was not computed from
-    would be a number the tutor can check and find wrong.
-    """
-    body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=1234
+    """The stored integer, not a value rounded to a display scale."""
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
+        db_session,
+        tutor,
+        unit,
+        minutes=1234,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(4,) * 9 + (5,),
     )
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["certified_minutes"] == 1234
+    assert (
+        _course(await _portfolio(client, body), "CSC 121")["certified_minutes"] == 1234
+    )
 
 
 async def test_the_threshold_comes_from_settings_not_a_constant(
@@ -365,19 +460,22 @@ async def test_the_threshold_comes_from_settings_not_a_constant(
     The same tutor is eligible under one setting and not under the other, which
     is what a hardcoded threshold cannot do.
     """
-    body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=600
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
+        db_session,
+        tutor,
+        unit,
+        minutes=600,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(4,) * 9 + (5,),
     )
 
     _set_threshold(monkeypatch, 600)
-    under_600 = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
+    under_600 = _course(await _portfolio(client, body), "CSC 121")
 
     _set_threshold(monkeypatch, DEFAULT_REQUIRED_MINUTES)
-    under_900 = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
+    under_900 = _course(await _portfolio(client, body), "CSC 121")
 
     assert under_600["eligible"] is True
     assert under_900["eligible"] is False
@@ -392,52 +490,42 @@ async def test_the_wire_reports_the_configured_threshold(
     Asserted for several settings rather than one, because a client that sent a
     constant would pass a test that only ever pinned the default.
     """
-    body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=0
-    )
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _verified_competency(db_session, tutor, unit)
     _set_threshold(monkeypatch, configured)
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["required_minutes"] == configured
-    assert payload["remaining_minutes"] == configured
-    assert payload["required_sessions"] == DEFAULT_REQUIRED_SESSIONS
-    assert Decimal(payload["required_average_rating"]) == DEFAULT_MINIMUM_AVERAGE
+    course = _course(await _portfolio(client, body), "CSC 121")
+    assert course["required_minutes"] == configured
+    assert course["remaining_minutes"] == configured
+    assert course["required_sessions"] == DEFAULT_REQUIRED_SESSIONS
+    assert Decimal(course["required_average_rating"]) == DEFAULT_MINIMUM_AVERAGE
 
 
 async def test_the_session_and_rating_thresholds_come_from_settings(
     client, db_session, monkeypatch: pytest.MonkeyPatch
 ):
-    """The same promise the minutes threshold makes, for the other two gates.
-
-    A pilot with a small cohort has to be able to lower the session count without
-    a deploy, and a stricter one has to be able to raise it.
-    """
-    body, _user = await _tutor(
-        client,
+    """The same promise the minutes threshold makes, for the other two gates."""
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session)
+    await _teach(
         db_session,
-        "tutor@mak.ac.ug",
-        certified_minutes=4800,
-        completed_sessions=6,
-        rating_count=6,
-        rating_total=Decimal("30.00"),
+        tutor,
+        unit,
+        minutes=DEFAULT_REQUIRED_MINUTES,
+        sessions=6,
+        scores=(5, 5, 5, 5, 5, 5),
     )
 
     monkeypatch.setenv("CERTIFICATE_REQUIRED_SESSIONS", "6")
     monkeypatch.setenv("CERTIFICATE_MINIMUM_AVERAGE", "4.50")
     get_settings.cache_clear()
-    lowered = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
+    lowered = _course(await _portfolio(client, body), "CSC 121")
 
     monkeypatch.setenv("CERTIFICATE_REQUIRED_SESSIONS", str(DEFAULT_REQUIRED_SESSIONS))
     monkeypatch.setenv("CERTIFICATE_MINIMUM_AVERAGE", str(DEFAULT_MINIMUM_AVERAGE))
     get_settings.cache_clear()
-    restored = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
+    restored = _course(await _portfolio(client, body), "CSC 121")
 
     assert lowered["required_sessions"] == 6
     assert lowered["eligible"] is True
@@ -461,14 +549,136 @@ def test_a_zero_minutes_threshold_is_refused_at_startup() -> None:
 
 
 def test_a_zero_session_threshold_is_refused_at_startup() -> None:
-    """A zero would make the certificate's session record vacuous.
-
-    The division in the progress helper is also a guard, but the setting is
-    refused for the product reason: "earned over zero sessions" is not a thing
-    the certificate is supposed to mean.
-    """
+    """A zero would make the certificate's session record vacuous."""
     with pytest.raises(ValueError):
         Settings(_env_file=None, certificate_required_sessions=0)  # type: ignore[call-arg]
+
+
+# --- which courses are in the portfolio -------------------------------------
+
+
+async def test_a_verified_course_with_no_sessions_is_on_the_path(client, db_session):
+    """A new tutor sees the target they are working towards, not an empty list."""
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session, code="BIT 221", name="Operating Systems")
+    await _verified_competency(db_session, tutor, unit)
+
+    course = _course(await _portfolio(client, body), "BIT 221")
+    assert course["certified_minutes"] == 0
+    assert course["completed_sessions"] == 0
+    assert course["eligible"] is False
+    assert course["progress"] == 0.0
+
+
+async def test_completed_sessions_appear_even_without_a_live_competency(
+    client, db_session
+):
+    """The teaching happened. A later status change must not erase the evidence."""
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session, code="BIT 223", name="Computer Networks")
+    await _teach(db_session, tutor, unit, minutes=120, sessions=2, scores=(5, 5))
+
+    course = _course(await _portfolio(client, body), "BIT 223")
+    assert course["certified_minutes"] == 120
+    assert course["completed_sessions"] == 2
+
+
+async def test_a_pending_claim_with_no_sessions_is_not_a_certificate(
+    client, db_session
+):
+    """A claim is not evidence. Only verification or teaching puts a course here."""
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session, code="BIT 225", name="Artificial Intelligence")
+    scale = GradingScale(
+        name=f"Scale {uuid.uuid4().hex[:8]}",
+        max_points=Decimal("5"),
+        competency_min_points=Decimal("4"),
+    )
+    grade = Grade(
+        label="A",
+        grade_points=Decimal("5"),
+        max_points=Decimal("5"),
+        grading_scale=scale,
+    )
+    db_session.add_all([scale, grade])
+    await db_session.flush()
+    db_session.add(
+        Competency(
+            user_id=tutor.id,
+            course_unit_id=unit.id,
+            grade_id=grade.id,
+            status=CompetencyStatus.PENDING,
+            source=VerificationSource.TRANSCRIPT,
+        )
+    )
+    await db_session.commit()
+
+    assert (await _portfolio(client, body))["courses"] == []
+
+
+async def test_certificates_are_not_pooled_across_courses(client, db_session):
+    """The rule this feature exists for.
+
+    Nine hundred minutes in one course and six hundred in another is not fifteen
+    hundred minutes towards one certificate: the first course earns its own and
+    the second is still six hundred minutes into its own.
+    """
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    finished = await _unit(db_session, code="BIT 221", name="Operating Systems")
+    partial = await _unit(db_session, code="BIT 223", name="Computer Networks")
+    await _teach(
+        db_session,
+        tutor,
+        finished,
+        minutes=DEFAULT_REQUIRED_MINUTES,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(4,) * 9 + (5,),
+    )
+    await _teach(
+        db_session,
+        tutor,
+        partial,
+        minutes=600,
+        sessions=5,
+        scores=(5, 5, 5, 5, 5),
+    )
+
+    payload = await _portfolio(client, body)
+    assert len(payload["courses"]) == 2
+    # Earned first, then closest to earned.
+    assert payload["courses"][0]["course_unit_code"] == "BIT 221"
+    assert payload["courses"][0]["eligible"] is True
+    assert payload["courses"][1]["course_unit_code"] == "BIT 223"
+    assert payload["courses"][1]["certified_minutes"] == 600
+    assert payload["courses"][1]["eligible"] is False
+    assert payload["courses"][1]["remaining_minutes"] == 300
+
+
+async def test_ratings_count_only_for_the_course_they_were_left_in(client, db_session):
+    """Ten ratings in one course must not satisfy the rating gate in another."""
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    rated = await _unit(db_session, code="BIT 221", name="Operating Systems")
+    unrated = await _unit(db_session, code="BIT 223", name="Computer Networks")
+    await _teach(
+        db_session,
+        tutor,
+        rated,
+        minutes=DEFAULT_REQUIRED_MINUTES,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+        scores=(4,) * 9 + (5,),
+    )
+    await _teach(
+        db_session,
+        tutor,
+        unrated,
+        minutes=DEFAULT_REQUIRED_MINUTES,
+        sessions=DEFAULT_REQUIRED_SESSIONS,
+    )
+
+    payload = await _portfolio(client, body)
+    assert _course(payload, "BIT 221")["rating_count"] == DEFAULT_REQUIRED_SESSIONS
+    assert _course(payload, "BIT 223")["rating_count"] == 0
+    assert _course(payload, "BIT 223")["rating_met"] is False
 
 
 # --- a user with no tutor profile -------------------------------------------
@@ -483,99 +693,72 @@ async def test_a_user_with_no_tutor_profile_gets_a_real_answer(client, db_sessio
     """
     body, _user = await _account(client, db_session, "student@mak.ac.ug")
 
-    response = await client.get("/v1/incentives/certificate", headers=_bearer(body))
-
-    assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = await _portfolio(client, body)
     assert payload["has_tutor_profile"] is False
-    assert payload["eligible"] is False
-    assert payload["certified_minutes"] == 0
-    assert payload["remaining_minutes"] == payload["required_minutes"]
-    assert payload["completed_sessions"] == 0
-    assert payload["remaining_sessions"] == payload["required_sessions"]
-    assert payload["rating_count"] == 0
-    assert payload["average_rating"] is None
-    assert payload["minutes_met"] is False
-    assert payload["sessions_met"] is False
-    assert payload["rating_met"] is False
-    assert payload["progress"] == 0.0
+    assert payload["courses"] == []
 
 
-async def test_reading_eligibility_creates_no_profile(client, db_session):
-    """The regression `rating_service` was fixed for, on this read too.
-
-    A `GET` that minted a profile would hand every signed-in student a standing
-    and a certificate total of zero merely by opening the screen.
-    """
+async def test_reading_certificates_creates_no_profile(client, db_session):
+    """A `GET` that minted a profile would hand every student a standing."""
     body, _user = await _account(client, db_session, "student@mak.ac.ug")
 
-    await client.get("/v1/incentives/certificate", headers=_bearer(body))
+    await _portfolio(client, body)
 
     profiles = await db_session.scalar(select(func.count()).select_from(TutorProfile))
     assert profiles == 0
 
 
-async def test_a_tutor_with_no_minutes_yet_is_on_the_path(client, db_session):
-    """Distinct from having no profile: a profile, no hours, and a bar to fill."""
-    body, _user = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=0
-    )
+async def test_a_tutor_with_no_course_yet_is_on_the_path(client, db_session):
+    """Distinct from having no profile: a profile and no course evidence yet."""
+    body, _tutor_user = await _tutor(client, db_session, "tutor@mak.ac.ug")
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
+    payload = await _portfolio(client, body)
     assert payload["has_tutor_profile"] is True
-    assert payload["eligible"] is False
+    assert payload["courses"] == []
 
 
 # --- only ever your own ------------------------------------------------------
 
 
-async def test_the_caller_reads_their_own_totals(client, db_session):
-    body, _mine = await _tutor(
-        client, db_session, "mine@mak.ac.ug", certified_minutes=2400
+async def test_the_caller_reads_their_own_courses(client, db_session):
+    body, mine = await _tutor(client, db_session, "mine@mak.ac.ug")
+    my_unit = await _unit(db_session, code="BIT 221", name="Operating Systems")
+    await _teach(db_session, mine, my_unit, minutes=1200, sessions=10, scores=(5,) * 10)
+
+    _their_body, theirs = await _tutor(client, db_session, "theirs@mak.ac.ug")
+    their_unit = await _unit(db_session, code="BIT 223", name="Computer Networks")
+    await _teach(
+        db_session, theirs, their_unit, minutes=300, sessions=5, scores=(5,) * 5
     )
-    await _tutor(client, db_session, "theirs@mak.ac.ug", certified_minutes=0)
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["eligible"] is True
-    assert payload["certified_minutes"] == 2400
+    mine_payload = await _portfolio(client, body)
+    assert [course["course_unit_code"] for course in mine_payload["courses"]] == [
+        "BIT 221"
+    ]
+    assert mine_payload["courses"][0]["certified_minutes"] == 1200
 
 
-async def test_another_tutors_totals_cannot_be_asked_for(client, db_session):
-    """The route has no subject, so there is nothing to point at someone else.
-
-    A query parameter naming another account is ignored rather than refused,
-    because the answer it produces is already the caller's own: there is no
-    version of this request that reaches anyone else's hours.
-    """
-    body, _mine = await _tutor(
-        client, db_session, "mine@mak.ac.ug", certified_minutes=2400
-    )
-    other_body, other_user = await _tutor(
-        client, db_session, "theirs@mak.ac.ug", certified_minutes=0
-    )
+async def test_another_tutors_courses_cannot_be_asked_for(client, db_session):
+    """The route has no subject, so there is nothing to point at someone else."""
+    body, _mine = await _tutor(client, db_session, "mine@mak.ac.ug")
+    other_body, other = await _tutor(client, db_session, "theirs@mak.ac.ug")
+    their_unit = await _unit(db_session, code="BIT 223", name="Computer Networks")
+    await _teach(db_session, other, their_unit, minutes=300, sessions=5)
 
     mine = await client.get(
         "/v1/incentives/certificate",
-        params={"user_id": str(other_user.public_id)},
+        params={"user_id": str(other.public_id)},
         headers=_bearer(body),
     )
     theirs = await client.get("/v1/incentives/certificate", headers=_bearer(other_body))
 
-    assert mine.json()["certified_minutes"] == 2400
-    # The two accounts really are different, so the assertion above is about
-    # whose minutes were served and not about two identical responses.
-    assert theirs.json()["certified_minutes"] == 0
+    assert mine.json()["courses"] == []
+    assert theirs.json()["courses"][0]["course_unit_code"] == "BIT 223"
 
 
-async def test_eligibility_requires_a_token(client, db_session):
+async def test_certificates_require_a_token(client, db_session):
     """A certificate total is a tutor's own record, not public standing."""
-    await _tutor(client, db_session, "tutor@mak.ac.ug", certified_minutes=2400)
+    await _tutor(client, db_session, "tutor@mak.ac.ug")
 
     response = await client.get("/v1/incentives/certificate")
 
@@ -587,14 +770,14 @@ async def test_eligibility_requires_a_token(client, db_session):
 
 
 async def test_a_completed_session_contributes_its_minutes(db_session):
-    tutor = User(
+    tutor_user = User(
         email="tutor@mak.ac.ug", password_hash="hashed-password", full_name="Tutor"
     )
-    db_session.add(tutor)
+    db_session.add(tutor_user)
     await db_session.flush()
     session = await _session(
         db_session,
-        tutor,
+        tutor_user,
         status=SessionStatus.COMPLETED,
         duration_minutes=60,
         started_at=datetime.now(UTC) - timedelta(hours=1),
@@ -603,9 +786,11 @@ async def test_a_completed_session_contributes_its_minutes(db_session):
 
     await rating_service.record_completion(db_session, session)
 
-    eligibility = await incentive_service.get_certificate_eligibility(db_session, tutor)
-    assert eligibility.certified_minutes == 60
-    assert eligibility.eligible is False
+    summary = await incentive_service.get_certificate_eligibility(
+        db_session, tutor_user
+    )
+    assert summary.certified_minutes == 60
+    assert summary.eligible is False
 
 
 @pytest.mark.parametrize(
@@ -619,45 +804,37 @@ async def test_a_completed_session_contributes_its_minutes(db_session):
 async def test_a_session_that_did_not_complete_contributes_nothing(
     db_session, status: SessionStatus
 ):
-    """Whatever duration it was booked with, and whoever cancelled it.
-
-    A cancelled session keeps the length it was created with, so reading the
-    column would bank hours for teaching that did not happen. That the
-    increment is guarded by the status is the rule under test.
-    """
-    tutor = User(
+    """Whatever duration it was booked with, and whoever cancelled it."""
+    tutor_user = User(
         email="tutor@mak.ac.ug", password_hash="hashed-password", full_name="Tutor"
     )
-    db_session.add(tutor)
+    db_session.add(tutor_user)
     await db_session.flush()
-    session = await _session(db_session, tutor, status=status, duration_minutes=90)
+    session = await _session(db_session, tutor_user, status=status, duration_minutes=90)
 
     await rating_service.record_completion(db_session, session)
 
-    eligibility = await incentive_service.get_certificate_eligibility(db_session, tutor)
-    assert eligibility.certified_minutes == 0
+    summary = await incentive_service.get_certificate_eligibility(
+        db_session, tutor_user
+    )
+    assert summary.certified_minutes == 0
 
 
 async def test_a_negative_duration_contributes_nothing(db_session):
     """`max(duration_minutes, 0)` is the backstop, and it is load-bearing.
 
-    The schema and the CHECK constraint both refuse a negative duration, so this
-    cannot arrive through the API. It can arrive through a data fix or a
-    migration, and hours are the tutor's record of what they taught: a total
-    that falls because a row was repaired is not defensible.
-
-    Never added to the session, because the column would refuse the value and
-    the point is the increment's arithmetic rather than a row that could be
-    written.
+    The schema refuses a negative duration, so this can only arrive through a
+    data fix or a migration. Hours are the tutor's record of what they taught: a
+    total that falls because a row was repaired is not defensible.
     """
-    tutor = User(
+    tutor_user = User(
         email="tutor@mak.ac.ug", password_hash="hashed-password", full_name="Tutor"
     )
-    db_session.add(tutor)
+    db_session.add(tutor_user)
     await db_session.flush()
     session = Session(
         tutee_id=uuid.uuid4(),
-        tutor_id=tutor.id,
+        tutor_id=tutor_user.id,
         course_unit_id=uuid.uuid4(),
         topic="Quick sort",
         status=SessionStatus.COMPLETED,
@@ -668,28 +845,28 @@ async def test_a_negative_duration_contributes_nothing(db_session):
 
     await rating_service.record_completion(db_session, session)
 
-    eligibility = await incentive_service.get_certificate_eligibility(db_session, tutor)
-    assert eligibility.certified_minutes == 0
+    summary = await incentive_service.get_certificate_eligibility(
+        db_session, tutor_user
+    )
+    assert summary.certified_minutes == 0
 
 
 async def test_the_session_lifecycle_is_what_banks_the_minutes(client, db_session):
     """The path a client takes, not a call to the increment.
 
-    A test of `record_completion` on its own passes even if nothing in the
-    service ever calls it, and a certificate nobody earns is worse than one that
-    is never displayed. The tutor starts at zero, runs a session from
-    `in_progress` to `completed`, and the ninety minutes it took are what the
-    endpoint afterwards reports.
+    The tutor starts at zero, runs a session from `in_progress` to `completed`,
+    and the ninety minutes it took are what the endpoint afterwards reports for
+    that course.
     """
-    body, tutor = await _tutor(
-        client, db_session, "tutor@mak.ac.ug", certified_minutes=0
-    )
+    body, tutor = await _tutor(client, db_session, "tutor@mak.ac.ug")
+    unit = await _unit(db_session, code="BIT 221", name="Operating Systems")
     session = await _session(
         db_session,
         tutor,
         status=SessionStatus.IN_PROGRESS,
         duration_minutes=0,
         started_at=datetime.now(UTC) - timedelta(minutes=90),
+        unit=unit,
     )
 
     tutee = await db_session.scalar(select(User).where(User.id == session.tutee_id))
@@ -698,9 +875,6 @@ async def test_the_session_lifecycle_is_what_banks_the_minutes(client, db_sessio
     completed = await session_service.finish(db_session, tutee, session.public_id)
     assert completed.duration_minutes == 90
 
-    payload = (
-        await client.get("/v1/incentives/certificate", headers=_bearer(body))
-    ).json()
-
-    assert payload["certified_minutes"] == 90
-    assert payload["eligible"] is False
+    course = _course(await _portfolio(client, body), "BIT 221")
+    assert course["certified_minutes"] == 90
+    assert course["eligible"] is False

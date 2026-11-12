@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:peerpass/core/constants/app_dimens.dart';
-import 'package:peerpass/features/incentives/data/models/certificate_eligibility.dart';
+import 'package:peerpass/features/incentives/data/models/certificate_portfolio.dart';
 import 'package:peerpass/features/incentives/presentation/formatting.dart';
 
 /// The bar and the numbers around it.
@@ -12,15 +12,15 @@ import 'package:peerpass/features/incentives/presentation/formatting.dart';
 /// tells a student they are failing a requirement they have not been given a way
 /// to meet.
 class CertificateProgressCard extends StatelessWidget {
-  const CertificateProgressCard({required this.eligibility, super.key});
+  const CertificateProgressCard({required this.course, super.key});
 
-  final CertificateEligibility eligibility;
+  final CourseCertificate course;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final remaining = remainingLabel(eligibility);
-    final earned = eligibility.eligible;
+    final remaining = remainingLabel(course);
+    final earned = course.eligible;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -32,9 +32,22 @@ class CertificateProgressCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Certificate progress',
-                  style: theme.textTheme.titleMedium,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        course.courseUnitLabel,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      Text(
+                        'Certificate progress',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 if (earned)
                   const Chip(
@@ -52,14 +65,14 @@ class CertificateProgressCard extends StatelessWidget {
               // than counting up to it, which would read as progress still
               // happening on a screen a tutor opened to check a total.
               child: LinearProgressIndicator(
-                value: progressValue(eligibility),
+                value: progressValue(course),
                 minHeight: AppDimens.sm,
                 backgroundColor: theme.colorScheme.surfaceContainerHighest,
               ),
             ),
             const SizedBox(height: AppDimens.md),
             Text(
-              certificateProgressLabel(eligibility),
+              certificateProgressLabel(course),
               style: theme.textTheme.bodyLarge,
             ),
             if (remaining != null) ...[
@@ -77,7 +90,7 @@ class CertificateProgressCard extends StatelessWidget {
             // The certificate is three conditions, and the tutor is entitled to
             // see which one is holding them back rather than one bar that hides
             // the other two.
-            for (final requirement in certificateRequirements(eligibility))
+            for (final requirement in certificateRequirements(course))
               _RequirementRow(requirement: requirement),
           ],
         ),

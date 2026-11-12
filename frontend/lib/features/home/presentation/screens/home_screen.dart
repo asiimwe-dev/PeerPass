@@ -137,9 +137,21 @@ class HomeScreen extends ConsumerWidget {
                   onTap: () => context.push(AppRoutes.tutorRequests),
                 ),
                 const SizedBox(height: AppDimens.sm),
+                // A tutor can teach more than one course. The entry stays here
+                // after the first approval, where the verification flow used to
+                // disappear entirely, and it leads to the status screen so a
+                // tutor can see the cap and apply from the same place.
+                _HomeEntry(
+                  icon: Icons.fact_check_outlined,
+                  title: 'Course applications',
+                  subtitle: 'Your courses, and applying for another',
+                  onTap: () => context.push(AppRoutes.myApplications),
+                ),
+                const SizedBox(height: AppDimens.sm),
                 _HomeEntry(
                   icon: Icons.workspace_premium_outlined,
-                  title: 'My certificate',
+                  title: 'My certificates',
+                  subtitle: 'One per course you teach',
                   onTap: () => context.push(AppRoutes.certificate),
                 ),
               ] else ...[

@@ -13,16 +13,20 @@ class RemoteIncentivesDatasource {
 
   final Dio _dio;
 
-  /// The caller's own certificate eligibility.
+  /// The caller's own per-course certificates.
   ///
   /// No path parameter and no query parameter, because the API answers only
   /// about the authenticated caller and there is nothing a client could send to
   /// ask about anyone else. A user id in the path would be a second, unguarded
   /// way to read a tutor's hours.
-  Future<Map<String, dynamic>> myCertificate() async {
+  Future<Map<String, dynamic>> myCertificates() async {
     final response = await _dio.get<Map<String, dynamic>>(
       '/v1/incentives/certificate',
     );
-    return response.data!;
+    final body = response.data;
+    if (body == null) {
+      throw const FormatException('the certificate response carried no body');
+    }
+    return body;
   }
 }

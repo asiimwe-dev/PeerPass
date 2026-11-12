@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Self
 from urllib.parse import urlparse
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import CompetencyStatus, VerificationSource
 from app.schemas.base import OrmSchema, RequestSchema
@@ -90,3 +90,18 @@ class CompetencyResponse(OrmSchema):
     rejection_reason: str | None = None
     evidence_reference: str | None = None
     created_at: datetime
+
+
+class CompetencyLimitsResponse(BaseModel):
+    """How many active course applications the caller holds and may hold.
+
+    The limit is returned rather than repeated in the client because it is
+    configuration: a pilot with a larger review team can raise it without a
+    client release. `active_count` is the same count the submission endpoint
+    enforces against, so a screen can disable the apply action for the same
+    reason the API would refuse the request -- instead of sending a tutor into a
+    form that can only fail.
+    """
+
+    active_count: int = Field(ge=0)
+    max_active_course_units: int = Field(gt=0)

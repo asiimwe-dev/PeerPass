@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:peerpass/core/models/json_decimal.dart';
 
-/// The signed-in tutor's standing against the certificate requirements.
+/// One course's progress towards its own certificate.
 ///
 /// A wire DTO and nothing more. Every threshold question is answered by the API
 /// -- [eligible] is its verdict, not a comparison this client makes -- because a
@@ -9,14 +9,14 @@ import 'package:peerpass/core/models/json_decimal.dart';
 /// a second copy of the rule and would go on showing the old one after a pilot
 /// lowered it.
 ///
-/// The certificate has three conditions: teaching minutes, completed sessions,
-/// and a maintained average rating over enough rated sessions. They travel
-/// separately so the screen can say which one is outstanding instead of showing
-/// one bar that hides two of them.
+/// A certificate is earned per course: the hours, sessions, and ratings are the
+/// ones recorded against this unit, not a tutor-wide total.
 @immutable
-class CertificateEligibility {
-  const CertificateEligibility({
-    required this.hasTutorProfile,
+class CourseCertificate {
+  const CourseCertificate({
+    required this.courseUnitId,
+    required this.courseUnitCode,
+    required this.courseUnitName,
     required this.eligible,
     required this.certifiedMinutes,
     required this.requiredMinutes,
@@ -33,20 +33,17 @@ class CertificateEligibility {
     this.averageRating,
   });
 
-  /// Reads the wire form.
+  /// Reads one course entry.
   ///
   /// Every field is required, including the ones the client could in principle
   /// work out. Defaulting them would mean recomputing the API's arithmetic on a
   /// device, and a body missing them is a contract change rather than a partial
   /// answer -- a [FormatException] the repository turns into a message, which is
   /// what a server fault should look like to a tutor.
-  ///
-  /// `generated_at` is deliberately not carried. It is the server's clock, and
-  /// "as the server saw it" is not what a tutor needs to know; the moment this
-  /// screen rendered the numbers is. It stays in the response for whoever needs
-  /// it in a log.
-  factory CertificateEligibility.fromJson(Map<String, dynamic> json) {
-    final hasTutorProfile = json['has_tutor_profile'];
+  factory CourseCertificate.fromJson(Map<String, dynamic> json) {
+    final courseUnitId = json['course_unit_id'];
+    final courseUnitCode = json['course_unit_code'];
+    final courseUnitName = json['course_unit_name'];
     final eligible = json['eligible'];
     final certifiedMinutes = json['certified_minutes'];
     final requiredMinutes = json['required_minutes'];
@@ -60,7 +57,9 @@ class CertificateEligibility {
     final ratingMet = json['rating_met'];
     final progress = json['progress'];
 
-    if (hasTutorProfile is! bool ||
+    if (courseUnitId is! String ||
+        courseUnitCode is! String ||
+        courseUnitName is! String ||
         eligible is! bool ||
         certifiedMinutes is! num ||
         requiredMinutes is! num ||
@@ -74,12 +73,14 @@ class CertificateEligibility {
         ratingMet is! bool ||
         progress is! num) {
       throw const FormatException(
-        'certificate response was missing a required field',
+        'course certificate was missing a required field',
       );
     }
 
-    return CertificateEligibility(
-      hasTutorProfile: hasTutorProfile,
+    return CourseCertificate(
+      courseUnitId: courseUnitId,
+      courseUnitCode: courseUnitCode,
+      courseUnitName: courseUnitName,
       eligible: eligible,
       certifiedMinutes: certifiedMinutes.toInt(),
       requiredMinutes: requiredMinutes.toInt(),
@@ -100,40 +101,36 @@ class CertificateEligibility {
     );
   }
 
-  /// Whether the caller has a tutor profile at all.
-  ///
-  /// The API's own answer rather than something the client infers from the
-  /// caller's roles. A student and a brand-new tutor both read as zero minutes,
-  /// and only one of them is on the path to a certificate; guessing from a role
-  /// the client happens to hold would be the client deciding who is a tutor.
-  final bool hasTutorProfile;
+  /// Public id of the course this certificate is for.
+  final String courseUnitId;
+  final String courseUnitCode;
+  final String courseUnitName;
 
-  /// Whether every requirement has been met. The API's verdict, not this
-  /// client's.
+  /// Whether every requirement has been met for this course.
   final bool eligible;
 
-  /// Minutes that counted towards a certificate, exactly as stored.
+  /// Minutes taught in this course that counted towards its certificate.
   final int certifiedMinutes;
 
   /// The configured minutes threshold, as the operator set it.
   final int requiredMinutes;
 
-  /// Minutes still to go. Zero once the minutes condition is met.
+  /// Minutes still to go in this course. Zero once the minutes condition is met.
   final int remainingMinutes;
 
-  /// Completed sessions the tutor has taught.
+  /// Completed sessions in this course.
   final int completedSessions;
 
   /// The configured session threshold, as the operator set it.
   final int requiredSessions;
 
-  /// Sessions still to go. Zero once the session condition is met.
+  /// Sessions still to go in this course. Zero once the condition is met.
   final int remainingSessions;
 
-  /// How many ratings back [averageRating].
+  /// How many ratings this course's sessions received.
   final int ratingCount;
 
-  /// The stored mean, or null when the tutor has no ratings.
+  /// The stored mean for this course, or null when it has no ratings.
   final double? averageRating;
 
   /// The configured minimum mean, as the operator set it.
@@ -149,16 +146,18 @@ class CertificateEligibility {
   final bool ratingMet;
 
   /// How far along, from 0.0 to 1.0, already clamped by the API.
-  ///
-  /// The smallest of the three requirement fractions, so it reaches 1.0 only
-  /// when all three do.
   final double progress;
+
+  /// The course as a tutor reads it.
+  String get courseUnitLabel => '$courseUnitCode · $courseUnitName';
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is CertificateEligibility &&
-          other.hasTutorProfile == hasTutorProfile &&
+      other is CourseCertificate &&
+          other.courseUnitId == courseUnitId &&
+          other.courseUnitCode == courseUnitCode &&
+          other.courseUnitName == courseUnitName &&
           other.eligible == eligible &&
           other.certifiedMinutes == certifiedMinutes &&
           other.requiredMinutes == requiredMinutes &&
@@ -176,7 +175,9 @@ class CertificateEligibility {
 
   @override
   int get hashCode => Object.hashAll([
-    hasTutorProfile,
+    courseUnitId,
+    courseUnitCode,
+    courseUnitName,
     eligible,
     certifiedMinutes,
     requiredMinutes,
@@ -195,6 +196,76 @@ class CertificateEligibility {
 
   @override
   String toString() =>
-      'CertificateEligibility($certifiedMinutes/$requiredMinutes minutes, '
-      '$completedSessions/$requiredSessions sessions, eligible: $eligible)';
+      'CourseCertificate($courseUnitCode, '
+      '$certifiedMinutes/$requiredMinutes minutes, eligible: $eligible)';
+}
+
+/// Every course the signed-in tutor can earn a certificate for.
+///
+/// The API orders the list earned first, then closest to earned, so [courses]
+/// can be rendered as-is and the dashboard can show the first entry without
+/// applying an ordering rule of its own.
+@immutable
+class CertificatePortfolio {
+  const CertificatePortfolio({
+    required this.hasTutorProfile,
+    required this.courses,
+  });
+
+  /// Reads the documented response.
+  ///
+  /// `generated_at` is deliberately not carried. It is the server's clock, and
+  /// "as the server saw it" is not what a tutor needs to know; the moment this
+  /// screen rendered the numbers is. It stays in the response for whoever needs
+  /// it in a log.
+  factory CertificatePortfolio.fromJson(Map<String, dynamic> json) {
+    final hasTutorProfile = json['has_tutor_profile'];
+    final courses = json['courses'];
+    if (hasTutorProfile is! bool || courses is! List) {
+      throw const FormatException(
+        'certificate portfolio was missing a required field',
+      );
+    }
+    return CertificatePortfolio(
+      hasTutorProfile: hasTutorProfile,
+      courses: [
+        for (final course in courses)
+          if (course is Map)
+            CourseCertificate.fromJson(Map<String, dynamic>.from(course))
+          else
+            throw const FormatException(
+              'a course certificate was not an object',
+            ),
+      ],
+    );
+  }
+
+  /// Whether the caller has a tutor profile at all.
+  ///
+  /// The API's own answer rather than something the client infers from the
+  /// caller's roles. A student and a brand-new tutor both have an empty list,
+  /// and only one of them is on the path to a certificate.
+  final bool hasTutorProfile;
+
+  /// One entry per course, ordered by the server.
+  final List<CourseCertificate> courses;
+
+  /// The course the dashboard summarises, or null when there is none.
+  CourseCertificate? get leadingCourse =>
+      courses.isEmpty ? null : courses.first;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CertificatePortfolio &&
+          other.hasTutorProfile == hasTutorProfile &&
+          listEquals(other.courses, courses);
+
+  @override
+  int get hashCode => Object.hash(hasTutorProfile, Object.hashAll(courses));
+
+  @override
+  String toString() =>
+      'CertificatePortfolio(${courses.length} courses, '
+      'hasTutorProfile: $hasTutorProfile)';
 }

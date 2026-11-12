@@ -3,10 +3,11 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundProblem, ValidationProblem
 from app.models.competency import Competency
 from app.models.course_unit import CourseUnit, University
@@ -31,6 +32,26 @@ _COMPETENCY_LOAD = (
     .selectinload(CourseUnit.university)
     .selectinload(University.grading_scale),
 )
+
+
+async def active_application_count(db: AsyncSession, user: User) -> int:
+    """How many claims are still live: pending or verified.
+
+    A rejected claim is deliberately absent. It is the one state a tutor is
+    expected to answer, and counting it would mean a rejection consumed a
+    slot of the application limit as well as the time spent reviewing it.
+    """
+    count = await db.scalar(
+        select(func.count())
+        .select_from(Competency)
+        .where(
+            Competency.user_id == user.id,
+            Competency.status.in_(
+                (CompetencyStatus.PENDING, CompetencyStatus.VERIFIED)
+            ),
+        )
+    )
+    return int(count or 0)
 
 
 async def list_competencies(db: AsyncSession, user: User) -> list[CompetencyResponse]:
@@ -133,6 +154,7 @@ async def create_competency(
                 "A competency already exists for this unit.",
                 errors={"course_unit_id": "duplicate competency"},
             )
+        await _ensure_application_room(db, user)
         # Reopening the row keeps the reviewer history on the same record, so
         # `reviewed_by_id` and `verified_at` are cleared rather than the old
         # decision silently describing a claim that no longer exists.
@@ -150,6 +172,7 @@ async def create_competency(
             await _load_competency(db, user, existing.public_id)
         )
 
+    await _ensure_application_room(db, user)
     competency = Competency(
         user_id=user.id,
         course_unit_id=course_unit.id,
@@ -166,6 +189,24 @@ async def create_competency(
     # relationships `_competency_response` walks are not populated on a row that
     # has only just been inserted, and the builder is synchronous.
     return _competency_response(await _load_competency(db, user, competency.public_id))
+
+
+async def _ensure_application_room(db: AsyncSession, user: User) -> None:
+    """Refuse a new live claim once the tutor is at the configured cap.
+
+    Checked on the submission rather than only in the client because the
+    endpoint is open to any signed-in user and a client is not a guard. The
+    message names the number so a tutor knows whether waiting or choosing
+    another course is the way forward.
+    """
+    limit = get_settings().max_active_course_units
+    active = await active_application_count(db, user)
+    if active >= limit:
+        raise ValidationProblem(
+            f"You can hold at most {limit} active course applications. "
+            "Wait for one to be reviewed before applying for another.",
+            errors={"course_unit_id": "active application limit reached"},
+        )
 
 
 def _utcnow():

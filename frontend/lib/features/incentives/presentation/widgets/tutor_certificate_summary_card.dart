@@ -7,77 +7,84 @@ import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/theme/app_palette.dart';
 import 'package:peerpass/core/widgets/app_button.dart';
 import 'package:peerpass/core/widgets/app_card.dart';
-import 'package:peerpass/features/incentives/data/models/certificate_eligibility.dart';
+import 'package:peerpass/features/incentives/data/models/certificate_portfolio.dart';
 import 'package:peerpass/features/incentives/presentation/formatting.dart';
 import 'package:peerpass/features/incentives/presentation/providers/incentive_providers.dart';
 
 /// The certificate section of a tutor's dashboard.
 ///
-/// A compact restatement of the certificate screen, not a second owner of the
-/// rule: the bar uses the API's `progress`, the label uses its minutes, and the
-/// verdict is its `eligible`. The only thing this adds to the numbers is the
-/// sentence they make in a dashboard-sized card.
+/// A compact restatement of the first course in the certificate portfolio, not a
+/// second owner of the rule: the bar uses the API's `progress`, the label uses
+/// its minutes, and the verdict is its `eligible`. The API orders the portfolio
+/// earned first, then closest to earned, so "first" is also "the certificate
+/// most worth showing".
 ///
-/// A caller with no tutor profile is a different state, not a bar at zero. A
-/// zero bar would tell a student they are failing a requirement the platform has
-/// not yet given them a way to meet.
+/// A caller with no tutor profile is a different state, not a bar at zero. So is
+/// a tutor with no verified course yet: they are on the path, and the card points
+/// them at the applications screen rather than drawing a bar for a course they
+/// have not started.
 class TutorCertificateSummaryCard extends ConsumerWidget {
   const TutorCertificateSummaryCard({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final eligibility = ref.watch(certificateEligibilityProvider);
-    final failure = eligibility.hasError
-        ? failureFor(eligibility.error!)
-        : null;
+    final portfolio = ref.watch(certificatePortfolioProvider);
+    final failure = portfolio.hasError ? failureFor(portfolio.error!) : null;
 
     if (failure != null) {
       return _FailureNotice(
         message: failure.message,
-        onRetry: () => ref.invalidate(certificateEligibilityProvider),
+        onRetry: () => ref.invalidate(certificatePortfolioProvider),
       );
     }
 
-    final loaded = eligibility.value;
+    final loaded = portfolio.value;
     if (loaded == null) return const _LoadingNotice();
     if (!loaded.hasTutorProfile) return const _NoProfileNotice();
+    final course = loaded.leadingCourse;
+    if (course == null) return const _NoCourseNotice();
 
-    return _Progress(eligibility: loaded);
+    return _Progress(course: course);
   }
 }
 
 /// The bar and the numbers, sized for one dashboard section.
 class _Progress extends StatelessWidget {
-  const _Progress({required this.eligibility});
+  const _Progress({required this.course});
 
-  final CertificateEligibility eligibility;
+  final CourseCertificate course;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = AppPalette.of(context);
-    final remaining = remainingLabel(eligibility);
+    final remaining = remainingLabel(course);
 
     return AppCard(
       padding: const EdgeInsets.all(AppDimens.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Certificate progress', style: theme.textTheme.titleMedium),
+          Text(course.courseUnitLabel, style: theme.textTheme.titleMedium),
+          const SizedBox(height: AppDimens.xxs),
+          Text(
+            'Certificate progress',
+            style: theme.textTheme.bodySmall?.copyWith(color: palette.muted),
+          ),
           const SizedBox(height: AppDimens.md),
           ClipRRect(
             borderRadius: BorderRadius.circular(AppDimens.radiusSm),
             // The API already answered; animating up to the number would read as
             // work still happening on a total a tutor opened the card to check.
             child: LinearProgressIndicator(
-              value: progressValue(eligibility),
+              value: progressValue(course),
               minHeight: AppDimens.sm,
               backgroundColor: theme.colorScheme.surfaceContainerHighest,
             ),
           ),
           const SizedBox(height: AppDimens.md),
           Text(
-            certificateProgressLabel(eligibility),
+            certificateProgressLabel(course),
             style: theme.textTheme.bodyLarge,
           ),
           if (remaining != null) ...[
@@ -91,7 +98,7 @@ class _Progress extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: AppButton(
-              label: 'View certificate',
+              label: 'View certificates',
               variant: AppButtonVariant.ghost,
               isFullWidth: false,
               isSmall: true,
@@ -145,6 +152,55 @@ class _NoProfileNotice extends StatelessWidget {
               isFullWidth: false,
               isSmall: true,
               onPressed: () => context.push(AppRoutes.tutorVerification),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The answer for a tutor who has no verified course yet.
+class _NoCourseNotice extends StatelessWidget {
+  const _NoCourseNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = AppPalette.of(context);
+
+    return AppCard(
+      padding: const EdgeInsets.all(AppDimens.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.workspace_premium_outlined, color: palette.primary),
+              const SizedBox(width: AppDimens.md),
+              Expanded(
+                child: Text(
+                  'Certificate progress',
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppDimens.md),
+          Text(
+            'A certificate is earned per course. Once a course application is '
+            'verified, its progress will appear here.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppDimens.md),
+          Align(
+            alignment: Alignment.centerRight,
+            child: AppButton(
+              label: 'View applications',
+              variant: AppButtonVariant.ghost,
+              isFullWidth: false,
+              isSmall: true,
+              onPressed: () => context.push(AppRoutes.myApplications),
             ),
           ),
         ],

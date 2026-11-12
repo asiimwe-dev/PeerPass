@@ -330,6 +330,70 @@ class CertificateEligibilityResponse(OrmSchema):
     generated_at: datetime
 
 
+class CourseCertificateResponse(OrmSchema):
+    """One course's progress towards its own certificate.
+
+    A certificate is earned per course, not per tutor: the hours, sessions, and
+    ratings that count are the ones recorded against this course unit. The three
+    thresholds are repeated on each entry rather than sent once in an envelope,
+    so a course card is self-contained and the client never has to join two
+    objects to draw one bar. They are the same configured numbers on every entry;
+    repeating a constant is cheaper than a shape that can disagree with itself.
+    """
+
+    course_unit_id: uuid.UUID = Field(
+        description="Public id of the course this certificate is for."
+    )
+    course_unit_code: str
+    course_unit_name: str
+    eligible: bool
+    certified_minutes: int = Field(ge=0)
+    required_minutes: int = Field(gt=0)
+    remaining_minutes: int = Field(ge=0)
+    completed_sessions: int = Field(ge=0)
+    required_sessions: int = Field(gt=0)
+    remaining_sessions: int = Field(ge=0)
+    rating_count: int = Field(ge=0)
+    average_rating: MeanRating | None = Field(
+        default=None,
+        description="This course's stored mean, or null with no ratings.",
+    )
+    required_average_rating: MeanRating = Field(
+        description="The configured minimum mean, as the operator set it."
+    )
+    minutes_met: bool
+    sessions_met: bool
+    rating_met: bool
+    progress: float = Field(
+        ge=0.0,
+        le=1.0,
+        description=(
+            "The smallest of the three fractions for this course, so the bar "
+            "cannot read complete while any condition is outstanding."
+        ),
+    )
+
+
+class CertificatePortfolioResponse(OrmSchema):
+    """Every course the caller can earn a certificate for, closest first.
+
+    A tutor who teaches three courses has three separate certificates to earn,
+    and a combined total would let one very long course carry the others over
+    the bar. The list is ordered by the server -- earned first, then closest to
+    earned, then course code -- so the dashboard summary can show the first entry
+    without applying an ordering rule of its own.
+    """
+
+    has_tutor_profile: bool = Field(
+        description=(
+            "Whether the caller has a tutor profile at all. A student and a new "
+            "tutor both have an empty list; only the second is on the path."
+        )
+    )
+    courses: list[CourseCertificateResponse]
+    generated_at: datetime
+
+
 class TutorPromotionProgress(OrmSchema):
     """How far a tutor is from Verified, with both halves of the rule.
 

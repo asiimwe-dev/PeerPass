@@ -295,6 +295,23 @@ class Settings(BaseSettings):
         "to any site a student visits.",
     )
 
+    #: Active course applications one tutor may hold at a time, counting a
+    #: claim that is pending or verified. A rejected claim does not count: it
+    #: is the one state a tutor is expected to answer, and the cap must not
+    #: strand them on it.
+    #:
+    #: The cap exists because the submission endpoint is open to any signed-in
+    #: user, and the catalogue is scoped to a faculty rather than to a
+    #: shortlist. Without a limit, a single account can put every unit in its
+    #: faculty into the review queue. Three is a focused multi-course tutor, not
+    #: a catalogue sweep, and it is configuration because a larger faculty or a
+    #: larger review team may want a different number.
+    max_active_course_units: int = Field(
+        default=3,
+        gt=0,
+        description="Pending or verified course applications per tutor.",
+    )
+
     #: Hours of completed tutoring a tutor must accumulate to be issued a
     #: certificate, in minutes. The default is 15 hours.
     #:

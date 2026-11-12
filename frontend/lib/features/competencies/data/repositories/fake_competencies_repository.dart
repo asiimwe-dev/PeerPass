@@ -1,4 +1,5 @@
 import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/features/competencies/data/models/application_limits.dart';
 import 'package:peerpass/features/competencies/data/models/tutor_claim.dart';
 import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 
@@ -10,11 +11,16 @@ import 'package:peerpass/features/competencies/data/repositories/competencies_re
 /// reopening the API allows: a test for that behaviour belongs on the API, and a
 /// fake that reopened silently would let a screen assume a rule it does not have.
 class FakeCompetenciesRepository implements CompetenciesRepository {
-  FakeCompetenciesRepository({List<TutorClaim>? claims})
-    : claims = [...?claims];
+  FakeCompetenciesRepository({
+    List<TutorClaim>? claims,
+    this.maxActiveCourseUnits = 3,
+  }) : claims = [...?claims];
 
   /// The claims the screen will read, in the order the endpoint returns them.
   final List<TutorClaim> claims;
+
+  /// The cap the API would report, so a screen can be tested at it.
+  final int maxActiveCourseUnits;
 
   /// Every submission this fake was asked to make, newest last.
   final List<SubmittedClaim> submitted = [];
@@ -22,8 +28,24 @@ class FakeCompetenciesRepository implements CompetenciesRepository {
   /// Set to have the next [myClaims] fail, as a lost connection would.
   Failure? listError;
 
+  /// Set to have the next [applicationLimits] fail.
+  Failure? limitsError;
+
   /// Set to have the next [submitClaim] fail, as a validation failure would.
   Failure? submitError;
+
+  @override
+  Future<ApplicationLimits> applicationLimits() async {
+    final failure = limitsError;
+    if (failure != null) {
+      limitsError = null;
+      throw failure;
+    }
+    return ApplicationLimits(
+      activeCount: claims.where((claim) => claim.isLive).length,
+      maxActiveCourseUnits: maxActiveCourseUnits,
+    );
+  }
 
   @override
   Future<List<TutorClaim>> myClaims() async {

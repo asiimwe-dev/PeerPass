@@ -22,6 +22,7 @@ import uuid
 
 from httpx import AsyncClient
 
+from app.core.config import get_settings
 from app.models.enums import CompetencyStatus
 from tests.conftest import CommittedEnv
 from tests.support import (
@@ -66,6 +67,13 @@ async def _submit(
         },
     )
     assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def _course_units(client: AsyncClient, account: dict) -> list[dict]:
+    """The faculty catalogue the signed-in account may apply for."""
+    response = await client.get("/v1/academics/course-units", headers=bearer(account))
+    assert response.status_code == 200, response.text
     return response.json()
 
 
@@ -330,3 +338,108 @@ async def test_the_list_rejects_a_malformed_public_id_shape(
     # rather than being a way to widen the scope.
     assert listed.status_code == 200, listed.text
     assert listed.json() == [], listed.json()
+
+
+async def test_the_application_cap_counts_live_claims(
+    committed_client: AsyncClient,
+    committed_env: CommittedEnv,
+    monkeypatch,
+) -> None:
+    """A fourth unit is refused while three claims are live.
+
+    The cap is lowered to two here so the test can exercise it with the three
+    units the fixture faculty publishes. The count is the same one the endpoint
+    reports, and a rejected claim releases its slot so a tutor can answer it.
+    """
+    monkeypatch.setenv("MAX_ACTIVE_COURSE_UNITS", "2")
+    get_settings.cache_clear()
+    try:
+        unit = await first_course_unit(committed_env)
+        student = await register(committed_client, "me-cap@peerpass.mak.ac.ug")
+        await complete_profile(committed_client, student, course_unit=unit)
+        units = await _course_units(committed_client, student)
+        grade = await grade_named(committed_client, "A")
+
+        first = await _submit(committed_client, student, units[0], grade)
+        await _submit(committed_client, student, units[1], grade)
+
+        third = await committed_client.post(
+            "/v1/competencies",
+            headers=bearer(student),
+            json={
+                "course_unit_id": units[2]["id"],
+                "grade_id": grade["id"],
+                "source": "transcript",
+                "evidence_reference": "Semester 5 transcript",
+            },
+        )
+        assert third.status_code == 422, third.text
+        assert "at most 2 active course applications" in third.text, third.text
+
+        limits = await committed_client.get(
+            "/v1/competencies/limits", headers=bearer(student)
+        )
+        assert limits.status_code == 200, limits.text
+        assert limits.json()["active_count"] == 2, limits.json()
+        assert limits.json()["max_active_course_units"] == 2, limits.json()
+
+        # A rejection is not a slot. Rejecting one live claim makes room for the
+        # third unit, and then the rejected unit itself cannot be reopened while
+        # the cap is full.
+        admin = await grant_admin(committed_env, "admin.me-cap@peerpass.mak.ac.ug")
+        await _review(
+            committed_client,
+            admin,
+            first["id"],
+            status=CompetencyStatus.REJECTED.value,
+            rejection_reason="Use the final transcript, not the provisional one.",
+        )
+        await _submit(committed_client, student, units[2], grade)
+
+        reopened = await committed_client.post(
+            "/v1/competencies",
+            headers=bearer(student),
+            json={
+                "course_unit_id": units[0]["id"],
+                "grade_id": grade["id"],
+                "source": "transcript",
+                "evidence_reference": "Final transcript",
+            },
+        )
+        assert reopened.status_code == 422, reopened.text
+        assert "at most 2 active course applications" in reopened.text, reopened.text
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_verified_claim_also_uses_a_slot(
+    committed_client: AsyncClient,
+    committed_env: CommittedEnv,
+    monkeypatch,
+) -> None:
+    """Verification does not free the slot; it is the strongest live claim."""
+    monkeypatch.setenv("MAX_ACTIVE_COURSE_UNITS", "2")
+    get_settings.cache_clear()
+    try:
+        tutor = await verified_tutor(
+            committed_env, "me-cap-verified@peerpass.mak.ac.ug"
+        )
+        units = await _course_units(committed_client, tutor)
+        grade = await grade_named(committed_client, "A")
+
+        # The verified unit is one slot; one more is allowed, a third live claim
+        # is not.
+        await _submit(committed_client, tutor, units[1], grade)
+        third = await committed_client.post(
+            "/v1/competencies",
+            headers=bearer(tutor),
+            json={
+                "course_unit_id": units[2]["id"],
+                "grade_id": grade["id"],
+                "source": "transcript",
+                "evidence_reference": "Semester 5 transcript",
+            },
+        )
+        assert third.status_code == 422, third.text
+    finally:
+        get_settings.cache_clear()

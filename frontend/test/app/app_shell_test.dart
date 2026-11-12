@@ -19,6 +19,10 @@ import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.da
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
 import 'package:peerpass/features/auth/presentation/providers/onboarding_providers.dart';
 import 'package:peerpass/features/auth/presentation/screens/sign_up_screen.dart';
+import 'package:peerpass/features/competencies/data/models/tutor_claim.dart';
+import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
+import 'package:peerpass/features/competencies/data/repositories/fake_competencies_repository.dart';
+import 'package:peerpass/features/competencies/presentation/screens/my_applications_screen.dart';
 import 'package:peerpass/features/home/presentation/screens/tutor_hq_screen.dart';
 import 'package:peerpass/features/incentives/data/repositories/fake_incentives_repository.dart';
 import 'package:peerpass/features/incentives/data/repositories/incentives_repository.dart';
@@ -71,6 +75,23 @@ const UserProfile _tutor = UserProfile(
   facultyId: 'subject-1',
   yearOfStudy: 2,
   primaryCourseUnitIds: ['unit-1'],
+);
+
+/// One pending claim, so the profile row and the status screen have a record
+/// to render rather than an empty state.
+final TutorClaim _pendingClaim = TutorClaim(
+  id: 'claim-1',
+  courseUnitId: 'unit-1',
+  courseUnitCode: 'BIT 221',
+  courseUnitName: 'Operating Systems',
+  gradeId: 'grade-1',
+  gradeLabel: 'A',
+  statusWire: 'pending',
+  status: TutorClaimStatus.pending,
+  gradePoints: 5,
+  meetsThreshold: true,
+  createdAt: DateTime.utc(2026, 11),
+  evidenceReference: 'Transcript',
 );
 
 /// A repository whose restore stays pending until the test releases it.
@@ -476,6 +497,43 @@ void main() {
     expect(find.byType(SignUpScreen), findsNothing);
   });
 
+  testWidgets(
+    'the applications row opens the status screen and is kept by the guard',
+    (tester) async {
+      // The row on Profile pushed a registered route, but the guard's allow-list
+      // did not include it, so every tap came straight back to home. The screen
+      // and its direct widget test both existed; only the real router could catch
+      // this.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(
+              _signedIn(profile: _tutor),
+            ),
+            competenciesRepositoryProvider.overrideWithValue(
+              FakeCompetenciesRepository(claims: [_pendingClaim]),
+            ),
+          ],
+          child: const PeerPassApp(),
+        ),
+      );
+      await _settle(tester);
+
+      GoRouter.of(tester.element(find.byType(Scaffold).first))
+          .go(AppRoutes.profile);
+      await _settle(tester);
+
+      expect(find.text('Tutor applications'), findsOneWidget);
+      await tester.tap(find.text('Tutor applications'));
+      await _settle(tester);
+
+      expect(find.byType(MyApplicationsScreen), findsOneWidget);
+      expect(find.text('BIT 221 · Operating Systems'), findsOneWidget);
+      expect(find.text('Awaiting review'), findsOneWidget);
+      expect(find.text(_homeText), findsNothing);
+    },
+  );
+
   testWidgets('the certificate screen is reached from home and kept by the guard', (
     tester,
   ) async {
@@ -505,13 +563,13 @@ void main() {
     // to be there instead of the entry -- which reads as a broken tile rather than
     // as a test that did not scroll.
     await tester.scrollUntilVisible(
-      find.text('My certificate'),
+      find.text('My certificates'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
     await _settle(tester);
 
-    await tester.tap(find.text('My certificate'));
+    await tester.tap(find.text('My certificates'));
     await _settle(tester);
 
     expect(find.byType(CertificateScreen), findsOneWidget);

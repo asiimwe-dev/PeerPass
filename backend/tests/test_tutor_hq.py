@@ -270,8 +270,15 @@ async def test_a_verified_tutor_keeps_the_ring_even_below_the_promotion_bar(
 # --- certificate progress --------------------------------------------------
 
 
-async def test_certificate_numbers_match_the_certificate_endpoint(client, db_session):
-    """The HQ and the certificate screen must not disagree about the threshold."""
+async def test_certificate_numbers_follow_the_per_course_portfolio(client, db_session):
+    """A tutor-wide total is not a certificate.
+
+    The profile here says 1234 minutes, but no course has a verified competency
+    or a completed session behind it. A certificate is earned per course, so the
+    certificate screen answers with an empty portfolio and the dashboard must
+    not report hours the screen cannot see. The threshold still comes from
+    settings on both, which is the half that must never drift.
+    """
     body, _user, _profile = await _tutor(
         client,
         db_session,
@@ -284,11 +291,13 @@ async def test_certificate_numbers_match_the_certificate_endpoint(client, db_ses
         await client.get("/v1/incentives/certificate", headers=_bearer(body))
     ).json()
 
-    assert hq["certified_minutes"] == certificate["certified_minutes"] == 1234
-    assert hq["certificate_required_minutes"] == certificate["required_minutes"]
-    assert hq["certificate_remaining_minutes"] == certificate["remaining_minutes"]
-    assert hq["certificate_eligible"] == certificate["eligible"]
-    assert hq["certificate_progress"] == pytest.approx(certificate["progress"])
+    assert certificate["courses"] == []
+    assert hq["certified_minutes"] == 0
+    assert hq["certificate_eligible"] is False
+    assert hq["certificate_progress"] == 0.0
+    assert hq["certificate_remaining_minutes"] == (
+        get_settings().certificate_required_minutes
+    )
     assert (
         hq["certificate_required_minutes"]
         == get_settings().certificate_required_minutes

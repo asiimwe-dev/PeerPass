@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/features/competencies/data/models/application_limits.dart';
 import 'package:peerpass/features/competencies/data/models/tutor_claim.dart';
 
 /// The tutor-competency contract the client depends on.
@@ -14,6 +15,12 @@ abstract interface class CompetenciesRepository {
   /// Empty when they have submitted none. Not an error, and not gated on the
   /// tutor role: this is how a student finds out they have not applied yet.
   Future<List<TutorClaim>> myClaims();
+
+  /// How many live claims the caller holds, and the cap the API enforces.
+  ///
+  /// Live means pending or verified. A rejected claim does not consume a slot,
+  /// because resubmitting after a rejection must stay possible.
+  Future<ApplicationLimits> applicationLimits();
 
   /// Submits proof for a unit the user claims to know.
   ///
@@ -39,5 +46,15 @@ final competenciesRepositoryProvider = Provider<CompetenciesRepository>(
 /// The signed-in user's submitted tutor applications.
 final myClaimsProvider = FutureProvider<List<TutorClaim>>(
   (ref) => ref.read(competenciesRepositoryProvider).myClaims(),
+  retry: (retryCount, error) => null,
+);
+
+/// The signed-in user's active application count and the configured cap.
+///
+/// Separate from [myClaimsProvider] so a limits failure cannot hide the claims
+/// list: the screen still has something true to show even when it cannot say
+/// whether another application is allowed.
+final applicationLimitsProvider = FutureProvider<ApplicationLimits>(
+  (ref) => ref.read(competenciesRepositoryProvider).applicationLimits(),
   retry: (retryCount, error) => null,
 );

@@ -1,4 +1,4 @@
-import 'package:peerpass/features/incentives/data/models/certificate_eligibility.dart';
+import 'package:peerpass/features/incentives/data/models/certificate_portfolio.dart';
 
 /// One line of the certificate checklist: what is counted, how much there is,
 /// and whether that condition is already met.
@@ -35,7 +35,7 @@ String ratingLabel(double rating) => rating.toStringAsFixed(2);
 /// read "135h 52m of 15h" over a half-full bar, which looks like a rendering
 /// fault rather than the session shortfall it is. Only while the hours are the
 /// limiter does the headline talk about them.
-String certificateProgressLabel(CertificateEligibility eligibility) {
+String certificateProgressLabel(CourseCertificate eligibility) {
   if (eligibility.eligible) return 'Certificate earned';
 
   if (!eligibility.minutesMet) {
@@ -72,7 +72,7 @@ String certificateProgressLabel(CertificateEligibility eligibility) {
 /// hours, sessions, rating. Null rather than an empty string or a cheerful
 /// "you're done" once eligible, so the caller cannot render a remaining count
 /// that contradicts the verdict above it.
-String? remainingLabel(CertificateEligibility eligibility) {
+String? remainingLabel(CourseCertificate eligibility) {
   if (eligibility.eligible) return null;
 
   if (!eligibility.minutesMet) {
@@ -112,7 +112,7 @@ String? remainingLabel(CertificateEligibility eligibility) {
 /// The values are statements of the stored numbers and thresholds, not a second
 /// calculation of the verdict: `met` is the API's answer for that condition.
 List<CertificateRequirement> certificateRequirements(
-  CertificateEligibility eligibility,
+  CourseCertificate eligibility,
 ) {
   return [
     (
@@ -140,7 +140,7 @@ List<CertificateRequirement> certificateRequirements(
   ];
 }
 
-String _ratingRequirementValue(CertificateEligibility eligibility) {
+String _ratingRequirementValue(CourseCertificate eligibility) {
   final average = eligibility.averageRating;
   final required = ratingLabel(eligibility.requiredAverageRating);
 
@@ -165,7 +165,7 @@ String _ratingRequirementValue(CertificateEligibility eligibility) {
 /// widened the scale would take the screen down rather than draw an overfull
 /// bar. Clamping here is display tolerance, not a second opinion about
 /// eligibility: the verdict above is the API's, unchanged.
-double progressValue(CertificateEligibility eligibility) {
+double progressValue(CourseCertificate eligibility) {
   if (eligibility.progress.isNaN) return 0;
   return eligibility.progress.clamp(0.0, 1.0);
 }
