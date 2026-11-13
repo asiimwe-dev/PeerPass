@@ -41,6 +41,16 @@ class AuthInterceptor extends Interceptor {
   /// Refresh strategy. When null, a `401` is passed through untouched.
   final TokenRefreshCallback? onUnauthorized;
 
+  /// Marks a request the interceptor must not try to recover with a refresh.
+  ///
+  /// Carried by the refresh call itself. Without it, a `401` from
+  /// `/v1/auth/refresh` asks this interceptor to refresh, which re-enters the
+  /// same interceptor and waits on the refresh already in flight -- the request
+  /// that would release it being the request it is blocked on. Nothing ever
+  /// answers, and the session that was merely expired looks like a connection
+  /// that never comes back.
+  static const String skipRefreshExtraKey = 'peerpass.skip_refresh';
+
   Future<bool>? _inFlightRefresh;
 
   @override
@@ -64,6 +74,7 @@ class AuthInterceptor extends Interceptor {
     final recoverable =
         err.response?.statusCode == _statusUnauthorized &&
         err.requestOptions.extra[_retriedKey] != true &&
+        err.requestOptions.extra[skipRefreshExtraKey] != true &&
         refresh != null;
 
     if (!recoverable) {

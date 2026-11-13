@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:peerpass/core/network/auth_interceptor.dart';
 
 /// A token pair and the user record it belongs to, exactly as the API sends
 /// them.
@@ -84,13 +85,17 @@ class RemoteAuthDatasource {
   /// Exchanges a refresh token for a new pair.
   ///
   /// Goes through the same client as everything else, so it carries the same
-  /// base URL and timeouts. It is a bare `Dio` call on purpose: the auth
-  /// interceptor would attach the access token to it, and on a `401` it would
-  /// try to refresh again -- which is the request that just failed.
+  /// base URL and timeouts, but it opts out of the auth interceptor's recovery:
+  /// a `401` here means the refresh token is dead, and asking the interceptor to
+  /// refresh again would re-enter the single-flight it is already inside. See
+  /// [AuthInterceptor.skipRefreshExtraKey].
   Future<AuthPayload> refresh(String refreshToken) async {
     final response = await _dio.post<Map<String, dynamic>>(
       '/v1/auth/refresh',
       data: {'refresh_token': refreshToken},
+      options: Options(
+        extra: {AuthInterceptor.skipRefreshExtraKey: true},
+      ),
     );
     return AuthPayload.fromJson(response.data!);
   }

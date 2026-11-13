@@ -1477,6 +1477,14 @@ retry**; it does not report them as signed out, because "we could not reach the
 network" and "your session ended" are different facts and only one of them is
 true. A refresh that is *refused* does clear the token and routes to sign-in.
 
+The refresh call itself **opts out of the transport interceptor's recovery**
+(`AuthInterceptor.skipRefreshExtraKey`). The interceptor answers a `401` by
+refreshing; without the opt-out, a refused refresh re-enters the single-flight
+refresh and waits on the request it is itself blocking, which never answers and
+presents as a connection that never comes back. The opt-out is deliberately one
+flag on one request: every other call still recovers, or a session that could
+have been renewed would be reported as refused instead.
+
 ### 9.6 Logging
 
 - `database_echo` logs SQL **with its bound parameters**, which for this schema
