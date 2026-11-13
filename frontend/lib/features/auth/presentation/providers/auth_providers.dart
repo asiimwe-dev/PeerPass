@@ -6,6 +6,7 @@ import 'package:peerpass/core/models/academic_fallback.dart';
 import 'package:peerpass/core/models/course_unit_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
+import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/storage/session_cache.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
@@ -44,8 +45,7 @@ class AuthController {
     final operation = ++_operation;
     final profile = await _repository.signIn(email: email, password: password);
     if (operation != _operation) return;
-    _cache?.activateAccount(profile.publicId);
-    _session.signedIn(profile);
+    await _adopt(profile);
   }
 
   /// Creates the account, which the API signs straight in.
@@ -63,8 +63,7 @@ class AuthController {
       password: password,
     );
     if (operation != _operation) return;
-    _cache?.activateAccount(profile.publicId);
-    _session.signedIn(profile);
+    await _adopt(profile);
   }
 
   /// Updates the profile and adopts the stored record the API returns.
@@ -86,8 +85,7 @@ class AuthController {
       primaryCourseUnitIds: primaryCourseUnitIds,
     );
     if (operation != _operation) return;
-    _cache?.activateAccount(profile.publicId);
-    _session.signedIn(profile);
+    await _adopt(profile);
   }
 
   /// Ends the session and returns to the signed-out state.
@@ -101,9 +99,14 @@ class AuthController {
 
   /// Tries the cold-start check again after it failed.
   ///
-  /// Offered by the splash screen. Without it a student whose connection dropped
-  /// on launch has no way forward but force-quitting the app, which on a
-  /// low-memory handset is not something they will think to do.
+  /// Offered by the splash screen and by pull-to-refresh while offline. Without
+  /// it a student whose connection dropped on launch has no way forward but
+  /// force-quitting the app, which on a low-memory handset is not something they
+  /// will think to do.
+  ///
+  /// A failure while a cached session is already showing does not send the app
+  /// back to splash: the account is still usable, and the offline notice is the
+  /// honest answer to whether the data is current.
   Future<void> retryRestore() => _restore(++_operation);
 
   /// Starts the cold-start check of the stored session.
@@ -111,29 +114,99 @@ class AuthController {
   /// Called once, by [authControllerProvider] when it is first read, rather than
   /// exposed for the shell to remember to invoke -- a check nobody calls is a
   /// check that never happens, and an app held on splash forever.
-  void startRestore() => unawaited(_restore(++_operation));
+  void startRestore() => unawaited(_startRestore(++_operation));
+
+  Future<void> _startRestore(int operation) async {
+    // The saved profile is shown before the network is asked, because the
+    // network can take ten seconds to admit it is unreachable. A returning
+    // student sees their own account and their saved rail immediately; the
+    // restore below either confirms it or corrects it. A device with no stored
+    // token is never let in on the snapshot alone.
+    final cached = await _readCachedProfile();
+    if (operation != _operation) return;
+    if (cached != null && await _repository.hasStoredSession()) {
+      if (operation != _operation) return;
+      await _adopt(cached, isOffline: true, remember: false);
+    }
+    await _restore(operation);
+  }
 
   Future<void> _restore(int operation) async {
     try {
       final profile = await _repository.restoreSession();
       if (operation != _operation) return;
       if (profile == null) {
-        _cache?.deactivateAccount();
+        await _forgetAccount();
         _session.signedOut();
       } else {
-        _cache?.activateAccount(profile.publicId);
-        _session.signedIn(profile);
+        await _adopt(profile);
       }
     } on NetworkFailure catch (failure) {
       if (operation != _operation) return;
+      final cached = await _readCachedProfile();
+      if (operation != _operation) return;
+      if (cached != null) {
+        await _adopt(cached, isOffline: true, remember: false);
+        return;
+      }
       _session.stillUnknown(restoreFailure: failure);
     } on Failure {
       if (operation != _operation) return;
       // Anything else means the stored session is not usable, which is the
       // definition of signed out.
-      _cache?.deactivateAccount();
+      await _forgetAccount();
       _session.signedOut();
     }
+  }
+
+  /// Adopts a profile and points the cache at the account it belongs to.
+  ///
+  /// The cache namespace is switched before the session is recorded, because the
+  /// session change is what rebuilds every account-scoped provider. A provider
+  /// rebuilt while the cache still pointed at the previous account would read
+  /// that account's saved answer, which is the leak this ordering prevents.
+  Future<void> _adopt(
+    UserProfile profile, {
+    bool isOffline = false,
+    bool remember = true,
+  }) async {
+    _cache?.activateAccount(profile.publicId);
+    // Saved before the session changes, so the namespace and the snapshot agree
+    // by the time any provider rebuilds. It is also what keeps a sign-out that
+    // follows immediately from racing a still-pending write.
+    if (remember) await _remember(profile);
+    _session.signedIn(profile, isOffline: isOffline);
+  }
+
+  Future<void> _remember(UserProfile profile) async {
+    try {
+      await _cache?.writeProfile(profile.toJson());
+    } on Object {
+      // The snapshot is an enhancement. A cache that cannot be written must not
+      // undo a sign-in the server has already accepted.
+    }
+  }
+
+  Future<UserProfile?> _readCachedProfile() async {
+    final cache = _cache;
+    if (cache == null) return null;
+    try {
+      final json = await cache.readProfile();
+      return json == null ? null : UserProfile.fromJson(json);
+    } on Object {
+      // A corrupt snapshot is the same as no snapshot.
+      return null;
+    }
+  }
+
+  /// Drops the saved account and every answer scoped to it.
+  Future<void> _forgetAccount() async {
+    try {
+      await _cache?.clear();
+    } on Object {
+      // Deactivating below still stops a stale namespace being read.
+    }
+    _cache?.deactivateAccount();
   }
 }
 

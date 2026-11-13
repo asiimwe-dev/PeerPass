@@ -79,7 +79,10 @@ class TutorRail extends ConsumerWidget {
                           'faculty. Nothing is wrong -- there are simply none '
                           'to recommend yet.',
                     )
-                  : _TutorCards(tutors: loaded),
+                  : _TutorCards(
+                      tutors: loaded,
+                      isOffline: loaded.any((entry) => entry.isOfflineCached),
+                    ),
             // Nothing at all while it loads. A rail-shaped hole that fills in a
             // moment later is honest; a spinner over the top of the home screen
             // would stall a dashboard whose other contents are already true.
@@ -96,22 +99,48 @@ class TutorRail extends ConsumerWidget {
 
 /// The rail itself: cards, in the order the API sent them.
 class _TutorCards extends StatelessWidget {
-  const _TutorCards({required this.tutors});
+  const _TutorCards({required this.tutors, required this.isOffline});
 
   final List<TutorRailEntry> tutors;
 
+  /// Whether the list is the device's last saved copy.
+  final bool isOffline;
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _cardHeight,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: tutors.length,
-        separatorBuilder: (context, index) =>
-            const SizedBox(width: AppDimens.md),
-        itemBuilder: (context, index) =>
-            TutorCard(entry: tutors[index], width: _cardWidth),
-      ),
+    final palette = AppPalette.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (isOffline) ...[
+          Row(
+            children: [
+              Icon(Icons.cloud_off_outlined, size: 16, color: palette.muted),
+              const SizedBox(width: AppDimens.xs),
+              Expanded(
+                child: Text(
+                  'No connection · saved list',
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: palette.muted),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppDimens.sm),
+        ],
+        SizedBox(
+          height: _cardHeight,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: tutors.length,
+            separatorBuilder: (context, index) =>
+                const SizedBox(width: AppDimens.md),
+            itemBuilder: (context, index) =>
+                TutorCard(entry: tutors[index], width: _cardWidth),
+          ),
+        ),
+      ],
     );
   }
 }

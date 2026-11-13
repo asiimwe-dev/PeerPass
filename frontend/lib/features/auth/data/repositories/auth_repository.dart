@@ -5,6 +5,7 @@ import 'package:peerpass/core/models/grade_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
+
 /// The authentication and own-profile contract the rest of the client depends
 /// on.
 ///
@@ -33,6 +34,14 @@ abstract interface class AuthRepository {
   /// out. A network failure is the one case worth reporting: it is retryable and
   /// a student on a bad connection should be told so rather than signed out.
   Future<UserProfile?> restoreSession();
+
+  /// Whether this device still holds a session worth restoring.
+  ///
+  /// Read before spending it, so a cold start can show the last saved profile
+  /// from the cache without first guessing whether the handset was signed out.
+  /// A snapshot left behind after a sign-out that did not finish is not a session
+  /// and must not be rendered as one.
+  Future<bool> hasStoredSession();
 
   /// Renews the access token, returning whether the session survived.
   ///

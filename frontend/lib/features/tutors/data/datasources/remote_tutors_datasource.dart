@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:peerpass/core/models/course_unit.dart';
+import 'package:peerpass/core/storage/session_cache.dart';
 
 /// Talks to the `/v1/tutors` endpoints and the course-unit catalogue.
 ///
@@ -10,9 +11,12 @@ import 'package:peerpass/core/models/course_unit.dart';
 /// purpose: the repository is where the wire shape becomes a model, so there is
 /// one place to look when the two disagree.
 class RemoteTutorsDatasource {
-  const RemoteTutorsDatasource(this._dio);
+  const RemoteTutorsDatasource(this._dio, {this.cache});
 
   final Dio _dio;
+
+  /// The last successful rail, so home is not empty when the API is not reachable.
+  final SessionCache? cache;
 
   /// The discovery rail.
   ///
@@ -31,14 +35,48 @@ class RemoteTutorsDatasource {
   /// with an empty list precisely so a client that filtered on a stale picker
   /// value does not get an error screen.
   Future<List<Map<String, dynamic>>> topTutors({String? courseUnitId}) async {
-    final response = await _dio.get<List<dynamic>>(
-      '/v1/tutors/top',
-      queryParameters: {'course_unit_id': ?courseUnitId},
-    );
-    return (response.data ?? const <dynamic>[])
-        .whereType<Map<String, dynamic>>()
-        .toList();
+    // Captured before the request so a response that arrives after an account
+    // change cannot be written into the next account's namespace.
+    final accountId = cache?.accountId;
+    try {
+      final response = await _dio.get<List<dynamic>>(
+        '/v1/tutors/top',
+        queryParameters: {'course_unit_id': ?courseUnitId},
+      );
+      final tutors = (response.data ?? const <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      await cache?.writeTopTutors(
+        tutors,
+        courseUnitId: courseUnitId,
+        accountId: accountId,
+      );
+      return tutors;
+    } on DioException catch (error) {
+      if (!_canUseCache(error)) rethrow;
+      final cached = await cache?.readTopTutors(
+        courseUnitId: courseUnitId,
+        accountId: accountId,
+      );
+      if (cached != null) {
+        return [
+          for (final row in cached) {...row, '_offline_cached': true},
+        ];
+      }
+      rethrow;
+    }
   }
+
+  /// Whether a transport failure is one a saved answer can stand in for.
+  ///
+  /// Only a connection that never reached the server. A `500`, a `401`, or a
+  /// malformed body is the server answering, and showing yesterday's tutors over
+  /// that would hide the one fact the screen needs to report.
+  bool _canUseCache(DioException error) =>
+      error.type == DioExceptionType.connectionError ||
+      error.type == DioExceptionType.connectionTimeout ||
+      error.type == DioExceptionType.sendTimeout ||
+      error.type == DioExceptionType.receiveTimeout;
 
   /// The caller's own tutor dashboard.
   ///

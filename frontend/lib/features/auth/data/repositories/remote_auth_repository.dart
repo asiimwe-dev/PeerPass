@@ -64,6 +64,10 @@ class RemoteAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<bool> hasStoredSession() async =>
+      await tokenStore.readRefreshToken() != null;
+
+  @override
   Future<UserProfile?> restoreSession() async {
     final refreshToken = await tokenStore.readRefreshToken();
     if (refreshToken == null) return null;

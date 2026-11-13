@@ -11,6 +11,7 @@ import 'package:peerpass/core/widgets/app_avatar.dart';
 import 'package:peerpass/core/widgets/app_button.dart';
 import 'package:peerpass/core/widgets/app_card.dart';
 import 'package:peerpass/core/widgets/content_width_limiter.dart';
+import 'package:peerpass/core/widgets/offline_notice.dart';
 import 'package:peerpass/core/widgets/section_header.dart';
 
 /// The signed-in landing screen.
@@ -53,7 +54,8 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final palette = AppPalette.of(context);
-    final profile = ref.watch(sessionControllerProvider).profile;
+    final session = ref.watch(sessionControllerProvider);
+    final profile = session.profile;
     final composer = askComposer;
     final card = activeSessionCard;
     final rail = tutorRail;
@@ -100,6 +102,10 @@ class HomeScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: AppDimens.xl),
+              if (session.isOffline) ...[
+                const OfflineNotice(),
+                const SizedBox(height: AppDimens.lg),
+              ],
               if (composer != null)
                 composer
               else

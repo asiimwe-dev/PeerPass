@@ -8,6 +8,7 @@ import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
 import 'package:peerpass/core/widgets/failure_view.dart';
+import 'package:peerpass/core/widgets/offline_notice.dart';
 import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 import 'package:peerpass/features/home/presentation/providers/change_faculty_controller.dart';
 import 'package:peerpass/features/home/presentation/providers/profile_providers.dart';
@@ -19,7 +20,8 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(sessionControllerProvider).profile;
+    final session = ref.watch(sessionControllerProvider);
+    final profile = session.profile;
     final theme = Theme.of(context);
     final university = profile?.universityId == null
         ? null
@@ -48,6 +50,12 @@ class ProfileScreen extends ConsumerWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppDimens.xl),
+            if (session.isOffline) ...[
+              const OfflineNotice(
+                message: 'No connection · showing your saved profile',
+              ),
+              const SizedBox(height: AppDimens.lg),
+            ],
             Card(
               child: Column(
                 children: [

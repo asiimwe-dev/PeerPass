@@ -10,10 +10,13 @@ import 'package:peerpass/app/splash_screen.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/course_unit_option.dart';
 import 'package:peerpass/core/models/subject.dart';
+import 'package:peerpass/core/models/tutor_standing.dart';
+import 'package:peerpass/core/models/tutor_summary.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
+import 'package:peerpass/core/storage/session_cache.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/fake_auth_repository.dart';
 import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
@@ -36,8 +39,11 @@ import 'package:peerpass/features/notifications/data/repositories/notifications_
 import 'package:peerpass/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:peerpass/features/sessions/data/repositories/fake_sessions_repository.dart';
 import 'package:peerpass/features/sessions/data/repositories/sessions_repository.dart';
+import 'package:peerpass/features/tutors/data/models/tutor_rail_entry.dart';
 import 'package:peerpass/features/tutors/data/repositories/fake_tutors_repository.dart';
 import 'package:peerpass/features/tutors/data/repositories/tutors_repository.dart';
+
+import '../support/memory_session_cache.dart';
 
 const String _signedOutText = 'Sign in';
 
@@ -113,9 +119,14 @@ class _GatedAuthRepository extends FakeAuthRepository {
 
 /// A repository that fails the cold-start check the way a dropped connection
 /// does, rather than reporting signed out.
+/// A repository whose connection is down until a test says otherwise.
 class _OfflineAuthRepository extends FakeAuthRepository {
+  /// When true, the restore behaves as it would with a working connection.
+  bool isOnline = false;
+
   @override
   Future<UserProfile?> restoreSession() async {
+    if (isOnline) return await super.restoreSession();
     throw const NetworkFailure();
   }
 }
@@ -696,5 +707,221 @@ void main() {
     expect(find.byType(NotificationsScreen), findsOneWidget);
     expect(find.text('New tutoring request'), findsOneWidget);
     expect(find.text(_homeText), findsNothing);
+  });
+
+  _accountSwitchTests();
+}
+
+/// A discovery rail that a test can change between accounts.
+class _SwitchingTutorsRepository extends FakeTutorsRepository {
+  List<TutorRailEntry> rail = const [];
+
+  @override
+  Future<List<TutorRailEntry>> topTutors({String? courseUnitId}) async => rail;
+}
+
+TutorRailEntry _railEntry(String name, {required String id}) {
+  return TutorRailEntry(
+    tutor: TutorSummary(
+      userId: id,
+      fullName: name,
+      standingWire: 'verified',
+      standing: TutorStanding.verified,
+      averageRating: 4.8,
+      completedSessions: 4,
+    ),
+    endorsedCourseUnitIds: const [],
+    endorsementCount: 1,
+  );
+}
+
+const UserProfile _tutorAccount = UserProfile(
+  publicId: 'tutor-account',
+  email: 'tutor@must.ac.ug',
+  fullName: 'Tutor Account',
+  roles: {UserRole.student, UserRole.tutor},
+  universityId: 'university-1',
+  facultyId: 'subject-1',
+);
+
+const UserProfile _studentAccount = UserProfile(
+  publicId: 'student-account',
+  email: 'student2@must.ac.ug',
+  fullName: 'Student Account',
+  roles: {UserRole.student},
+  universityId: 'university-1',
+  facultyId: 'subject-1',
+);
+
+void _accountSwitchTests() {
+  testWidgets('switching accounts drops the previous discovery rail', (
+    tester,
+  ) async {
+    // The rail is caller-scoped on the server even though its entries are
+    // public: the API reads the caller's university from the token. It was left
+    // out of the identity-change invalidation, so the previous account's tutors
+    // stayed on screen until the student pulled to refresh.
+    final auth = FakeAuthRepository(
+      session: _tutorAccount,
+      refreshToken: 'refresh',
+    );
+    final tutors = _SwitchingTutorsRepository()
+      ..rail = [_railEntry('Tutor From The Tutor Account', id: 'tutor-a')];
+    final container = ProviderContainer(
+      overrides: [
+        authRepositoryProvider.overrideWithValue(auth),
+        tutorsRepositoryProvider.overrideWithValue(tutors),
+        matchingRepositoryProvider.overrideWithValue(FakeMatchingRepository()),
+        sessionsRepositoryProvider.overrideWithValue(FakeSessionsRepository()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+    expect(find.text('Tutor From The Tutor Account'), findsOneWidget);
+
+    auth.session = _studentAccount;
+    tutors.rail = [_railEntry('Tutor For The Student Account', id: 'tutor-b')];
+    await container
+        .read(authControllerProvider)
+        .signIn(email: _studentAccount.email, password: 'password');
+    await _settle(tester);
+    await _settle(tester);
+
+    expect(find.text('Tutor For The Student Account'), findsOneWidget);
+    expect(find.text('Tutor From The Tutor Account'), findsNothing);
+  });
+
+  testWidgets('a cold start with no connection opens on the saved account', (
+    tester,
+  ) async {
+    // A student on a train is not signed out. With a stored token and the last
+    // saved profile, the app can open their home instead of holding them on a
+    // splash screen whose only action is a retry that cannot succeed.
+    final auth = _OfflineAuthRepository()
+      ..session = _enrolled
+      ..refreshToken = 'refresh';
+    final cache = MemorySessionCache(profile: _enrolled.toJson());
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(auth),
+          sessionCacheProvider.overrideWithValue(cache),
+          tutorsRepositoryProvider.overrideWithValue(
+            FakeTutorsRepository(
+              tutors: [_railEntry('Saved Tutor', id: 'tutor-1')],
+            ),
+          ),
+          matchingRepositoryProvider.overrideWithValue(
+            FakeMatchingRepository(),
+          ),
+          sessionsRepositoryProvider.overrideWithValue(
+            FakeSessionsRepository(),
+          ),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+    await _settle(tester);
+
+    expect(find.byType(SplashScreen), findsNothing);
+    expect(find.text(_homeText), findsOneWidget);
+    expect(find.textContaining('No connection'), findsOneWidget);
+    expect(find.text('Saved Tutor'), findsOneWidget);
+  });
+
+  testWidgets('the app reconnects on its own once the connection returns', (
+    tester,
+  ) async {
+    // A student should not have to know that pull-to-refresh is how to get back.
+    // The app knows it is offline, so it is the one that keeps trying.
+    final auth = _OfflineAuthRepository()
+      ..session = _enrolled
+      ..refreshToken = 'refresh';
+    final cache = MemorySessionCache(profile: _enrolled.toJson());
+    final tutors = _SwitchingTutorsRepository()
+      ..rail = [_railEntry('Saved Tutor', id: 'tutor-1')];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(auth),
+          sessionCacheProvider.overrideWithValue(cache),
+          tutorsRepositoryProvider.overrideWithValue(tutors),
+          matchingRepositoryProvider.overrideWithValue(
+            FakeMatchingRepository(),
+          ),
+          sessionsRepositoryProvider.overrideWithValue(
+            FakeSessionsRepository(),
+          ),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+    await _settle(tester);
+    expect(find.textContaining('No connection'), findsOneWidget);
+
+    auth.isOnline = true;
+    tutors.rail = [_railEntry('Live Tutor', id: 'tutor-2')];
+    await tester.pump(const Duration(seconds: 6));
+    await _settle(tester);
+    await _settle(tester);
+
+    expect(find.textContaining('No connection'), findsNothing);
+    expect(find.text('Live Tutor'), findsOneWidget);
+    expect(find.text('Saved Tutor'), findsNothing);
+  });
+
+  testWidgets('refreshing while offline reconnects immediately', (
+    tester,
+  ) async {
+    // The other half of the offline session: the saved copy must be replaced
+    // when the connection returns, not kept because the account did not change.
+    final auth = _OfflineAuthRepository()
+      ..session = _enrolled
+      ..refreshToken = 'refresh';
+    final cache = MemorySessionCache(profile: _enrolled.toJson());
+    final tutors = _SwitchingTutorsRepository()
+      ..rail = [_railEntry('Saved Tutor', id: 'tutor-1')];
+    final container = ProviderContainer(
+      overrides: [
+        authRepositoryProvider.overrideWithValue(auth),
+        sessionCacheProvider.overrideWithValue(cache),
+        tutorsRepositoryProvider.overrideWithValue(tutors),
+        matchingRepositoryProvider.overrideWithValue(FakeMatchingRepository()),
+        sessionsRepositoryProvider.overrideWithValue(FakeSessionsRepository()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+    await _settle(tester);
+    expect(find.textContaining('No connection'), findsOneWidget);
+    expect(find.text('Saved Tutor'), findsOneWidget);
+
+    auth.isOnline = true;
+    tutors.rail = [_railEntry('Live Tutor', id: 'tutor-2')];
+    await container.read(authControllerProvider).retryRestore();
+    await _settle(tester);
+    await _settle(tester);
+
+    expect(find.textContaining('No connection'), findsNothing);
+    expect(find.text('Live Tutor'), findsOneWidget);
+    expect(find.text('Saved Tutor'), findsNothing);
   });
 }

@@ -14,6 +14,7 @@ class TutorRailEntry {
     required this.tutor,
     required this.endorsedCourseUnitIds,
     required this.endorsementCount,
+    this.isOfflineCached = false,
   });
 
   /// Reads one rail entry.
@@ -35,6 +36,7 @@ class TutorRailEntry {
       tutor: TutorSummary.fromJson(json),
       endorsedCourseUnitIds: readIdList(json['endorsed_course_unit_ids']),
       endorsementCount: count.toInt(),
+      isOfflineCached: json['_offline_cached'] == true,
     );
   }
 
@@ -49,6 +51,13 @@ class TutorRailEntry {
 
   /// How many endorsements the tutor has in total, across every unit.
   final int endorsementCount;
+
+  /// Whether this entry came from the device's last saved rail.
+  ///
+  /// The rail is still worth showing without a connection, but it is not live:
+  /// a tutor may have paused since, or a newly endorsed one is missing. The rail
+  /// says so instead of letting a saved list look like a fresh one.
+  final bool isOfflineCached;
 
   /// How many endorsements, as a student reads it.
   ///
@@ -67,12 +76,14 @@ class TutorRailEntry {
       other is TutorRailEntry &&
           other.tutor == tutor &&
           other.endorsementCount == endorsementCount &&
+          other.isOfflineCached == isOfflineCached &&
           listEquals(other.endorsedCourseUnitIds, endorsedCourseUnitIds);
 
   @override
   int get hashCode => Object.hash(
     tutor,
     endorsementCount,
+    isOfflineCached,
     Object.hashAll(endorsedCourseUnitIds),
   );
 
