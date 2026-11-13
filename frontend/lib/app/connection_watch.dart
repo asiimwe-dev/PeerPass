@@ -17,6 +17,13 @@ import 'package:peerpass/features/auth/presentation/providers/auth_providers.dar
 /// network would otherwise spend the whole battery re-dialling a server that is
 /// not there. Returning to the foreground retries immediately, since coming back
 /// to the app is the moment a student expects it to be current again.
+///
+/// The next attempt is scheduled *before* the current one is awaited. A request
+/// that hangs -- a socket the server closed under us, a radio that never admits
+/// it is gone -- would otherwise keep the attempt in flight forever and stop the
+/// retries with it, which is the one failure mode the student would experience as
+/// "it never comes back". Overlapping attempts are harmless: the auth controller
+/// drops all but the newest.
 class ConnectionWatch extends ConsumerStatefulWidget {
   const ConnectionWatch({required this.child, super.key});
 
@@ -33,7 +40,6 @@ class _ConnectionWatchState extends ConsumerState<ConnectionWatch> {
   Timer? _timer;
   AppLifecycleListener? _lifecycle;
   Duration _delay = _firstDelay;
-  bool _retrying = false;
   bool _disposed = false;
 
   @override
@@ -51,42 +57,49 @@ class _ConnectionWatchState extends ConsumerState<ConnectionWatch> {
     super.dispose();
   }
 
+  /// Schedules the next attempt, or stops trying when there is nothing to fix.
+  ///
+  /// The delay grows only while offline, so a single dropped connection does not
+  /// leave the app crawling back at forty-second intervals for the rest of the
+  /// session.
   void _scheduleIfOffline(bool isOffline) {
     _timer?.cancel();
     _timer = null;
-    if (!isOffline || _disposed) {
+    if (!isOffline) {
       _delay = _firstDelay;
       return;
     }
-    _timer = Timer(_delay, _retry);
+    final delay = _delay;
+    _delay = delay * 2 > _maxDelay ? _maxDelay : delay * 2;
+    _timer = Timer(delay, _attempt);
   }
 
-  Future<void> _retry() async {
-    if (_retrying || _disposed) return;
-    _retrying = true;
+  Future<void> _attempt() async {
+    if (_disposed) return;
+    // Scheduled first: whether this attempt answers, fails, or hangs, another
+    // one follows.
+    _scheduleIfOffline(ref.read(sessionControllerProvider).isOffline);
     try {
       await ref.read(authControllerProvider).retryRestore();
-    } finally {
-      _retrying = false;
+    } on Object {
+      // The next attempt is already scheduled, and the screen already says
+      // there is no connection. Nothing here is worth a second error report.
     }
-    if (_disposed) return;
-    // The listener has already re-scheduled on success. Waiting longer on
-    // failure is what keeps a phone in a tunnel from retrying every five
-    // seconds until it is charged.
-    _delay = _delay * 2 > _maxDelay ? _maxDelay : _delay * 2;
-    _scheduleIfOffline(ref.read(sessionControllerProvider).isOffline);
   }
 
   void _onResume() {
     if (!ref.read(sessionControllerProvider).isOffline) return;
+    _timer?.cancel();
+    _timer = null;
     _delay = _firstDelay;
-    unawaited(_retry());
+    unawaited(_attempt());
   }
 
   @override
   Widget build(BuildContext context) {
     ref.listen<SessionState>(sessionControllerProvider, (previous, next) {
       if (previous?.isOffline == next.isOffline) return;
+      _delay = _firstDelay;
       _scheduleIfOffline(next.isOffline);
     });
     return widget.child;

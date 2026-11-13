@@ -131,6 +131,20 @@ class _OfflineAuthRepository extends FakeAuthRepository {
   }
 }
 
+/// A repository whose first restore never answers, like a socket the server
+/// closed underneath the client: the request neither succeeds nor times out.
+class _HangingOnceAuthRepository extends FakeAuthRepository {
+  int restores = 0;
+  final Completer<void> _never = Completer<void>();
+
+  @override
+  Future<UserProfile?> restoreSession() async {
+    restores++;
+    if (restores == 1) await _never.future;
+    return session;
+  }
+}
+
 class _DeletedAccountAuthRepository extends FakeAuthRepository {
   @override
   Future<UserProfile?> restoreSession() async {
@@ -879,6 +893,49 @@ void _accountSwitchTests() {
     expect(find.textContaining('No connection'), findsNothing);
     expect(find.text('Live Tutor'), findsOneWidget);
     expect(find.text('Saved Tutor'), findsNothing);
+  });
+
+  testWidgets('a request that never answers does not stop the retries', (
+    tester,
+  ) async {
+    // The failure this guards: the next attempt used to be scheduled only after
+    // the current one returned, so one hung request ended the retry loop and the
+    // app stayed offline until it was restarted.
+    final auth = _HangingOnceAuthRepository()
+      ..session = _enrolled
+      ..refreshToken = 'refresh';
+    final cache = MemorySessionCache(profile: _enrolled.toJson());
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(auth),
+          sessionCacheProvider.overrideWithValue(cache),
+          tutorsRepositoryProvider.overrideWithValue(
+            FakeTutorsRepository(
+              tutors: [_railEntry('Saved Tutor', id: 'tutor-1')],
+            ),
+          ),
+          matchingRepositoryProvider.overrideWithValue(
+            FakeMatchingRepository(),
+          ),
+          sessionsRepositoryProvider.overrideWithValue(
+            FakeSessionsRepository(),
+          ),
+        ],
+        child: const PeerPassApp(),
+      ),
+    );
+    await _settle(tester);
+    await _settle(tester);
+    expect(find.textContaining('No connection'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 6));
+    await _settle(tester);
+    await _settle(tester);
+
+    expect(auth.restores, greaterThan(1));
+    expect(find.textContaining('No connection'), findsNothing);
   });
 
   testWidgets('refreshing while offline reconnects immediately', (
