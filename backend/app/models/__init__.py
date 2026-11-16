@@ -28,6 +28,7 @@ from app.models.enums import (
     VerificationSource,
 )
 from app.models.grading_scale import Grade, GradingScale
+from app.models.message import SessionMessage
 from app.models.notification import DeviceToken, Notification
 from app.models.rate_limit import RateLimitCounter
 from app.models.rating import MAX_RATING, MIN_RATING, Rating
@@ -69,6 +70,7 @@ __all__ = [
     "ReportCategory",
     "ReportStatus",
     "Session",
+    "SessionMessage",
     "SessionReport",
     "SessionStatus",
     "Subject",

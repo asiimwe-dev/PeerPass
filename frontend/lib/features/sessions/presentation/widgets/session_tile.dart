@@ -67,6 +67,29 @@ class SessionTile extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            // A line rather than a badge in the trailing slot: the trailing slot
+            // already holds the chevron, and on a narrow phone a pill there would
+            // start clipping the topic. Unread is the one row that is allowed to
+            // be taller, which is what makes it findable in a list.
+            if (session.hasUnreadMessages) ...[
+              const SizedBox(height: AppDimens.xs),
+              Row(
+                children: [
+                  Icon(
+                    Icons.chat_bubble_outline_rounded,
+                    size: 14,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: AppDimens.xs),
+                  Text(
+                    'New message',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

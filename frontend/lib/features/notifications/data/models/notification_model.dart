@@ -16,6 +16,7 @@ enum AppNotificationType {
   sessionCancelled('session_cancelled'),
   ratingReceived('rating_received'),
   promotion('promotion'),
+  messageReceived('message_received'),
 
   /// A type this build does not know.
   ///

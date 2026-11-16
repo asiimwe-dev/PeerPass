@@ -84,7 +84,7 @@ both more honest and less damaging to trust than a plausible-looking stub.
 | **Accounts & Roles**      | Sign up / login, basic profile (name, faculty, year), roles: Tutee, Provisional Tutor, Verified Tutor                                                                                        | Identity and trust require clear roles from day one                |
 | **Tutor Validation**      | Self-declared course units + minimum grade (B+ / A), Provisional status on entry, filtering by competency + status                                                                           | Protects academic quality without heavy institutional integration  |
 | **Matching**              | Help request (unit + topic), list of 1–3 eligible tutors, **student selects one, that tutor confirms or declines**, simple ranking (Verified > Provisional, then rating)                     | Delivers the core value proposition                                |
-| **Sessions**              | Session record on acceptance, mark as completed, basic time/note field                                                                                                                       | Creates the data needed for ratings and future incentives          |
+| **Sessions**              | Session record on acceptance, a message thread between the two parties for venue and timing, mark as completed, basic time/note field                                                     | Creates the data needed for ratings and future incentives          |
 | **Rating & Verification** | Mandatory 1–5 rating + optional short feedback after session, running average, automatic promotion (Provisional → Verified after threshold), reduced priority for low ratings, visible badge | Closes the quality loop and makes verification earned, not claimed |
 | **Light Admin**           | Ability to view users/requests/sessions and manually adjust status if needed                                                                                                                 | Safety net during pilot                                            |
 
@@ -93,7 +93,7 @@ both more honest and less damaging to trust than a plausible-looking stub.
 | Feature                         | Reason for Exclusion                                                              |
 | ------------------------------- | --------------------------------------------------------------------------------- |
 | University SSO / transcript API | High integration cost; self-declaration is sufficient for pilot                   |
-| In-app chat or video            | Students already use WhatsApp/Zoom; adds complexity without proving the core loop |
+| In-app chat or video            | The session thread covers agreeing a venue; anything wider (a social inbox, calls) still belongs in WhatsApp/Zoom until the core loop is proven |
 | Payments / financial incentives | Incentive model starts with certificates and leadership credits                   |
 | Certificate PDF generation      | Can be manual or added immediately after pilot                                    |
 | Advanced AI matching            | Simple rule-based matching is clearer and more trustworthy at launch              |
@@ -120,8 +120,10 @@ The numbers live in `app/services/rating_service.py` as `PROMOTION_MIN_SESSIONS`
 **3. Student chooses from a short list (instead of pure auto-match)**  
 Giving the tutee final choice increases trust and reduces the feeling of being “assigned” a stranger.
 
-**4. No in-app communication tools in MVP**  
-The product’s job is matching and quality control. Building a full real-time chat adds too much complexity for the MVP. Instead, tutors can provide a copyable meeting link (e.g. Google Meet, Zoom) or contact info upon accepting a match. This ensures safe and immediate coordination without the overhead of maintaining an in-app messaging system.
+**4. A session thread, not a chat app**  
+The product’s job is matching and quality control, and a general messaging system would compete with WhatsApp for a job it already does. What the beta does need is the one step that happens *after* a match and before a session: agreeing which library, which floor, and “I’m outside”. That conversation is scoped to the booking — both parties are fixed at confirmation, the thread is unreachable for anyone else, and it is where the session is.
+
+It is deliberately not real time. An open thread re-reads every five seconds and stops when it closes or the app goes to the background; `docs/architecture.md` §8.1a records the WebSocket migration and why a socket is deferred rather than assumed. The tutor’s copyable meeting link remains, so a pair who prefer a call still have that option.
 
 **5. Keep the first pilot narrow**  
 One (or few) high-need course units, 10–20 tutors, and the students in those units. Depth before breadth.

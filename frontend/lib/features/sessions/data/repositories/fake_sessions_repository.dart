@@ -43,6 +43,20 @@ class FakeSessionsRepository implements SessionsRepository {
   /// The sessions the API would return, newest first.
   List<SessionModel> get sessions => List<SessionModel>.unmodifiable(_sessions);
 
+  /// How many times the list has been asked for.
+  ///
+  /// A screen that reuses a keep-alive provider does not send a request, so this
+  /// counter is how a test tells "re-read on entry" from "showed the old page".
+  int listCalls = 0;
+
+  /// Replaces the list the way the server would after something changed
+  /// elsewhere: a thread was read, a session was finished on another phone.
+  void replaceSessions(List<SessionModel> sessions) {
+    _sessions
+      ..clear()
+      ..addAll(sessions);
+  }
+
   /// Every rating submitted through this repository, in order.
   ///
   /// A test asserts on this to check what the rate screen actually sent, which is
@@ -155,7 +169,10 @@ class FakeSessionsRepository implements SessionsRepository {
   }
 
   @override
-  Future<List<SessionModel>> sessionsForMe() async => sessions;
+  Future<List<SessionModel>> sessionsForMe() async {
+    listCalls++;
+    return sessions;
+  }
 
   @override
   Future<SessionModel> session(String sessionId) async => _require(sessionId);

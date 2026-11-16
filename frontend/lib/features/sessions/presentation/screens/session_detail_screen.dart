@@ -159,6 +159,8 @@ class _Body extends ConsumerWidget {
             session.isTutor(viewerId))
           _ReceivedRating(sessionId: session.id),
         const SizedBox(height: AppDimens.lg),
+        _MessageButton(session: session),
+        const SizedBox(height: AppDimens.md),
         _Action(session: session, state: state, viewerId: viewerId),
       ],
     );
@@ -187,6 +189,41 @@ class _Body extends ConsumerWidget {
     final name = session.otherPartyName(viewerId);
     if (name != null && name.trim().isNotEmpty) return name;
     return session.otherPartyId(viewerId) ?? 'Not available';
+  }
+}
+
+/// Opens the conversation attached to this session.
+///
+/// A secondary action, so it is outline rather than filled: the status still owns
+/// the primary button. It is offered in every state, because a completed session
+/// is exactly when a student needs to find the venue they agreed on, and a
+/// cancelled one still has a history worth reading.
+class _MessageButton extends ConsumerWidget {
+  const _MessageButton({required this.session});
+
+  final SessionModel session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = session.unreadMessageCount;
+
+    return OutlinedButton.icon(
+      onPressed: () => _open(context, ref),
+      icon: const Icon(Icons.chat_bubble_outline_rounded),
+      label: Text(unread > 0 ? 'Message · $unread new' : 'Message'),
+    );
+  }
+
+  Future<void> _open(BuildContext context, WidgetRef ref) async {
+    await context.push(AppRoutes.sessionChatPath(session.id));
+    if (!context.mounted) return;
+
+    // The thread marks its unread rows read on the server, so the count on this
+    // screen and the line on the sessions list are both stale the moment the
+    // student comes back. Reloading the detail keeps `ratingGiven` -- the reload
+    // is deliberate about that -- and re-reading the list drops the badge.
+    ref.invalidate(sessionListProvider);
+    await ref.read(sessionDetailProvider(session.id).notifier).reload();
   }
 }
 

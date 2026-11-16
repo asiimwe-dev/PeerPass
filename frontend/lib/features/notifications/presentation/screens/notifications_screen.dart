@@ -22,11 +22,48 @@ import 'package:peerpass/features/notifications/presentation/widgets/notificatio
 /// screen that answers it, and an unread row is visibly different from one
 /// already read. The tab badge is fed by the same provider, so reading here
 /// clears it everywhere.
-class NotificationsScreen extends ConsumerWidget {
+///
+/// Stateful only to ask again: the inbox is a keep-alive provider, so coming
+/// back to this tab re-runs `build` but not the provider's `build`, and without
+/// an explicit refresh the bell would show whatever it held when the app signed
+/// in. Opening the inbox and returning to the app are the two moments a person
+/// expects it to be current.
+class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationsScreen> createState() =>
+      _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  AppLifecycleListener? _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onResume: _refresh);
+    // Off the build frame: the notifier is read after the first frame so this
+    // cannot race the provider's own initial load.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _lifecycle?.dispose();
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (!mounted) return;
+    // Nothing loaded yet means the provider's own first load is still the
+    // answer, or it failed and the error view already offers the retry.
+    if (ref.read(notificationInboxProvider).value == null) return;
+    unawaited(ref.read(notificationInboxProvider.notifier).refresh());
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final inbox = ref.watch(notificationInboxProvider);
     final notifier = ref.read(notificationInboxProvider.notifier);
 

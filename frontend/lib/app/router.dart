@@ -28,6 +28,7 @@ import 'package:peerpass/features/matching/presentation/screens/match_results_sc
 import 'package:peerpass/features/matching/presentation/screens/tutor_requests_screen.dart';
 import 'package:peerpass/features/matching/presentation/widgets/ask_composer.dart';
 import 'package:peerpass/features/matching/presentation/widgets/tutor_waiting_requests_section.dart';
+import 'package:peerpass/features/messages/presentation/screens/session_chat_screen.dart';
 import 'package:peerpass/features/notifications/presentation/providers/notification_providers.dart';
 import 'package:peerpass/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:peerpass/features/notifications/presentation/widgets/notification_tab_icon.dart';
@@ -100,6 +101,14 @@ abstract final class AppRoutes {
 
   static String rateSessionPath(String sessionId) =>
       '$sessions/$sessionId/rate';
+
+  /// The conversation that belongs to a session.
+  ///
+  /// A child of the session rather than a top-level inbox, because there is no
+  /// such thing as a conversation without a session behind it: both parties, the
+  /// unit, and the reason they are talking all come from it.
+  static String sessionChatPath(String sessionId) =>
+      '$sessions/$sessionId/messages';
 
   /// Confirming a help request the student named this tutor on.
   ///
@@ -336,6 +345,19 @@ final routerProvider = Provider<GoRouter>((ref) {
             );
           }
           return RateSessionScreen(sessionId: sessionId);
+        },
+      ),
+      GoRoute(
+        path: '${AppRoutes.sessions}/:sessionId/messages',
+        builder: (context, state) {
+          final sessionId = _sessionIdOf(state);
+          if (sessionId == null) {
+            return const _MissingIdRoute(
+              title: 'Messages',
+              message: 'That link does not name a session.',
+            );
+          }
+          return SessionChatScreen(sessionId: sessionId);
         },
       ),
       GoRoute(

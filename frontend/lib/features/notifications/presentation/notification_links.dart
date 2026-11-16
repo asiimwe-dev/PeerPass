@@ -31,6 +31,11 @@ String? notificationRoute(AppNotification notification) {
     AppNotificationType.sessionStarted ||
     AppNotificationType.sessionCancelled ||
     AppNotificationType.ratingReceived => sessionPath,
+    // A message is answered in the thread it was written in, not on the session
+    // behind it: opening a notification that says "new message" and landing on a
+    // screen where the message is invisible would read as the app losing it.
+    AppNotificationType.messageReceived =>
+      sessionId == null ? null : AppRoutes.sessionChatPath(sessionId),
     AppNotificationType.sessionCompleted =>
       sessionId == null ? null : AppRoutes.rateSessionPath(sessionId),
     AppNotificationType.promotion => AppRoutes.certificate,

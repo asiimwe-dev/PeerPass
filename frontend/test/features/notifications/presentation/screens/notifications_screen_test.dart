@@ -156,6 +156,60 @@ void main() {
     expect(find.byTooltip('Mark all read'), findsOneWidget);
   });
 
+  testWidgets('coming back to the bell asks again', (tester) async {
+    final repository = FakeNotificationsRepository();
+    final container = _container(repository);
+    await _pump(tester, container);
+
+    expect(find.text('Nothing yet'), findsOneWidget);
+    expect(repository.inboxOffsets, [0]);
+
+    repository.arrive(
+      notification(
+        id: 'late',
+        title: 'Message from a tutor',
+        type: AppNotificationType.messageReceived,
+        data: {'kind': 'session', 'session_id': 'session-1'},
+      ),
+    );
+
+    // Leaving the tab and returning builds a new screen over the same
+    // keep-alive provider, which is the case that used to stay on whatever the
+    // inbox held when the app signed in.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pump(tester, container);
+
+    expect(repository.inboxOffsets, [0, 0]);
+    expect(find.text('Message from a tutor'), findsOneWidget);
+  });
+
+  testWidgets('returning to the app re-reads the bell', (tester) async {
+    final repository = FakeNotificationsRepository(
+      notifications: [notification(id: 'one')],
+    );
+    final container = _container(repository);
+    await _pump(tester, container);
+
+    repository.arrive(notification(id: 'two', title: 'Second'));
+
+    // A real backgrounding moves through the intermediate states; the binding
+    // asserts on the legal transitions.
+    [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ].forEach(tester.binding.handleAppLifecycleStateChanged);
+    [
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ].forEach(tester.binding.handleAppLifecycleStateChanged);
+    await _settle(tester);
+
+    expect(repository.inboxOffsets, [0, 0]);
+    expect(find.text('Second'), findsOneWidget);
+  });
+
   testWidgets('one tap clears the badge for the whole inbox', (tester) async {
     final repository = FakeNotificationsRepository(
       notifications: [

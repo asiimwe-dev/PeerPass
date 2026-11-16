@@ -72,6 +72,18 @@ void main() {
     expect(notificationRoute(row), AppRoutes.certificate);
   });
 
+  test('a message opens the thread it was written in', () {
+    // Not the session screen behind the thread: a student who taps "new message"
+    // and lands where the message is not visible would read that as the app
+    // losing it.
+    final row = notification(
+      type: AppNotificationType.messageReceived,
+      data: {'kind': 'session', 'session_id': 'session-1'},
+    );
+
+    expect(notificationRoute(row), AppRoutes.sessionChatPath('session-1'));
+  });
+
   test('a row with no id opens nothing rather than guessing', () {
     for (final type in [
       AppNotificationType.requestAccepted,
@@ -79,6 +91,7 @@ void main() {
       AppNotificationType.sessionCompleted,
       AppNotificationType.sessionCancelled,
       AppNotificationType.ratingReceived,
+      AppNotificationType.messageReceived,
     ]) {
       final row = notification(type: type);
 

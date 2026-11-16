@@ -12,6 +12,7 @@ import 'package:peerpass/features/sessions/data/models/session_model.dart';
 import 'package:peerpass/features/sessions/data/repositories/fake_sessions_repository.dart';
 import 'package:peerpass/features/sessions/data/repositories/sessions_repository.dart';
 import 'package:peerpass/features/sessions/presentation/screens/sessions_list_screen.dart';
+import 'package:peerpass/features/sessions/presentation/screens/sessions_tab_screen.dart';
 
 /// The signed-in student, so the role-based halves of the session UI have an
 /// identity to compare against.
@@ -37,6 +38,7 @@ SessionModel session({
   bool isRated = false,
   int durationMinutes = 60,
   String? meetingLink,
+  int unreadMessageCount = 0,
 }) {
   return SessionModel.fromJson({
     'id': id,
@@ -51,6 +53,7 @@ SessionModel session({
     'status': status,
     'duration_minutes': durationMinutes,
     'is_rated': isRated,
+    'unread_message_count': unreadMessageCount,
     'created_at': '2026-03-01T08:00:00Z',
     'scheduled_start': '2026-03-04T09:00:00Z',
     'meeting_link': meetingLink,
@@ -212,5 +215,61 @@ void main() {
     // Both rows are tappable and carry a chevron, which is the affordance a list
     // row without one cannot make: nothing on screen says "this leads somewhere".
     expect(find.byIcon(Icons.chevron_right), findsNWidgets(2));
+  });
+
+  testWidgets('a session with unread messages says so on its row', (
+    tester,
+  ) async {
+    await _pumpList(
+      tester,
+      _container(
+        FakeSessionsRepository(
+          sessions: [
+            session(id: 'next-1', topic: 'Upcoming', unreadMessageCount: 2),
+            session(id: 'done-1', topic: 'Finished', status: 'completed'),
+          ],
+        ),
+      ),
+    );
+
+    // One line, only on the row that has one. The count itself is not drawn: the
+    // question a student has is "is there something new", and "2" on a session
+    // row would compete with the status that is already there.
+    expect(find.text('New message'), findsOneWidget);
+  });
+
+  testWidgets('coming back to the sessions tab re-reads the list', (
+    tester,
+  ) async {
+    final repository = FakeSessionsRepository(
+      sessions: [session(id: 'next-1', unreadMessageCount: 2)],
+    );
+    final container = _container(repository);
+
+    Future<void> pumpTab() => tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light,
+          home: const SessionsTabScreen(),
+        ),
+      ),
+    );
+
+    await pumpTab();
+    await _settle(tester);
+
+    expect(find.text('New message'), findsOneWidget);
+    expect(repository.listCalls, 1);
+
+    // The thread was read while this tab was away. Coming back is where the
+    // student would see a line that is no longer true.
+    repository.replaceSessions([session(id: 'next-1')]);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await pumpTab();
+    await _settle(tester);
+
+    expect(repository.listCalls, 2);
+    expect(find.text('New message'), findsNothing);
   });
 }

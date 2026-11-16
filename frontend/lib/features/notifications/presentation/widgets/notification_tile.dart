@@ -146,6 +146,11 @@ class _Glyph extends StatelessWidget {
         palette.mintTint,
         palette.onMintTint,
       ),
+      AppNotificationType.messageReceived => (
+        Icons.chat_bubble_outline_rounded,
+        palette.indigoTint,
+        palette.onIndigoTint,
+      ),
       AppNotificationType.unknown => (
         Icons.notifications_none_rounded,
         palette.soft,
