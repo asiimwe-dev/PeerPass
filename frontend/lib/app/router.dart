@@ -263,6 +263,17 @@ final routerProvider = Provider<GoRouter>((ref) {
               activeSessionCard: const ActiveSessionCard(),
               tutorRail: const TutorRail(),
               onRefresh: () async {
+                // Trying the session first is what turns a pull while offline
+                // into a reconnect, rather than a reload of the same saved
+                // answers. A failure leaves the offline session in place.
+                //
+                // Only while offline: a live session has no restore to retry,
+                // and spending the refresh token on every pull would replace a
+                // credential that was working.
+                if (ref.read(sessionControllerProvider).isOffline) {
+                  await ref.read(authControllerProvider).retryRestore();
+                  if (!ref.read(sessionControllerProvider).isSignedIn) return;
+                }
                 ref
                   ..invalidate(sessionListProvider)
                   ..invalidate(topTutorsProvider(null));
@@ -572,7 +583,13 @@ class _SessionChangeNotifier extends ChangeNotifier {
       // still-mounted providers after the token is gone, which is a request
       // nobody asked for; the stale answers are hidden by the redirect and
       // dropped here before the next account can read them.
-      if (after != null && after != before) {
+      //
+      // Coming back online is the second reason to forget them. The screen has
+      // been showing saved answers while the connection was down, and the same
+      // account signing back in must replace them rather than keep them because
+      // the user id did not change.
+      final cameOnline = previous?.isOffline == true && !next.isOffline;
+      if (after != null && (after != before || cameOnline)) {
         _forgetAccountScopedAnswers(ref);
       }
       notifyListeners();
@@ -605,6 +622,10 @@ class _SessionChangeNotifier extends ChangeNotifier {
       ..invalidate(tutorChoiceProvider)
       ..invalidate(tutorDecisionProvider)
       ..invalidate(certificatePortfolioProvider)
+      // The rail is caller-scoped even though its contents are public: the API
+      // reads the caller's own university from the token. Leaving it out kept
+      // the previous account's tutors on screen until a pull-to-refresh.
+      ..invalidate(topTutorsProvider)
       ..invalidate(onboardingControllerProvider);
   }
 

@@ -72,6 +72,27 @@ class UserProfile {
     );
   }
 
+  /// The record as the API would send it.
+  ///
+  /// Used only for the last-known snapshot kept on the device, so a cold start
+  /// with no connection can show the account it was last told about. The shape
+  /// deliberately matches [UserProfile.fromJson] rather than being a separate cache format:
+  /// one reader and one writer for the same record is what keeps a snapshot
+  /// from becoming a second, drifting model of a user.
+  Map<String, dynamic> toJson() => {
+    'id': publicId,
+    'email': email,
+    'full_name': fullName,
+    'roles': [for (final role in roles) role.wireValue],
+    'university_id': universityId,
+    'faculty_id': facultyId,
+    'year_of_study': yearOfStudy,
+    'academic_data_consented_at': academicDataConsentedAt
+        ?.toUtc()
+        .toIso8601String(),
+    'primary_course_unit_ids': primaryCourseUnitIds,
+  };
+
   final String publicId;
 
   final String email;

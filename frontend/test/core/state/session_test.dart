@@ -78,6 +78,31 @@ void main() {
       expect(state.profile, isNull);
     });
 
+    test('an offline session is still signed in and says so', () {
+      // The account is usable; only the freshness of what is on screen is in
+      // question. Treating this as a failed restore would hide a usable account
+      // behind a retry screen.
+      final container = _container();
+      container
+          .read(sessionControllerProvider.notifier)
+          .signedIn(_student, isOffline: true);
+
+      final state = container.read(sessionControllerProvider);
+      expect(state.isSignedIn, isTrue);
+      expect(state.profile, _student);
+      expect(state.isOffline, isTrue);
+    });
+
+    test('signing out forgets the offline flag', () {
+      final container = _container();
+      container
+          .read(sessionControllerProvider.notifier)
+          .signedIn(_student, isOffline: true);
+      container.read(sessionControllerProvider.notifier).signedOut();
+
+      expect(container.read(sessionControllerProvider).isOffline, isFalse);
+    });
+
     test('stillUnknown leaves the status unknown and the failure null', () {
       // A restore that has not come back yet, and did not fail: the splash
       // screen is holding with nothing to report and nothing to offer.
@@ -112,7 +137,10 @@ void main() {
 
   group('SessionState equality', () {
     test('two signed-in states for the same profile are equal', () {
-      expect(const SessionState.signedIn(_student), const SessionState.signedIn(_student));
+      expect(
+        const SessionState.signedIn(_student),
+        const SessionState.signedIn(_student),
+      );
       expect(
         const SessionState.signedIn(_student).hashCode,
         const SessionState.signedIn(_student).hashCode,
@@ -134,6 +162,15 @@ void main() {
       expect(
         const SessionState.signedIn(_student),
         isNot(const SessionState.signedOut()),
+      );
+    });
+
+    test('an offline session is not equal to a live one', () {
+      // The router listens for this difference to know it has come back online
+      // and must refetch what the screens were showing from the cache.
+      expect(
+        const SessionState.signedIn(_student, isOffline: true),
+        isNot(const SessionState.signedIn(_student)),
       );
     });
   });

@@ -64,6 +64,10 @@ class RemoteAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<bool> hasStoredSession() async =>
+      await tokenStore.readRefreshToken() != null;
+
+  @override
   Future<UserProfile?> restoreSession() async {
     final refreshToken = await tokenStore.readRefreshToken();
     if (refreshToken == null) return null;
@@ -103,11 +107,18 @@ class RemoteAuthRepository implements AuthRepository {
         refreshToken: renewed.refreshToken,
       );
       return true;
-    } on Object {
-      // A refresh that fails leaves the interceptor to surface the original
-      // `401`, which is the more useful message. Clearing here is what stops the
-      // next request trying a token the server has already refused.
-      await tokenStore.clear();
+    } on Object catch (error) {
+      final failure = _toFailure(error);
+      if (failure is AuthFailure || failure is NotFoundFailure) {
+        // The server refused this token, so nothing is served by keeping it:
+        // clearing here is what stops the next request presenting a credential
+        // the server has already rejected.
+        await tokenStore.clear();
+      }
+      // A transport failure leaves the store alone. Clearing a token because
+      // the train went into a tunnel would sign the student out of an account
+      // that is still perfectly valid, and it is the one state a cached
+      // session cannot recover from.
       return false;
     }
   }

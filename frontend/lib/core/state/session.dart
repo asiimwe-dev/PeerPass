@@ -25,7 +25,12 @@ enum SessionStatus {
 /// second copy that can drift from the first.
 @immutable
 class SessionState {
-  const SessionState({required this.status, this.profile, this.restoreFailure});
+  const SessionState({
+    required this.status,
+    this.profile,
+    this.restoreFailure,
+    this.isOffline = false,
+  });
 
   /// The app has not yet established whether anyone is signed in.
   ///
@@ -34,16 +39,27 @@ class SessionState {
   /// down. It is null while the attempt is still in flight.
   const SessionState.unknown({this.restoreFailure})
     : status = SessionStatus.unknown,
-      profile = null;
+      profile = null,
+      isOffline = false;
 
   const SessionState.signedOut()
     : status = SessionStatus.unauthenticated,
       profile = null,
-      restoreFailure = null;
+      restoreFailure = null,
+      isOffline = false;
 
-  const SessionState.signedIn(UserProfile this.profile)
-    : status = SessionStatus.authenticated,
-      restoreFailure = null;
+  /// A profile the app is prepared to show.
+  ///
+  /// [isOffline] is true when the profile came from the last saved snapshot
+  /// rather than from the server. The student is still signed in -- the session
+  /// on the device has not been revoked as far as anything here knows -- but the
+  /// screens must say that what they show may be stale, and an attempt to
+  /// reconnect is how it becomes live again.
+  const SessionState.signedIn(
+    UserProfile this.profile, {
+    this.isOffline = false,
+  }) : status = SessionStatus.authenticated,
+       restoreFailure = null;
 
   final SessionStatus status;
 
@@ -61,6 +77,14 @@ class SessionState {
   /// screen.
   final Failure? restoreFailure;
 
+  /// Whether this session was restored from the last saved snapshot.
+  ///
+  /// Distinct from [restoreFailure], which means there is no session to show at
+  /// all. This one means there is a session and its data is the last copy the
+  /// device managed to save. Treating the two as one would either hide a usable
+  /// account behind a retry screen or present stale data as if it were live.
+  final bool isOffline;
+
   bool get isSignedIn => status == SessionStatus.authenticated;
 
   @override
@@ -69,10 +93,11 @@ class SessionState {
       other is SessionState &&
           other.status == status &&
           other.profile == profile &&
-          other.restoreFailure == restoreFailure;
+          other.restoreFailure == restoreFailure &&
+          other.isOffline == isOffline;
 
   @override
-  int get hashCode => Object.hash(status, profile, restoreFailure);
+  int get hashCode => Object.hash(status, profile, restoreFailure, isOffline);
 
   @override
   String toString() => 'SessionState($status)';
@@ -99,7 +124,12 @@ class SessionController extends Notifier<SessionState> {
   /// The server is the authority on what was stored -- in particular on the
   /// consent timestamp, which it sets once and will not move -- so a client that
   /// patched its own copy would eventually disagree with it.
-  void signedIn(UserProfile profile) => state = SessionState.signedIn(profile);
+  ///
+  /// [isOffline] marks a profile read back from the last saved snapshot because
+  /// the server could not be reached. The account is still signed in; only the
+  /// freshness of what is shown is in question.
+  void signedIn(UserProfile profile, {bool isOffline = false}) =>
+      state = SessionState.signedIn(profile, isOffline: isOffline);
 
   /// Records that nobody is signed in.
   void signedOut() => state = const SessionState.signedOut();

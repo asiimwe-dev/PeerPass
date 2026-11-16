@@ -8,6 +8,7 @@ import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/storage/token_store.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
+
 /// In-memory stand-in for the auth endpoints.
 ///
 /// What the running app resolved while the API had no auth endpoints, and what
@@ -85,6 +86,10 @@ class FakeAuthRepository implements AuthRepository {
     await _tokenStore.write(accessToken: 'access', refreshToken: 'refresh');
     return session!;
   }
+
+  @override
+  Future<bool> hasStoredSession() async =>
+      refreshToken != null || await _tokenStore.readRefreshToken() != null;
 
   @override
   Future<UserProfile?> restoreSession() {

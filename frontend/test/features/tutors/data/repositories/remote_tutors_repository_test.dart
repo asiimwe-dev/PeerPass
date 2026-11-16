@@ -7,6 +7,8 @@ import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/features/tutors/data/datasources/remote_tutors_datasource.dart';
 import 'package:peerpass/features/tutors/data/repositories/remote_tutors_repository.dart';
 
+import '../../../../support/memory_session_cache.dart';
+
 /// A recorded request, so a test can assert on what the client actually sent.
 class _Call {
   _Call(this.method, this.path, this.query, this.body);
@@ -210,6 +212,37 @@ void main() {
       );
 
       await expectLater(repository.topTutors(), throwsA(isA<NetworkFailure>()));
+    });
+
+    test('a saved rail stands in for a connection that never opened', () async {
+      // Home must not be empty just because the API cannot be reached. The rail
+      // is marked so the screen can say it is the saved copy rather than
+      // presenting it as live.
+      final cache = MemorySessionCache()..activateAccount('account-1');
+      await cache.writeTopTutors([_tutor()]);
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: 'https://api.peerpass.test',
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 300,
+        ),
+      )..httpClientAdapter = server;
+      final offlineRepository = RemoteTutorsRepository(
+        RemoteTutorsDatasource(dio, cache: cache),
+      );
+
+      server.fail(
+        DioException(
+          requestOptions: RequestOptions(path: '/v1/tutors/top'),
+          type: DioExceptionType.connectionError,
+          error: 'connection refused',
+        ),
+      );
+
+      final rail = await offlineRepository.topTutors();
+
+      expect(rail.single.tutor.fullName, 'Grace Okello');
+      expect(rail.single.isOfflineCached, isTrue);
     });
   });
 

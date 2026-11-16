@@ -17,6 +17,8 @@ String? fieldErrorFor(Failure? failure, String field) {
 /// once above the button -- reads as two separate problems.
 Failure? bannerFailureFor(Failure? failure) {
   if (failure == null) return null;
-  if (failure is ValidationFailure && failure.fieldErrors.isNotEmpty) return null;
+  if (failure is ValidationFailure && failure.fieldErrors.isNotEmpty) {
+    return null;
+  }
   return failure;
 }

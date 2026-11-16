@@ -66,7 +66,7 @@ Future<void> main() async {
 
   repository = RemoteAuthRepository(
     auth: RemoteAuthDatasource(dio),
-    academics: RemoteAcademicsDatasource(dio),
+    academics: RemoteAcademicsDatasource(dio, cache: sessionCache),
     tokenStore: tokenStore,
   );
 
@@ -78,7 +78,9 @@ Future<void> main() async {
   // behave the same on a matching request as on a session request. Building a
   // second client per feature would give each of them its own token store and
   // its own idea of whether the user is signed in.
-  final tutorsRepository = RemoteTutorsRepository(RemoteTutorsDatasource(dio));
+  final tutorsRepository = RemoteTutorsRepository(
+    RemoteTutorsDatasource(dio, cache: sessionCache),
+  );
   final matchingRepository = RemoteMatchingRepository(
     RemoteMatchingDatasource(dio, cache: sessionCache),
   );

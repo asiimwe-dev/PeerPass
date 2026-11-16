@@ -150,6 +150,60 @@ The consequence worth stating: `AuthController` no longer holds state. It
 performs repository calls and records the outcome in the core session, so there
 is exactly one `SessionState` and no second copy to fall out of step.
 
+#### A cold start without a connection opens the saved account
+
+The app is used on metered connections that drop. Two failures look alike from
+inside the code and must not look alike on screen:
+
+- **No session to show** — `SessionState.unknown` with a `restoreFailure`. The
+  router stays on splash, which says what happened and offers a retry.
+- **A session, but from the device** — `SessionState.signedIn(profile,
+  isOffline: true)`. The account is usable; what is on screen may be stale.
+
+Treating the second as the first is what made a dropped connection look like a
+broken app: the student had a valid session and was held behind a retry that
+could not succeed. `SessionCache` therefore keeps the last profile snapshot, and
+the cold start shows it immediately rather than waiting out a ten-second connect
+timeout. Three conditions make that safe:
+
+1. The snapshot is only rendered when `AuthRepository.hasStoredSession()` is
+   true. A snapshot left behind by a sign-out that did not finish is not a
+   session.
+2. The snapshot is written before `SessionState` changes, and the cache
+   namespace is switched in the same step, so the account and its saved answers
+   cannot disagree by the time a provider rebuilds.
+3. It is replaced the moment the server answers. Going offline → online is
+   treated like an identity change: `_SessionChangeNotifier` invalidates every
+   account-scoped provider, because the user id did not change but the answers
+   did.
+
+The snapshot is deliberately *not* account-scoped — at cold start there is no
+account id yet, and the whole point is to know whose account it is before the
+network answers. Everything else is: the discovery rail is cached per account
+because the API derives the caller's university from the token, so a rail kept
+under an id the client supplied would be a different list than the server would
+give. `SessionCache.clear()` drops the whole namespace (rail keys by prefix) plus
+the snapshot.
+
+Reference data (`/v1/academics/universities`, `/faculties`) is public and
+cache-first: the saved catalogue is served and refreshed in the background, so a
+profile can name its university on the first frame. That cache survives sign-out
+because it belongs to nobody.
+
+Cached data is read-only and has TTLs (24 h for sessions and help requests, 7
+days for the rail, 30 days for reference data). Nothing is queued for writing,
+there is no offline mutation path, and every screen that shows saved data says so
+in one short line (`OfflineNotice`, and the rail's "saved list" line) instead of
+presenting it as live.
+
+Reconnecting is the app's job, not the student's. `app/connection_watch.dart`
+watches the session and, while it is offline, retries the restore on a backoff
+(5 s, 10 s, 20 s, then every 40 s), and retries immediately when the app returns
+to the foreground. Pull-to-refresh still retries the session first, for a student
+who wants to force it; neither path signs anyone out on failure. A phone with no
+network therefore keeps trying at a rate that cannot drain the battery, and the
+student never has to know that "pull down" is the way back.
+
 #### The repository provider is declared with the contract
 
 `authRepositoryProvider` is declared in
@@ -1423,6 +1477,14 @@ retry**; it does not report them as signed out, because "we could not reach the
 network" and "your session ended" are different facts and only one of them is
 true. A refresh that is *refused* does clear the token and routes to sign-in.
 
+The refresh call itself **opts out of the transport interceptor's recovery**
+(`AuthInterceptor.skipRefreshExtraKey`). The interceptor answers a `401` by
+refreshing; without the opt-out, a refused refresh re-enters the single-flight
+refresh and waits on the request it is itself blocking, which never answers and
+presents as a connection that never comes back. The opt-out is deliberately one
+flag on one request: every other call still recovers, or a session that could
+have been renewed would be reported as refused instead.
+
 ### 9.6 Logging
 
 - `database_echo` logs SQL **with its bound parameters**, which for this schema
@@ -1542,7 +1604,7 @@ Stated explicitly so nothing here is mistaken for a control that exists:
 | **Latency**            | Matching responses under 1–2 seconds under normal load                                         |
 | **Availability**       | Stateless API allows horizontal scaling                                                        |
 | **Bandwidth**          | Minimal payloads; images and heavy assets avoided where possible                               |
-| **Offline resilience** | Client can queue non-critical actions; critical flows remain online-first                      |
+| **Offline resilience** | Last profile, discovery rail, and reference data are cached and shown with an offline notice; no writes are queued and every mutation stays online-first |
 | **Observability**      | Structured logging + future metrics (request latency, match success rate, rating distribution) |
 
 ---

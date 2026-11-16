@@ -431,6 +431,23 @@ void main() {
         expect(await store.readRefreshToken(), isNull);
       },
     );
+
+    test('a dropped connection does not throw the token away', () async {
+      // The interceptor asks for a refresh when a request comes back `401`, and
+      // on a flaky connection the refresh itself can fail in transport. Clearing
+      // here would sign a student out of an account that is still valid -- the
+      // one state the saved-session cache cannot recover from.
+      await store.write(accessToken: 'stale', refreshToken: 'refresh-1');
+      server.fail(
+        DioException(
+          requestOptions: RequestOptions(path: '/v1/auth/refresh'),
+          type: DioExceptionType.connectionError,
+        ),
+      );
+
+      expect(await repository.refreshSession(), isFalse);
+      expect(await store.readRefreshToken(), 'refresh-1');
+    });
   });
 
   group('updating the profile', () {
