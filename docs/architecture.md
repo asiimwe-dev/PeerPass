@@ -439,6 +439,7 @@ mistaken for a matchable course unit.
 | **Sessions**      | `tutee_id`, `tutor_id`, `course_unit_id`, `status`, `duration_minutes`, `started_at`, `ended_at`, per-party check-in/finish timestamps, `meeting_link`, `meeting_venue`, `meeting_venue_detail` | A session that happened; the source for tutor hours and certificates. Attendance is two independent check-ins and two independent finishes, one from each account; a session is live only while both parties have checked in, and completes only when both have finished |
 | **Ratings**       | `session_id`, `rater_id`, `ratee_id`, `score`, `comprehension_helped`, `feedback_text` | Immutable post-session tutee feedback; low ratings reduce matching priority. Tutor-to-tutee ratings are not accepted |
 | **Session_Reports** | `session_id`, `reporter_id`, `category`, `description`, `status` | Safeguarding reports routed to operators without exposing them to the other participant |
+| **Session_Messages** | `session_id`, `sender_id`, `body`, `read_at` | The two parties' conversation about their booking. No conversation table of its own: the session decides who may write, and `read_at` is sound per row because each message has exactly one sender and therefore one recipient |
 | **Unit_Endorsements** | `session_id`, `rater_id`, `ratee_id`, `course_unit_id` | "This tutor knows this unit", scoped to the session's own course unit. Separate from `ratings` so subject coverage never moves promotion. Unique on `(session_id, rater_id, course_unit_id)` so a corrected submission replaces rather than accumulates |
 
 ### 5.3 Detailed Table Definitions
@@ -1116,6 +1117,60 @@ A retried check-in or finish is idempotent. Mobiles retry on a metered
 connection, and a second tap must neither move the timestamp nor report a failure
 for a state the caller already reached.
 
+### 8.1a The thread is the session, and it is polled
+
+A session carries a conversation between the same two people, about the same
+topic, for the same window. It is not a separate `conversations` table: that would
+duplicate "who may talk" and "is this still open", and the copies would eventually
+disagree — a cancelled session with a thread still marked open is a client writing
+into a place the API has closed. `session_messages` therefore hangs off the
+session, both parties are fixed at confirmation, and sending takes no recipient.
+
+The thread opens when the tutor confirms and closes for writing when the session is
+cancelled or missed. Reading stays open in every state, and a completed session
+stays writable: the follow-up after a session is the same two people. There is no
+admin read path. The two parties are the only readers, and a non-party gets a 404
+rather than a 403.
+
+**Beta is pull.** The chat screen re-reads with an `after=<last message id>` cursor
+every five seconds while it is on screen, pauses when the app goes to the
+background, and polls immediately on resume. The cursor is an id and not a
+timestamp: two messages can share a second, and a clock cursor either skips or
+repeats one forever. The five seconds live in one provider
+(`messagePollIntervalProvider`) so a test can shorten them and the upgrade has one
+number to delete.
+
+Why not a socket yet: a socket brings connection lifecycle, reconnect, and a second
+authorization path into the beta, and the failures it introduces (half-open
+connections, silent reconnects that never happen) are exactly the ones that read
+to a student as "the app is broken". Polling has one failure mode — a request that
+fails — and the screen already knows how to say so. The cost is latency and a small
+amount of repeated data, both acceptable at pilot scale.
+
+**The migration, recorded now so it is not re-litigated after the beta:**
+
+1. Add `WS /v1/sessions/{id}/messages` authenticated with the same access token
+   (a short-lived ticket issued by an authenticated POST is the safer variant,
+   because browsers and proxies put URLs in logs but not headers).
+2. Verify the caller is a session party before accepting the upgrade, using the
+   same `_load_session_for_party` check the HTTP routes use. The socket must not
+   become a second, weaker authorization path.
+3. On connect, send the same `after=` catch-up the HTTP read does, then push new
+   rows as they are written. Keep the HTTP `GET` as the catch-up and the fallback
+   for a client whose socket will not open: the socket is an optimisation, not a
+   second source of truth.
+4. Publish from the write path (`send_message`) through one in-process broker in
+   the single-process beta, and a durable pub/sub (Postgres `LISTEN/NOTIFY` or
+   Redis) when there is more than one API instance. The sender's transaction must
+   commit before the push escapes, or the other party sees a message that a
+   rollback then erases.
+5. Keep `messagePollIntervalProvider`'s screen as the fallback path, delete the
+   timer, and leave the HTTP endpoints in place permanently.
+
+Until then the documented limitations are: no per-message rate limit, no
+idempotency key on send, and no read receipts beyond the `read_at` the API already
+stores.
+
 ### 8.2 Unit endorsements are not ratings
 
 A rating answers "how was the tutor". An endorsement answers "the tutor knows
@@ -1616,6 +1671,7 @@ Stated explicitly so nothing here is mistaken for a control that exists:
 - Advanced matching (topic embeddings, availability calendars)
 - Analytics dashboard for university administrators
 - Multi-university support with tenant isolation
+- Session chat over WebSocket, replacing the five-second poll (see §8.1a)
 
 ---
 

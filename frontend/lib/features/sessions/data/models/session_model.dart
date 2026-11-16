@@ -92,6 +92,7 @@ class SessionModel {
     this.meetingVenue,
     this.meetingVenueDetail,
     this.isRated = false,
+    this.unreadMessageCount = 0,
     this.isOfflineSnapshot = false,
   });
 
@@ -171,6 +172,11 @@ class SessionModel {
         // the whole session over it would be worse than reading it as unrated.
         _ => false,
       },
+      // Absence means nothing unread, which is what an older server that does not
+      // count messages at all would say, and what a session with no thread says
+      // anyway. A client that refused the row over a missing badge would hide a
+      // whole session to avoid drawing one number.
+      unreadMessageCount: (json['unread_message_count'] as num?)?.toInt() ?? 0,
       isOfflineSnapshot: json['_offline_cached'] == true,
     );
   }
@@ -288,6 +294,16 @@ class SessionModel {
   /// received for this session.
   final bool isRated;
 
+  /// How many messages in this session's thread the reader has not opened.
+  ///
+  /// Counted by the server against the caller, not against the session: the same
+  /// row is "two unread" for the student and "zero" for the tutor. Zero for a
+  /// session whose thread nobody has written in, which is the ordinary case.
+  final int unreadMessageCount;
+
+  /// Whether there is something new in the thread worth pointing at.
+  bool get hasUnreadMessages => unreadMessageCount > 0;
+
   final bool isOfflineSnapshot;
 
   final DateTime createdAt;
@@ -347,6 +363,7 @@ class SessionModel {
     String? meetingVenue,
     String? meetingVenueDetail,
     bool? isRated,
+    int? unreadMessageCount,
   }) {
     return SessionModel(
       id: id,
@@ -373,6 +390,7 @@ class SessionModel {
       meetingVenue: meetingVenue ?? this.meetingVenue,
       meetingVenueDetail: meetingVenueDetail ?? this.meetingVenueDetail,
       isRated: isRated ?? this.isRated,
+      unreadMessageCount: unreadMessageCount ?? this.unreadMessageCount,
       createdAt: createdAt,
     );
   }
@@ -400,6 +418,7 @@ class SessionModel {
           other.meetingVenue == meetingVenue &&
           other.meetingVenueDetail == meetingVenueDetail &&
           other.isRated == isRated &&
+          other.unreadMessageCount == unreadMessageCount &&
           other.createdAt == createdAt;
 
   @override
@@ -414,16 +433,22 @@ class SessionModel {
     scheduledStart,
     startedAt,
     endedAt,
-    tutorCheckedInAt,
-    tuteeCheckedInAt,
-    tutorFinishedAt,
-    tuteeFinishedAt,
-    durationMinutes,
-    meetingLink,
-    meetingVenue,
-    meetingVenueDetail,
-    isRated,
-    createdAt,
+    // `Object.hash` takes at most twenty arguments. The second half is folded
+    // into one hash rather than any field being dropped: two sessions that differ
+    // only in who checked in must not be "equal" to a set.
+    Object.hash(
+      tutorCheckedInAt,
+      tuteeCheckedInAt,
+      tutorFinishedAt,
+      tuteeFinishedAt,
+      durationMinutes,
+      meetingLink,
+      meetingVenue,
+      meetingVenueDetail,
+      isRated,
+      unreadMessageCount,
+      createdAt,
+    ),
   );
 
   @override

@@ -20,7 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundProblem
 from app.models.enums import NotificationType
-from app.models.notification import DeviceToken, Notification
+from app.models.notification import (
+    MAX_BODY_LENGTH,
+    MAX_TITLE_LENGTH,
+    DeviceToken,
+    Notification,
+)
 from app.models.user import User
 from app.schemas.common import PageParams
 from app.schemas.notification import (
@@ -257,6 +262,37 @@ async def rating_received(
             "session_id": str(session_id),
         },
         dedupe_key=f"rating-received:{rating_id}",
+    )
+
+
+async def message_received(
+    db: AsyncSession,
+    *,
+    recipient_id: uuid.UUID,
+    sender: User | None,
+    preview: str,
+    session_id: uuid.UUID,
+) -> None:
+    """Tell the other party of a session that a message is waiting.
+
+    Written by `message_service` for the first message of a quiet stretch, not
+    for every line. Not deduplicated by key: the caller checks whether the
+    recipient already holds unread messages from this session, and only then
+    writes a row. A key would have to expire when the thread is read, and a
+    unique key cannot do that.
+
+    The body is a preview and the title names the sender, so the inbox says who
+    wrote and roughly what about. The message itself is read in the thread, which
+    is the only place it can be answered.
+    """
+    name = _display_name(sender, "The other party")
+    await notify(
+        db,
+        recipient_id,
+        type=NotificationType.MESSAGE_RECEIVED,
+        title=f"Message from {name}"[:MAX_TITLE_LENGTH],
+        body=preview[:MAX_BODY_LENGTH],
+        data={"kind": "session", "session_id": str(session_id)},
     )
 
 

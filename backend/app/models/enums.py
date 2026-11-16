@@ -146,6 +146,11 @@ class NotificationType(StrEnum):
     RATING_RECEIVED = "rating_received"
     PROMOTION = "promotion"
 
+    #: The other party of a session wrote in the thread. One per quiet stretch,
+    #: not one per line: see `notification_service.message_received` for why a
+    #: bell row per "ok" would make the inbox useless.
+    MESSAGE_RECEIVED = "message_received"
+
 
 class RatingTag(StrEnum):
     """What a student may say about a tutor beyond the score.

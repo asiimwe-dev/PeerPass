@@ -273,4 +273,12 @@ class SessionResponse(OrmSchema):
             "the prompt exists for."
         )
     )
+    unread_message_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Messages the other party wrote that this caller has not read. "
+            "Counted per caller, so the same session reads zero for the sender."
+        ),
+    )
     created_at: datetime

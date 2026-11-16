@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,6 +20,7 @@ from app.models.enums import (
     SessionStatus,
     UserRole,
 )
+from app.models.message import SessionMessage
 from app.models.session import HelpRequest, Session
 from app.models.user import User, has_role, load_roles
 from app.schemas.session import (
@@ -142,7 +143,7 @@ async def create_session(
     )
     await db.commit()
     await db.refresh(session)
-    return await _session_response(db, session)
+    return await _session_response(db, session, viewer_id=user.id)
 
 
 async def list_sessions(
@@ -165,8 +166,19 @@ async def list_sessions(
     )
     if not include_cancelled:
         query = query.where(Session.status != SessionStatus.CANCELLED)
-    result = await db.execute(query)
-    return [await _session_response(db, row) for row in result.scalars()]
+    rows = list((await db.execute(query)).scalars())
+    # One grouped count for the whole page. The list screen is where the badge
+    # lives, and a per-session subquery here would be one round trip per card.
+    unread = await _unread_counts(db, user.id, [row.id for row in rows])
+    return [
+        await _session_response(
+            db,
+            row,
+            viewer_id=user.id,
+            unread=unread.get(row.id, 0),
+        )
+        for row in rows
+    ]
 
 
 async def get_session(
@@ -174,7 +186,7 @@ async def get_session(
 ) -> SessionResponse:
     """Fetch one session the current user can view."""
     session = await _load_session_for_user(db, user, session_id)
-    return await _session_response(db, session)
+    return await _session_response(db, session, viewer_id=user.id)
 
 
 async def transition_session(
@@ -246,7 +258,7 @@ async def transition_session(
 
     await db.flush()
     await db.commit()
-    return await _session_response(db, session)
+    return await _session_response(db, session, viewer_id=user.id)
 
 
 async def check_in(
@@ -317,7 +329,7 @@ async def check_in(
 
     await db.flush()
     await db.commit()
-    return await _session_response(db, session)
+    return await _session_response(db, session, viewer_id=user.id)
 
 
 async def finish(
@@ -335,7 +347,7 @@ async def finish(
     """
     session = await _load_session_for_user(db, user, session_id)
     if session.status is SessionStatus.COMPLETED:
-        return await _session_response(db, session)
+        return await _session_response(db, session, viewer_id=user.id)
     if session.status is not SessionStatus.IN_PROGRESS:
         raise ConflictProblem(
             "Only a session both parties have checked in to can be finished."
@@ -343,7 +355,7 @@ async def finish(
 
     session = await _lock_session(db, session)
     if session.status is SessionStatus.COMPLETED:
-        return await _session_response(db, session)
+        return await _session_response(db, session, viewer_id=user.id)
     if session.status is not SessionStatus.IN_PROGRESS:
         raise ConflictProblem(
             "Only a session both parties have checked in to can be finished."
@@ -389,7 +401,7 @@ async def finish(
 
     await db.flush()
     await db.commit()
-    return await _session_response(db, session)
+    return await _session_response(db, session, viewer_id=user.id)
 
 
 async def _lock_session(db: AsyncSession, session: Session) -> Session:
@@ -461,8 +473,23 @@ async def _load_session_for_user(
     return session
 
 
-async def _session_response(db: AsyncSession, session: Session) -> SessionResponse:
-    """Build the response with a computed rating flag."""
+async def _session_response(
+    db: AsyncSession,
+    session: Session,
+    *,
+    viewer_id: uuid.UUID,
+    unread: int | None = None,
+) -> SessionResponse:
+    """Build the response with the two things computed per viewer.
+
+    `viewer_id` is required rather than optional: both the rating flag's meaning
+    and the unread count are answers *about the caller*, and a default would let
+    a future call site ship a response that says zero unread messages to the
+    person they are waiting for. When [unread] is supplied the caller has already
+    counted a whole page and this only reads the map.
+    """
+    if unread is None:
+        unread = (await _unread_counts(db, viewer_id, [session.id])).get(session.id, 0)
     return SessionResponse(
         id=session.public_id,
         help_request_id=(
@@ -493,5 +520,32 @@ async def _session_response(db: AsyncSession, session: Session) -> SessionRespon
         meeting_venue=session.meeting_venue,
         meeting_venue_detail=session.meeting_venue_detail,
         is_rated=await session.is_rated(db),
+        unread_message_count=unread,
         created_at=session.created_at,
     )
+
+
+async def _unread_counts(
+    db: AsyncSession,
+    viewer_id: uuid.UUID,
+    session_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, int]:
+    """Unread messages per session, for one viewer, in one query.
+
+    A message is unread when it was not written by the viewer and carries no
+    `read_at`. The sender comparison is what makes the count per caller rather
+    than per thread: writing a message never marks anything unread for the person
+    who wrote it.
+    """
+    if not session_ids:
+        return {}
+    rows = await db.execute(
+        select(SessionMessage.session_id, func.count())
+        .where(
+            SessionMessage.session_id.in_(session_ids),
+            SessionMessage.sender_id != viewer_id,
+            SessionMessage.read_at.is_(None),
+        )
+        .group_by(SessionMessage.session_id)
+    )
+    return {session_id: count for session_id, count in rows}

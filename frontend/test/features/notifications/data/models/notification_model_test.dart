@@ -49,6 +49,20 @@ void main() {
       expect(notification.readAt, DateTime.utc(2026, 11, 3, 10));
     });
 
+    test('a message notification keeps its session id', () {
+      // The wire value is the contract; the enum name is not. A server that sends
+      // `message_received` must reach the chat path, not `unknown`.
+      final row = AppNotification.fromJson(
+        _row(
+          type: 'message_received',
+          data: {'kind': 'session', 'session_id': 'session-1'},
+        ),
+      );
+
+      expect(row.type, AppNotificationType.messageReceived);
+      expect(row.sessionId, 'session-1');
+    });
+
     test('a type this build has never heard of is still readable', () {
       // The point is forward compatibility: a newer backend must not make an
       // older APK drop the message or crash the list. The row is shown and its

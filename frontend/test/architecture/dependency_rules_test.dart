@@ -98,7 +98,13 @@ void main() {
               trimmed.contains('/data/repositories/auth_repository.dart') ||
               trimmed.contains(
                 '/data/repositories/competencies_repository.dart',
-              );
+              ) ||
+              // A session's thread is part of the session, so the messages
+              // feature reads it through the sessions contract. The contract's
+              // own return type comes with it: a screen cannot call
+              // `otherPartyName` on a value whose type it may not name.
+              trimmed.contains('/data/repositories/sessions_repository.dart') ||
+              trimmed.contains('/data/models/session_model.dart');
           if (!isDataLayer || !isOwnContract) {
             offenders.add('${file.path} imports $target outside its contract');
           }

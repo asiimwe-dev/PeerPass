@@ -1137,7 +1137,15 @@ than `""` so it cannot collide with `GET /v1/sessions/{session_id}`.
 ### `GET /v1/sessions/{session_id}`
 
 One session, by public id. The response carries the four attendance timestamps,
-so each party can see whether they are waiting on the other.
+so each party can see whether they are waiting on the other, and two fields
+computed for the caller:
+
+- `is_rated` — whether a rating exists for the session
+- `unread_message_count` — how many messages in the thread the caller has not
+  opened. Counted per caller, so the same row is two for the student and zero
+  for the tutor who wrote them. The list route returns it for every row from one
+  grouped query, which is what the "New message" line on the sessions list is
+  drawn from.
 
 ### `POST /v1/sessions/{session_id}/check-in`
 
@@ -1203,6 +1211,82 @@ The database refuses a live session with fewer than two check-ins and a
 completed session with fewer than two finishes. Session records are the source of
 truth for hours and certificates, so the evidence is enforced below the service
 as well as in it.
+
+## Messages
+
+The conversation between the two parties of a session. There is **no separate
+conversation resource**: a thread is its session, and the session decides who may
+write and what the thread is about. Both parties are fixed at confirmation, so a
+message needs no recipient — the caller is one of the two and the other one is
+the recipient by construction.
+
+Only the two parties can read or write. A session someone else is not part of is
+a **404**, not a 403, for the same reason as the session routes: the response must
+not confirm that another student's session exists. There is no admin read path.
+
+| Session state | Can read | Can write |
+| ------------- | -------- | --------- |
+| `scheduled`, `in_progress`, `completed` | yes | yes |
+| `cancelled`, `no_show` | yes | no — `409` |
+
+A cancelled or missed session keeps its history, because what was agreed last
+week is exactly what matters after it falls through; only the composer closes.
+Completed sessions stay open: the follow-up question after a session is the same
+two people and the same topic.
+
+### `GET /v1/sessions/{session_id}/messages?after=&limit=`
+
+The thread, oldest first. Without `after` the newest page is returned in reading
+order. `after` is the public id of the last message the client already holds and
+returns only what arrived since; `limit` is 1–100, default 50.
+
+The cursor is an id and not a timestamp on purpose. Two messages can share a
+second, and a cursor that compared clocks would either skip one or repeat one
+forever; the server compares the `(created_at, id)` pair behind the id. A cursor
+that names a message from another thread is a 404 — it must not become a valid
+position in this one.
+
+### `POST /v1/sessions/{session_id}/messages`
+
+`{"body": "Library, 4pm?"}` → 201 with the stored message. The body is trimmed,
+must be 1–2000 characters, and is stored as the one row both parties then read.
+
+There is **no client idempotency key** on send yet. A retried POST therefore
+stores a second row; the client does not retry a send by itself. This is recorded
+as a known limitation rather than solved with a hidden dedupe, because a
+message's identity is its body and time, and two identical "ok" messages a minute
+apart are legitimate.
+
+No per-message rate limit. The route is authenticated and session-scoped, and the
+beta has no history of abuse; a limit that guesses wrong for a student with poor
+connectivity is a worse failure than the one it prevents. This is the first thing
+to add if the beta shows runaway send loops.
+
+Sending writes at most **one** `message_received` notification to the other party,
+and only when that party has nothing already unread in this thread. Without that
+check every "ok" would add a bell row and the inbox would become the chat it is
+supposed to point at. The notification body is the first 160 characters of the
+message, whitespace collapsed to one line.
+
+### `POST /v1/sessions/{session_id}/messages/read`
+
+No request body. Marks every message **the other party wrote** as read and answers
+`{"marked": n}`.
+
+Only the other party's rows are touched: marking one's own message read would
+clear the other person's badge and destroy the evidence of who has seen what.
+Idempotent — a second call answers `{"marked": 0}` rather than an error, because
+the chat screen calls this on open and again after every poll that brought
+something in.
+
+### How the client keeps a thread current
+
+Beta is **pull, not push**: an open thread re-reads with `after=` every five
+seconds, and stops when the screen closes or the app goes to the background.
+This is a deliberate trade of latency for a much smaller surface — no socket
+lifecycle, no reconnect state on a phone that drops its network, no new auth
+path. `docs/architecture.md` records the WebSocket migration as the next step
+after the beta.
 
 ## Ratings
 
@@ -1310,6 +1394,7 @@ the token.
 | `session_cancelled` | Either party cancels an upcoming or live session | `session` |
 | `rating_received` | A tutee rates a completed session | `rating` |
 | `promotion` | A tutor's standing moves to Verified | — |
+| `message_received` | A party writes in a session thread with nothing already unread by the other | `session` |
 
 Every type has a producer. A type with no producer would make the client draw an
 icon and a deep link for a notification that can never arrive.
