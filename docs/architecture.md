@@ -226,6 +226,33 @@ is not.
 into `ProviderScope`. There is no in-memory default on the request path, so a
 stub cannot hide behind a working screen.
 
+The container is constructed explicitly rather than by `runApp(ProviderScope())`,
+because one dependency points the other way: the HTTP client's `401` handler has
+to reach the auth **controller**, and the controller is built by the container the
+client is injected into. `late final` plus `UncontrolledProviderScope` breaks that
+cycle in one visible place instead of hiding a second token store somewhere.
+
+#### A refused refresh ends the session; a dropped one does not
+
+The access token lives fifteen minutes, so a warm app will always meet `401`
+eventually. The interceptor refreshes once, single-flight, and retries. What it
+does *not* decide is whether the session is over — that answer is a policy, and it
+lives on `AuthController.refreshSession()`.
+
+The distinction is already encoded in storage, so nothing has to guess it twice:
+`RemoteAuthRepository.refreshSession()` clears the stored pair when the server
+**refuses** it (`AuthFailure`/`NotFoundFailure`) and leaves it alone when the
+network swallowed the attempt. So "no stored token left" means the account is over,
+and the controller signs the app out through the same `SessionState` transition a
+tap on Sign out uses. The walking-skeleton failure this fixes is subtle and real: a
+refresh token revoked on another device used to leave the student on a Home screen
+whose every section said a failure, with a retry that could only fail again, until
+they force-quit.
+
+A transport failure returns `false` and changes nothing. Signing out on a dropped
+connection would end a session the server never refused, which is the one state a
+cached account cannot recover from.
+
 #### Tutor HQ composes sections it does not own
 
 Tutor HQ is a dashboard, and the home feature owns only its layout and the entry

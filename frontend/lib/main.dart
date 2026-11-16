@@ -9,6 +9,7 @@ import 'package:peerpass/features/auth/data/datasources/remote_academics_datasou
 import 'package:peerpass/features/auth/data/datasources/remote_auth_datasource.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 import 'package:peerpass/features/auth/data/repositories/remote_auth_repository.dart';
+import 'package:peerpass/features/auth/presentation/providers/auth_providers.dart';
 import 'package:peerpass/features/competencies/data/datasources/remote_competencies_datasource.dart';
 import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
 import 'package:peerpass/features/competencies/data/repositories/remote_competencies_repository.dart';
@@ -56,15 +57,20 @@ Future<void> main() async {
   // because nothing issues a request until the repository exists.
   late final RemoteAuthRepository repository;
 
+  // Also late, for the same reason: the refresh policy lives on the auth
+  // controller, and the controller is built by the container the client is
+  // injected into. A `401` is the only thing that ever reads this, and by then
+  // the app is running.
+  late final ProviderContainer container;
+
   final dio = buildApiClient(
     config: config,
     tokenStore: tokenStore,
-    // A closure rather than the tear-off `repository.refreshSession`. The
-    // tear-off reads `repository` here, at the point of construction, and the
-    // flow analysis correctly says it is not assigned yet. Inside a closure the
-    // read is deferred, which is the same trick `buildApiClient` already uses
-    // for its own retry.
-    onUnauthorized: () => repository.refreshSession(),
+    // The controller, not the repository: a refused refresh has to end the
+    // session, not just fail one request. Going through the repository alone
+    // left a warm app on screens that all answered 401 until it was killed.
+    onUnauthorized: () =>
+        container.read(authControllerProvider).refreshSession(),
   );
 
   repository = RemoteAuthRepository(
@@ -100,34 +106,38 @@ Future<void> main() async {
     datasource: RemoteCompetenciesDatasource(dio),
   );
 
+  container = ProviderContainer(
+    // The composition root. Choosing implementations here, rather than
+    // defaulting them in the providers, is what makes a test swap the whole
+    // data layer for a fake in one line.
+    //
+    // `sessionsRepositoryProvider`, `tutorsRepositoryProvider`,
+    // `matchingRepositoryProvider`, `messagesRepositoryProvider`,
+    // `notificationsRepositoryProvider`, `incentivesRepositoryProvider` and
+    // `competenciesRepositoryProvider` all throw unless they are overridden, so
+    // leaving one out does not degrade to a fake that quietly reports no
+    // sessions, no tutors, no messages and nobody eligible: the failure is
+    // immediate and names the missing override.
+    overrides: [
+      authRepositoryProvider.overrideWithValue(repository),
+      sessionCacheProvider.overrideWithValue(sessionCache),
+      sessionsRepositoryProvider.overrideWithValue(sessionsRepository),
+      tutorsRepositoryProvider.overrideWithValue(tutorsRepository),
+      matchingRepositoryProvider.overrideWithValue(matchingRepository),
+      messagesRepositoryProvider.overrideWithValue(messagesRepository),
+      notificationsRepositoryProvider.overrideWithValue(
+        notificationsRepository,
+      ),
+      incentivesRepositoryProvider.overrideWithValue(incentivesRepository),
+      competenciesRepositoryProvider.overrideWithValue(
+        competenciesRepository,
+      ),
+    ],
+  );
+
   runApp(
-    ProviderScope(
-      // The composition root. Choosing implementations here, rather than
-      // defaulting them in the providers, is what makes a test swap the whole
-      // data layer for a fake in one line.
-      //
-      // `sessionsRepositoryProvider`, `tutorsRepositoryProvider`,
-      // `matchingRepositoryProvider`, `messagesRepositoryProvider`,
-      // `notificationsRepositoryProvider`, `incentivesRepositoryProvider` and
-      // `competenciesRepositoryProvider` all throw unless they are overridden, so
-      // leaving one out does not degrade to a fake that quietly reports no
-      // sessions, no tutors, no messages and nobody eligible: the failure is
-      // immediate and names the missing override.
-      overrides: [
-        authRepositoryProvider.overrideWithValue(repository),
-        sessionCacheProvider.overrideWithValue(sessionCache),
-        sessionsRepositoryProvider.overrideWithValue(sessionsRepository),
-        tutorsRepositoryProvider.overrideWithValue(tutorsRepository),
-        matchingRepositoryProvider.overrideWithValue(matchingRepository),
-        messagesRepositoryProvider.overrideWithValue(messagesRepository),
-        notificationsRepositoryProvider.overrideWithValue(
-          notificationsRepository,
-        ),
-        incentivesRepositoryProvider.overrideWithValue(incentivesRepository),
-        competenciesRepositoryProvider.overrideWithValue(
-          competenciesRepository,
-        ),
-      ],
+    UncontrolledProviderScope(
+      container: container,
       child: const PeerPassApp(),
     ),
   );

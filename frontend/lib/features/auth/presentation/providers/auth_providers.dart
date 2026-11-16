@@ -109,6 +109,26 @@ class AuthController {
   /// honest answer to whether the data is current.
   Future<void> retryRestore() => _restore(++_operation);
 
+  /// Renews the access token for the HTTP client, ending the session if the
+  /// server has refused it.
+  ///
+  /// This is where a warm app learns its credential is dead. The interceptor
+  /// only knows a refresh failed; the repository has already cleared the token
+  /// when the refusal came from the server, and left it alone when the failure
+  /// was the network. "No token left" is therefore the same fact as "that
+  /// account is over", and acting on it is what stops a running app sitting on
+  /// screens whose every request answers 401 until the student force-quits.
+  ///
+  /// Returns whether the session is still usable, which is exactly what the
+  /// interceptor retries on.
+  Future<bool> refreshSession() async {
+    final renewed = await _repository.refreshSession();
+    if (renewed) return true;
+    if (await _repository.hasStoredSession()) return false;
+    await _endExpiredSession();
+    return false;
+  }
+
   /// Starts the cold-start check of the stored session.
   ///
   /// Called once, by [authControllerProvider] when it is first read, rather than
@@ -157,6 +177,18 @@ class AuthController {
       await _forgetAccount();
       _session.signedOut();
     }
+  }
+
+  /// Drops the account the server has already refused.
+  ///
+  /// Deliberately not [signOut]: there is nothing left to revoke, and a goodbye
+  /// request carrying a credential the API has just rejected is noise. What has
+  /// to go is the local record of the account and every cached answer under it,
+  /// so the next cold start cannot restore a session the server has ended.
+  Future<void> _endExpiredSession() async {
+    ++_operation;
+    await _forgetAccount();
+    _session.signedOut();
   }
 
   /// Adopts a profile and points the cache at the account it belongs to.
