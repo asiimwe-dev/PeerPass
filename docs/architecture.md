@@ -204,6 +204,19 @@ who wants to force it; neither path signs anyone out on failure. A phone with no
 network therefore keeps trying at a rate that cannot drain the battery, and the
 student never has to know that "pull down" is the way back.
 
+#### Academic context is shown, not rewritten
+
+The Faculty row on Profile is read-only. That is a scope decision, not a missing
+control: the faculty is the boundary the academic half of the product is organised
+by — the catalogue a student may ask from, the tutor rail they see, the modules
+they declare, and every competency a tutor claims. Letting a profile screen rewrite
+it would move all of those at once, and a student who changed it mid-semester would
+watch their declared modules disappear and their open requests point at a catalogue
+they had left.
+
+A wrong faculty is corrected outside the app, by whoever operates it. The Profile
+screen is for reading that context and for actions that do not redraw a boundary.
+
 #### The repository provider is declared with the contract
 
 `authRepositoryProvider` is declared in

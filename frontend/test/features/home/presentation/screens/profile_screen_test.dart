@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:peerpass/app/router.dart';
-import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
@@ -97,7 +96,9 @@ void main() {
     await _pumpProfile(tester, repository);
     await tester.pumpAndSettle();
 
-    expect(find.text('Unavailable'), findsOneWidget);
+    // The faculty row resolves from the same catalogue, so it is unavailable
+    // too; what matters is that neither row leaks the raw identifier.
+    expect(find.text('Unavailable'), findsWidgets);
     expect(find.text('university-1'), findsNothing);
   });
 
@@ -111,99 +112,34 @@ void main() {
     expect(find.text('faculty-computing'), findsNothing);
   });
 
-  testWidgets('changing faculty sends only the faculty', (tester) async {
-    // Only the faculty. A step that sent the whole record would blank the
-    // university chosen on an earlier screen, which is the reason the wizard
-    // saves one field at a time.
+  testWidgets('shows the faculty without offering to change it', (
+    tester,
+  ) async {
+    // The faculty decides the whole academic scope -- catalogue, tutor rail,
+    // modules, competencies -- so moving it is an operator action. A row that
+    // looks tappable would promise a change the app does not make.
     final repository = _repositoryWithFaculties();
 
     await _pumpProfile(tester, repository);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Computing'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Medicine').last);
-    await tester.pumpAndSettle();
 
-    expect(repository.profileUpdates, hasLength(1));
-    expect(repository.profileUpdates.single, {
-      'faculty_id': 'faculty-medicine',
-    });
-  });
-
-  testWidgets('changing faculty updates the session it is read from', (
-    tester,
-  ) async {
-    // The screen reads the faculty from the session, so a save that did not
-    // write the returned record back would leave the old name on screen after a
-    // change the server had accepted.
-    final repository = _repositoryWithFaculties();
-    final container = await _pumpProfile(tester, repository);
-    await tester.pumpAndSettle();
+    expect(find.text('Computing'), findsOneWidget);
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(find.byIcon(Icons.chevron_right), findsNothing);
 
     await tester.tap(find.text('Computing'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Medicine').last);
-    await tester.pumpAndSettle();
 
-    expect(
-      container.read(sessionControllerProvider).profile?.facultyId,
-      'faculty-medicine',
-    );
-    expect(find.text('Medicine'), findsWidgets);
-    expect(find.text('Computing'), findsNothing);
+    expect(repository.profileUpdates, isEmpty);
+    expect(find.text('Medicine'), findsNothing);
   });
 
-  testWidgets('says that the course units will need choosing again', (
-    tester,
-  ) async {
-    // Changing faculty drops the primary modules chosen under the old one, and
-    // the onboarding gate then asks for new ones. Left unsaid, that reads as a
-    // fault rather than as a consequence of the change just made.
-    await _pumpProfile(tester, _repositoryWithFaculties());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Computing'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Medicine').last);
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text(
-        'Faculty updated. Choose the course units for your new faculty.',
-      ),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('reports a rejected change instead of showing it as saved', (
-    tester,
-  ) async {
-    // The screen must not claim a change the API refused, and must not sign the
-    // student out over it either.
-    final repository = _RefusingFacultyRepository();
-
-    await _pumpProfile(tester, repository);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Computing'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Medicine').last);
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('faculty'), findsWidgets);
-    expect(find.text('Faculty updated. Choose the course units'), findsNothing);
-    expect(find.text('Computing'), findsWidgets);
-  });
-
-  testWidgets('offers no faculty to pick before a university is chosen', (
-    tester,
-  ) async {
-    // Faculties belong to a university. With none chosen the tile says what is
-    // missing instead of opening a sheet that could only be empty.
-    final repository = _repositoryWithFaculties();
-
+  testWidgets('says when no faculty is recorded', (tester) async {
+    // A record that predates the field, or one the catalogue no longer lists,
+    // reads as missing rather than as a spinner that never resolves.
     await _pumpProfile(
       tester,
-      repository,
+      _repositoryWithFaculties(),
       profile: const UserProfile(
         publicId: 'user-1',
         email: 'student@must.ac.ug',
@@ -213,8 +149,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Choose a university first'), findsOneWidget);
-    expect(repository.profileUpdates, isEmpty);
+    expect(
+      find.descendant(
+        of: find.widgetWithText(ListTile, 'Faculty'),
+        matching: find.text('Not provided'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the applications row is hidden before the first application', (
@@ -281,32 +222,6 @@ void main() {
 
     expect(find.text('the list'), findsOneWidget);
   });
-}
-
-/// Refuses every faculty change with a problem document the API would send.
-class _RefusingFacultyRepository extends FakeAuthRepository {
-  _RefusingFacultyRepository()
-    : super(
-        universityOptions: const [
-          UniversityOption(publicId: 'university-1', name: 'MUST'),
-        ],
-        facultyOptions: const [_computing, _medicine],
-      );
-
-  @override
-  Future<UserProfile> updateProfile({
-    String? fullName,
-    String? universityId,
-    String? facultyId,
-    int? yearOfStudy,
-    bool? academicDataConsented,
-    List<String>? primaryCourseUnitIds,
-  }) {
-    throw const ValidationFailure(
-      'That faculty could not be found.',
-      fieldErrors: {'faculty_id': 'could not be found'},
-    );
-  }
 }
 
 class _UnavailableUniversityRepository extends FakeAuthRepository {
