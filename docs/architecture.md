@@ -1215,6 +1215,15 @@ can render but nothing raises is a dead deep link and a branch that can never be
 tested, so certificate and reminder events are absent until the code that raises
 them exists.
 
+The **client** reads the inbox at sign-in, whenever the bell is opened, and when
+the app comes back to the foreground; it does not poll it in between. So a
+notification that arrives while a student stares at Home shows up when they next
+open the bell, not the instant it is written. Polling the inbox would put a
+request on a timer for every signed-in phone to power a badge, and a beta that
+already has to explain a five-second chat poll should not add a second one. Push,
+behind `FCM_ENABLED`, is the channel that closes that gap; the bell's own
+refresh-on-open is the honest fallback the APK ships with.
+
 ### 8.4 A review is published; the note was confided
 
 A rating is one transaction between two people. A review is that same row read by

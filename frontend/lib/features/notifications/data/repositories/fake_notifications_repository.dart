@@ -33,6 +33,12 @@ class FakeNotificationsRepository implements NotificationsRepository {
   List<AppNotification> get notifications =>
       List<AppNotification>.unmodifiable(_items);
 
+  /// Drops a new row at the top, the way the server would.
+  ///
+  /// Tests use it to represent something arriving while the app is already
+  /// running, which is the case a cached list has to be asked about again.
+  void arrive(AppNotification item) => _items.insert(0, item);
+
   @override
   Future<NotificationPage> inbox({int limit = 20, int offset = 0}) async {
     inboxOffsets.add(offset);
