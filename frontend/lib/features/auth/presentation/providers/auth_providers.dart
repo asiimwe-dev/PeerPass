@@ -288,16 +288,18 @@ final facultiesProvider = FutureProvider.family<List<Subject>, String>((
 /// The programmes a faculty publishes.
 ///
 /// Keyed by faculty because that is the question the wizard asks: it has just
-/// chosen a faculty and needs that faculty's shelves. The fallback university is
-/// synthetic and has no programmes to ask the API for, so it answers empty --
-/// which the wizard reads as "nothing to require" rather than as a failure.
+/// chosen a faculty and needs that faculty's shelves. The fallback catalogue is
+/// synthetic and has no programmes to ask the API for -- and its ids are not
+/// UUIDs, so asking would be a refusal rather than an empty answer. Those keys
+/// short-circuit to empty, which the wizard reads as "nothing to require".
 // ignore: specify_nonobvious_property_types
 final programsProvider =
     FutureProvider.family<List<ProgramOption>, ({String universityId, String? facultyId})>((
       ref,
       scope,
     ) {
-      if (isMustFallbackUniversity(scope.universityId)) {
+      if (isMustFallbackUniversity(scope.universityId) ||
+          isMustFallbackFaculty(scope.facultyId)) {
         // A `Future.value` rather than an `async` body: the answer is already
         // known and wrapping it in a second microtask gains nothing.
         return Future.value(const <ProgramOption>[]);

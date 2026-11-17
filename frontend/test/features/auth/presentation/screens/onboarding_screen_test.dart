@@ -150,6 +150,26 @@ class _UnavailableProgrammeRepository extends FakeAuthRepository {
   }
 }
 
+/// Records whether the programme endpoint was asked.
+///
+/// The synthetic fallback ids are not UUIDs, so reaching the API with one would
+/// be a refusal rather than an empty list. Counting the calls proves the guard
+/// short-circuits instead of relying on the fake's empty catalogue.
+class _RecordingProgramRepository extends FakeAuthRepository {
+  _RecordingProgramRepository() : super(programOptions: _programmes);
+
+  int programRequests = 0;
+
+  @override
+  Future<List<ProgramOption>> programs({
+    required String universityId,
+    String? facultyId,
+  }) {
+    programRequests += 1;
+    return super.programs(universityId: universityId, facultyId: facultyId);
+  }
+}
+
 class _UnavailableFacultyRepository extends FakeAuthRepository {
   _UnavailableFacultyRepository()
     : super(
@@ -337,6 +357,38 @@ Future<_Harness> _atFilledSecondStep(
 }
 
 void main() {
+  test('a fallback shelf never reaches the programme endpoint', () async {
+    // A real university can show the fallback faculties when only that request
+    // dropped. Their ids are synthetic, and the endpoint would reject one as a
+    // malformed UUID -- which the wizard would then read as a failed catalogue.
+    final repository = _RecordingProgramRepository();
+    final container = ProviderContainer(
+      overrides: [authRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    final forFaculty = await container.read(
+      programsProvider((
+        universityId: _university,
+        facultyId: mustFallbackFaculties.first.publicId,
+      )).future,
+    );
+    final forUniversity = await container.read(
+      programsProvider((
+        universityId: mustFallbackUniversityId,
+        facultyId: _faculties.first.publicId,
+      )).future,
+    );
+
+    expect(forFaculty, isEmpty);
+    expect(forUniversity, isEmpty);
+    expect(
+      repository.programRequests,
+      0,
+      reason: 'a synthetic id is not a question the API can answer',
+    );
+  });
+
   testWidgets('a faculty with no course units can still finish the wizard', (
     tester,
   ) async {
