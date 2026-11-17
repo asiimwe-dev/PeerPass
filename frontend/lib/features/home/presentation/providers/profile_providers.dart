@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/features/auth/data/repositories/auth_repository.dart';
 
@@ -32,3 +33,24 @@ final facultiesForUniversityProvider =
           .read(authRepositoryProvider)
           .faculties(universityId: universityId);
     });
+
+/// The programmes a faculty publishes, for the profile's programme picker.
+///
+/// Read through the auth repository rather than the onboarding picker's
+/// provider: `home/` may depend on another feature's data contract, never its
+/// presentation layer. The answer belongs to the catalogue and is the same
+/// whichever student asks.
+// The family parameter's type is inferred from the family declaration.
+// ignore: specify_nonobvious_property_types
+final programsForFacultyProvider =
+    FutureProvider.family<
+      List<ProgramOption>,
+      ({String universityId, String facultyId})
+    >(
+      (ref, scope) => ref
+          .read(authRepositoryProvider)
+          .programs(
+            universityId: scope.universityId,
+            facultyId: scope.facultyId,
+          ),
+    );
