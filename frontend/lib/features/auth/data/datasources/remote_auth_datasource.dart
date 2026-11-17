@@ -136,6 +136,7 @@ class RemoteAuthDatasource {
     String? fullName,
     String? universityId,
     String? facultyId,
+    String? programId,
     int? yearOfStudy,
     bool? academicDataConsented,
     List<String>? primaryCourseUnitIds,
@@ -144,6 +145,7 @@ class RemoteAuthDatasource {
     if (fullName != null) data['full_name'] = fullName;
     if (universityId != null) data['university_id'] = universityId;
     if (facultyId != null) data['faculty_id'] = facultyId;
+    if (programId != null) data['program_id'] = programId;
     if (yearOfStudy != null) data['year_of_study'] = yearOfStudy;
     if (academicDataConsented != null) {
       data['academic_data_consented'] = academicDataConsented;

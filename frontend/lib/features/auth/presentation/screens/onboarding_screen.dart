@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/constants/app_dimens.dart';
 import 'package:peerpass/core/error/failures.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/theme/app_palette.dart';
@@ -39,11 +40,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     // list that arrived, so neither opens the module step.
     final universityId = ref.read(onboardingControllerProvider).universityId;
     final facultyId = ref.read(onboardingControllerProvider).facultyId;
+    final programId = ref.read(onboardingControllerProvider).programId;
     final units = universityId != null && facultyId != null
         ? ref.read(
             courseUnitsProvider((
               universityId: universityId,
               subjectId: facultyId,
+              programId: programId,
             )),
           )
         : null;
@@ -370,6 +373,7 @@ class _AcademicContextStep extends ConsumerWidget {
             ),
         const SizedBox(height: AppDimens.lg),
         const _FacultySection(),
+        const _ProgrammeSection(),
         const SizedBox(height: AppDimens.lg),
         _YearPicker(),
         const SizedBox(height: AppDimens.xl),
@@ -407,6 +411,96 @@ class _FacultySection extends ConsumerWidget {
           const _FacultyPicker(),
         ],
       ),
+    );
+  }
+}
+
+/// The programme picker, when the chosen faculty publishes programmes.
+///
+/// Deliberately absent rather than disabled when there is nothing to choose. A
+/// faculty whose programmes are not published is an ordinary state (see the
+/// architecture note on the programme shelf), and an empty dropdown would read as
+/// a field the student failed to fill in. Before a faculty is chosen there is no
+/// shelf to ask about, so the section draws nothing at all.
+class _ProgrammeSection extends ConsumerWidget {
+  const _ProgrammeSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(onboardingControllerProvider);
+    final universityId = state.universityId;
+    final facultyId = state.facultyId;
+    if (universityId == null || facultyId == null) {
+      return const SizedBox.shrink();
+    }
+
+    final scope = (universityId: universityId, facultyId: facultyId);
+    final programmes = ref.watch(programsProvider(scope));
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppDimens.lg),
+      child: programmes.when(
+        loading: () =>
+            const _ReferenceDataLoading(label: 'Loading programmes'),
+        error: (error, _) => _ReferenceDataUnavailable(
+          message:
+              'Could not load programmes. Check your connection and try again.',
+          onRetry: () => ref.invalidate(programsProvider(scope)),
+        ),
+        // A faculty that publishes nothing asks nothing. The API reads the
+        // account's null programme as the whole faculty catalogue, so this is a
+        // complete answer rather than a constraint the student has to satisfy.
+        data: (programmes) => programmes.isEmpty
+            ? const SizedBox.shrink()
+            : const _ProgrammePicker(),
+      ),
+    );
+  }
+}
+
+class _ProgrammePicker extends ConsumerWidget {
+  const _ProgrammePicker();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(onboardingControllerProvider);
+    final universityId = state.universityId;
+    final facultyId = state.facultyId;
+    final programmes = universityId != null && facultyId != null
+        ? ref
+              .watch(
+                programsProvider((
+                  universityId: universityId,
+                  facultyId: facultyId,
+                )),
+              )
+              .value
+        : null;
+
+    // The wizard clears the programme when the faculty changes, so a value from
+    // the previous shelf must not be handed to a dropdown that no longer lists
+    // it.
+    final selectionIsValid =
+        programmes?.any(
+          (programme) => programme.publicId == state.programId,
+        ) ??
+        false;
+
+    return DropdownButtonFormField<String>(
+      initialValue: selectionIsValid ? state.programId : null,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Programme',
+        prefixIcon: Icon(Icons.workspaces_outline),
+      ),
+      items: [
+        for (final programme in programmes ?? const <ProgramOption>[])
+          DropdownMenuItem(
+            value: programme.publicId,
+            child: Text(programme.name, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: ref.read(onboardingControllerProvider.notifier).setProgram,
     );
   }
 }
@@ -644,7 +738,7 @@ class _ConsentBox extends ConsumerWidget {
               Expanded(
                 child: Text(
                   'I agree that PeerPass may store my name, university, '
-                  'faculty and year to find me tutors and units.',
+                  'faculty, programme and year to find me tutors and units.',
                   style: theme.textTheme.bodyMedium,
                 ),
               ),
@@ -695,6 +789,7 @@ class _PrimaryModulesStep extends ConsumerWidget {
               courseUnitsProvider((
                 universityId: universityId,
                 subjectId: facultyId,
+                programId: state.programId,
               )),
             )
             .when(

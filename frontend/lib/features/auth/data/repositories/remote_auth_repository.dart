@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/course_unit_option.dart';
 import 'package:peerpass/core/models/grade_option.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
@@ -141,6 +142,17 @@ class RemoteAuthRepository implements AuthRepository {
       _guard(() => academics.faculties(universityId: universityId));
 
   @override
+  Future<List<ProgramOption>> programs({
+    required String universityId,
+    String? facultyId,
+  }) => _guard(
+    () => academics.programs(
+      universityId: universityId,
+      facultyId: facultyId,
+    ),
+  );
+
+  @override
   Future<List<CourseUnitOption>> courseUnits({
     String? universityId,
     String? subjectId,
@@ -158,6 +170,7 @@ class RemoteAuthRepository implements AuthRepository {
     String? fullName,
     String? universityId,
     String? facultyId,
+    String? programId,
     int? yearOfStudy,
     bool? academicDataConsented,
     List<String>? primaryCourseUnitIds,
@@ -169,6 +182,7 @@ class RemoteAuthRepository implements AuthRepository {
             fullName: fullName,
             universityId: universityId,
             facultyId: facultyId,
+            programId: programId,
             yearOfStudy: yearOfStudy,
             academicDataConsented: academicDataConsented,
             primaryCourseUnitIds: primaryCourseUnitIds,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/academic_fallback.dart';
 import 'package:peerpass/core/models/course_unit_option.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
@@ -71,6 +72,7 @@ class AuthController {
     String? fullName,
     String? universityId,
     String? facultyId,
+    String? programId,
     int? yearOfStudy,
     bool? academicDataConsented,
     List<String>? primaryCourseUnitIds,
@@ -80,6 +82,7 @@ class AuthController {
       fullName: fullName,
       universityId: universityId,
       facultyId: facultyId,
+      programId: programId,
       yearOfStudy: yearOfStudy,
       academicDataConsented: academicDataConsented,
       primaryCourseUnitIds: primaryCourseUnitIds,
@@ -282,9 +285,43 @@ final facultiesProvider = FutureProvider.family<List<Subject>, String>((
   }
 });
 
-typedef CourseUnitScope = ({String universityId, String? subjectId});
+/// The programmes a faculty publishes.
+///
+/// Keyed by faculty because that is the question the wizard asks: it has just
+/// chosen a faculty and needs that faculty's shelves. The fallback university is
+/// synthetic and has no programmes to ask the API for, so it answers empty --
+/// which the wizard reads as "nothing to require" rather than as a failure.
+// ignore: specify_nonobvious_property_types
+final programsProvider =
+    FutureProvider.family<List<ProgramOption>, ({String universityId, String? facultyId})>((
+      ref,
+      scope,
+    ) {
+      if (isMustFallbackUniversity(scope.universityId)) {
+        // A `Future.value` rather than an `async` body: the answer is already
+        // known and wrapping it in a second microtask gains nothing.
+        return Future.value(const <ProgramOption>[]);
+      }
+      return ref
+          .read(authRepositoryProvider)
+          .programs(
+            universityId: scope.universityId,
+            facultyId: scope.facultyId,
+          );
+    });
 
-/// Course units scoped to the selected university and, when known, faculty.
+/// Course units scoped to the selected university, faculty and programme.
+///
+/// The programme is part of the key even though it is not a query parameter: the
+/// API scopes the answer by the account's own programme, so a student who moves
+/// shelf has to get a different list. Without it in the key, a programme change
+/// would leave the previous shelf's units cached under the same request.
+typedef CourseUnitScope = ({
+  String universityId,
+  String? subjectId,
+  String? programId,
+});
+
 // Riverpod infers the family provider type from the generic parameters, and the
 // analyzer does not surface that type in a way it can prove without the
 // explicit ignore.

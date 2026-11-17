@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/course_unit_option.dart';
 import 'package:peerpass/core/models/grade_option.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
@@ -58,6 +59,16 @@ abstract interface class AuthRepository {
   /// The faculties the picker offers.
   Future<List<Subject>> faculties({required String universityId});
 
+  /// The programmes a faculty publishes, for the academic-context step.
+  ///
+  /// Asked with the faculty because the wizard has just chosen one and needs
+  /// that faculty's shelves, not the whole institution's. A faculty with no
+  /// published programmes is an ordinary answer and returns an empty list.
+  Future<List<ProgramOption>> programs({
+    required String universityId,
+    String? facultyId,
+  });
+
   /// Course units for the given university, for the primary modules step.
   Future<List<CourseUnitOption>> courseUnits({
     String? universityId,
@@ -75,6 +86,7 @@ abstract interface class AuthRepository {
     String? fullName,
     String? universityId,
     String? facultyId,
+    String? programId,
     int? yearOfStudy,
     bool? academicDataConsented,
     List<String>? primaryCourseUnitIds,

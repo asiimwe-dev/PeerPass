@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:peerpass/core/models/course_unit_option.dart';
 import 'package:peerpass/core/models/grade_option.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/storage/session_cache.dart';
@@ -108,6 +109,29 @@ class RemoteAcademicsDatasource {
         {'id': faculty.publicId, 'name': faculty.name},
     ]);
     return faculties;
+  }
+
+  /// The programmes a faculty publishes, for the academic-context step.
+  ///
+  /// The faculty is passed rather than filtering on the client: the endpoint
+  /// already answers for one faculty and the wizard has just chosen it, so
+  /// fetching the whole institution's list to throw most of it away would be a
+  /// larger response for a narrower question.
+  Future<List<ProgramOption>> programs({
+    required String universityId,
+    String? facultyId,
+  }) async {
+    final response = await _dio.get<List<dynamic>>(
+      '/v1/academics/programs',
+      queryParameters: {
+        'university_id': universityId,
+        'faculty_id': ?facultyId,
+      },
+    );
+    return [
+      for (final row in response.data!)
+        ProgramOption.fromJson(row as Map<String, dynamic>),
+    ];
   }
 
   /// Course units for the given university, for the primary modules step.

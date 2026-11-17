@@ -1085,6 +1085,12 @@ not on their shelf at all, and every surface that acts on a course unit says so.
   faculty-wide and still-published units survive. A faculty change clears the
   programme outright, because a programme belongs to one faculty.
 
+Onboarding asks for the programme on the same step as the faculty, because it is
+the same question: which shelf. A faculty that publishes none asks nothing; the
+account is saved without a programme, which is the compatibility state above, not
+a wizard the student cannot finish. The fallback MUST catalogue is synthetic and
+has no programmes to ask the API for, so it never blocks on the question either.
+
 Changing a programme is allowed from Profile; changing a faculty is not. Both are
 deliberately different: the former moves a student between shelves of the
 catalogue they already own, the latter would move every academic record at once,

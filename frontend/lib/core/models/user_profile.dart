@@ -17,6 +17,8 @@ class UserProfile {
     this.fullName,
     this.universityId,
     this.facultyId,
+    this.programId,
+    this.programName,
     this.yearOfStudy,
     this.academicDataConsentedAt,
     this.primaryCourseUnitIds = const [],
@@ -61,6 +63,8 @@ class UserProfile {
       roles: roles,
       universityId: json['university_id'] as String?,
       facultyId: json['faculty_id'] as String?,
+      programId: json['program_id'] as String?,
+      programName: json['program_name'] as String?,
       yearOfStudy: (json['year_of_study'] as num?)?.toInt(),
       academicDataConsentedAt: json['academic_data_consented_at'] == null
           ? null
@@ -86,6 +90,8 @@ class UserProfile {
     'roles': [for (final role in roles) role.wireValue],
     'university_id': universityId,
     'faculty_id': facultyId,
+    'program_id': programId,
+    'program_name': programName,
     'year_of_study': yearOfStudy,
     'academic_data_consented_at': academicDataConsentedAt
         ?.toUtc()
@@ -109,6 +115,18 @@ class UserProfile {
   final String? universityId;
 
   final String? facultyId;
+
+  /// The degree programme the student is enrolled in, as a public id.
+  ///
+  /// Null is a real state, not an unfinished one: an account written before
+  /// programmes existed, or one whose faculty has not published its programmes
+  /// yet, sees the whole faculty catalogue. It is deliberately absent from
+  /// [needsOnboarding] for that reason.
+  final String? programId;
+
+  /// The programme's display name, sent beside the id so the Profile row needs no
+  /// second catalogue lookup.
+  final String? programName;
 
   final int? yearOfStudy;
 
@@ -185,6 +203,8 @@ class UserProfile {
     String? fullName,
     String? universityId,
     String? facultyId,
+    String? programId,
+    String? programName,
     int? yearOfStudy,
     DateTime? academicDataConsentedAt,
     List<String>? primaryCourseUnitIds,
@@ -196,6 +216,8 @@ class UserProfile {
       fullName: fullName ?? this.fullName,
       universityId: universityId ?? this.universityId,
       facultyId: facultyId ?? this.facultyId,
+      programId: programId ?? this.programId,
+      programName: programName ?? this.programName,
       yearOfStudy: yearOfStudy ?? this.yearOfStudy,
       academicDataConsentedAt:
           academicDataConsentedAt ?? this.academicDataConsentedAt,
@@ -212,6 +234,8 @@ class UserProfile {
           other.fullName == fullName &&
           other.universityId == universityId &&
           other.facultyId == facultyId &&
+          other.programId == programId &&
+          other.programName == programName &&
           other.yearOfStudy == yearOfStudy &&
           other.academicDataConsentedAt == academicDataConsentedAt &&
           setEquals(other.roles, roles) &&
@@ -224,6 +248,8 @@ class UserProfile {
     fullName,
     universityId,
     facultyId,
+    programId,
+    programName,
     yearOfStudy,
     academicDataConsentedAt,
     Object.hashAllUnordered(roles),
