@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:peerpass/core/models/course_unit_option.dart';
 import 'package:peerpass/core/models/grade_option.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
@@ -26,6 +27,7 @@ class FakeAuthRepository implements AuthRepository {
     this.refreshToken,
     this.universityOptions = const [],
     this.facultyOptions = const [],
+    this.programOptions = const [],
     this.courseUnitOptions = const [],
     this.gradeOptions = const [],
     this._pendingRestore,
@@ -44,6 +46,9 @@ class FakeAuthRepository implements AuthRepository {
 
   /// The faculties [faculties] hands back.
   List<Subject> facultyOptions;
+
+  /// The programmes [programs] hands back, for the faculty it was asked about.
+  List<ProgramOption> programOptions;
 
   /// The course units [courseUnits] hands back.
   List<CourseUnitOption> courseUnitOptions;
@@ -117,6 +122,15 @@ class FakeAuthRepository implements AuthRepository {
       facultyOptions;
 
   @override
+  Future<List<ProgramOption>> programs({
+    required String universityId,
+    String? facultyId,
+  }) async => [
+    for (final programme in programOptions)
+      if (facultyId == null || programme.facultyId == facultyId) programme,
+  ];
+
+  @override
   Future<List<CourseUnitOption>> courseUnits({
     String? universityId,
     String? subjectId,
@@ -131,6 +145,7 @@ class FakeAuthRepository implements AuthRepository {
     String? fullName,
     String? universityId,
     String? facultyId,
+    String? programId,
     int? yearOfStudy,
     bool? academicDataConsented,
     List<String>? primaryCourseUnitIds,
@@ -139,6 +154,7 @@ class FakeAuthRepository implements AuthRepository {
     if (fullName != null) payload['full_name'] = fullName;
     if (universityId != null) payload['university_id'] = universityId;
     if (facultyId != null) payload['faculty_id'] = facultyId;
+    if (programId != null) payload['program_id'] = programId;
     if (yearOfStudy != null) payload['year_of_study'] = yearOfStudy;
     if (academicDataConsented != null) {
       payload['academic_data_consented'] = academicDataConsented;
@@ -148,10 +164,24 @@ class FakeAuthRepository implements AuthRepository {
     }
     profileUpdates.add(payload);
 
+    // The API sends the name beside the id so a profile row needs no second
+    // lookup; the fake does the same from the catalogue it was given.
+    String? programName;
+    if (programId != null) {
+      for (final programme in programOptions) {
+        if (programme.publicId == programId) {
+          programName = programme.name;
+          break;
+        }
+      }
+    }
+
     session = session?.copyWith(
       fullName: fullName,
       universityId: universityId,
       facultyId: facultyId,
+      programId: programId,
+      programName: programName,
       yearOfStudy: yearOfStudy,
       academicDataConsentedAt: academicDataConsented == true
           ? DateTime.utc(2026, 1, 15)

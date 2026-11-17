@@ -43,7 +43,7 @@ from app.core.security import (
     password_needs_rehash,
     verify_password_async,
 )
-from app.models.course_unit import Subject, University
+from app.models.course_unit import Program, Subject, University
 from app.models.enums import UserRole
 from app.models.user import RefreshToken, User, load_roles, set_roles
 from app.schemas.user import (
@@ -192,14 +192,16 @@ async def load_current_user(db: AsyncSession, user: User) -> CurrentUserResponse
 def _user_query():
     """Users with the relationships the response schemas read.
 
-    `university` and `faculty` are loaded because `CurrentUserResponse` reaches
-    their public ids through the relationship, and a lazy load on an async
-    session raises rather than quietly costing a query. Being explicit about it
-    here is cheaper than debugging a `MissingGreenlet` under load.
+    `university`, `faculty` and `program` are loaded because the response
+    schemas reach their public ids -- and, for the programme, its name -- through
+    the relationship, and a lazy load on an async session raises rather than
+    quietly costing a query. Being explicit about it here is cheaper than
+    debugging a `MissingGreenlet` under load.
     """
     return select(User).options(
         selectinload(User.university),
         selectinload(User.faculty),
+        selectinload(User.program),
     )
 
 
@@ -622,6 +624,9 @@ async def update_profile(
         user.university_id = await _resolve_university(db, sent["university_id"])
         if user.university_id != previous_university:
             user.faculty_id = None
+            # A programme belongs to a faculty of one university, so it cannot
+            # survive the faculty it was chosen under going away.
+            user.program_id = None
     if "faculty_id" in sent:
         previous_faculty = user.faculty_id
         faculty_university = user.university_id
@@ -639,6 +644,20 @@ async def update_profile(
             # that is not true. Re-picking them is the onboarding gate's job, not
             # this function's.
             await _clear_primary_course_units(db, user)
+            # The stored programme is from the old faculty. Cleared unless this
+            # same request names the new one, which the wizard's academic step
+            # does.
+            if "program_id" not in sent:
+                user.program_id = None
+    if "program_id" in sent:
+        previous_program = user.program_id
+        user.program_id = await _resolve_program(db, sent["program_id"], user)
+        if user.program_id != previous_program:
+            # Modules survive a programme change only when the new programme
+            # still publishes them. Dropping every one would be simpler and
+            # wrong: a programme change inside a faculty can leave most of the
+            # student's courses untouched.
+            await _prune_primary_course_units(db, user)
     if "year_of_study" in sent:
         user.year_of_study = sent["year_of_study"]
     if "full_name" in sent:
@@ -662,7 +681,7 @@ async def update_profile(
     # before this request, or `None` for an account that had none. Expiring the
     # two relationships is what makes the reload below re-fetch them. The columns
     # need no such treatment, being plain attributes already written in place.
-    db.expire(user, ["university", "faculty"])
+    db.expire(user, ["university", "faculty", "program"])
     # The relationships are stale after writing to the foreign keys, and a
     # lazy load would raise on an async session, so they are refreshed from the
     # database rather than read off the instance.
@@ -716,10 +735,82 @@ async def _clear_primary_course_units(db: AsyncSession, user: User) -> None:
     await set_primary_course_units(db, user.id, [])
 
 
+async def _prune_primary_course_units(db: AsyncSession, user: User) -> None:
+    """Drop the declared modules the account's new scope no longer offers.
+
+    Called after a programme change. Kept rather than cleared wholesale, because
+    moving inside a faculty can leave most of the selection valid; dropped rather
+    than kept wholesale, because a module outside the new programme would stay on
+    the profile as a course every other endpoint refuses.
+    """
+    from app.models.course_unit import CourseUnit
+    from app.models.user import (
+        set_primary_course_units,
+        user_primary_course_units,
+    )
+
+    held = set(
+        (
+            await db.execute(
+                select(user_primary_course_units.c.course_unit_id).where(
+                    user_primary_course_units.c.user_id == user.id
+                )
+            )
+        ).scalars()
+    )
+    if not held:
+        return
+    in_scope = set(
+        (
+            await db.execute(
+                faculty_scope.visible_to(
+                    select(CourseUnit.id).where(CourseUnit.id.in_(held)), user
+                )
+            )
+        ).scalars()
+    )
+    if in_scope == held:
+        return
+    await set_primary_course_units(db, user.id, sorted(in_scope))
+
+
+async def _resolve_program(
+    db: AsyncSession, public_id: uuid.UUID | None, user: User
+) -> uuid.UUID | None:
+    """The primary key for a programme's public id, inside the caller's shelf.
+
+    The programme is validated against the university and faculty the account
+    ends *this request* with, not the ones it started with, so the wizard's
+    academic step can save all three together.
+    """
+    if public_id is None:
+        return None
+    row = (
+        await db.execute(
+            select(Program.id, Program.faculty_id, Program.university_id).where(
+                Program.public_id == public_id
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        raise NotFoundProblem("That programme could not be found.")
+    if user.faculty_id is None:
+        raise ValidationProblem(
+            "Choose your faculty before choosing a programme.",
+            errors={"faculty_id": "is required before a programme can be chosen"},
+        )
+    if row.faculty_id != user.faculty_id or row.university_id != user.university_id:
+        raise ValidationProblem(
+            "That programme belongs to a different faculty.",
+            errors={"program_id": "must be a programme in your own faculty"},
+        )
+    return row.id
+
+
 async def _resolve_course_units(
     db: AsyncSession, public_ids: list[uuid.UUID] | None, user: User
 ) -> list[uuid.UUID]:
-    """The primary keys for the course units, each inside the caller's own faculty.
+    """The primary keys for the course units, inside the caller's own shelf.
 
     Existence is not the only question asked here. A primary module seeds the
     matching phase, so accepting one from another faculty would put a course on a
@@ -750,6 +841,7 @@ async def _resolve_course_units(
     for unit in rows:
         faculty_scope.require_own_university(unit, user)
         faculty_scope.require_own_faculty(unit, user)
+        faculty_scope.require_own_program(unit, user)
     return [unit.id for unit in rows]
 
 

@@ -94,6 +94,9 @@ class CourseUnitResponse(OrmSchema):
         default=None, validation_alias="subject_public_id"
     )
     grade_id: uuid.UUID | None = Field(default=None, validation_alias="grade_public_id")
+    program_id: uuid.UUID | None = Field(
+        default=None, validation_alias="program_public_id"
+    )
     created_at: datetime
 
 

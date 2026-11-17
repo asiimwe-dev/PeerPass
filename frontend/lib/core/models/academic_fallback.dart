@@ -60,6 +60,14 @@ const mustFallbackGrades = <GradeOption>[
 
 bool isMustFallbackUniversity(String? id) => id == mustFallbackUniversityId;
 
+/// Whether [id] is one of the synthetic switches rather than a stored faculty.
+///
+/// A real university can still show the fallback faculties when only that
+/// request dropped. Those ids are not UUIDs, so asking the API for a programme
+/// catalogue scoped by one is a 422, not an empty list.
+bool isMustFallbackFaculty(String? id) =>
+    id?.startsWith(_facultyPrefix) ?? false;
+
 bool isMustFallbackGrade(String? id) =>
     id?.startsWith('fallback:must:grade:') ?? false;
 

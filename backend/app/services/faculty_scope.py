@@ -6,6 +6,14 @@ and the tutors who teach them, and must not be able to reach Medicine's by askin
 for them: the catalogue is per-faculty precisely because a student cannot tutor,
 or be tutored in, a course their own faculty does not offer.
 
+Within a faculty, programmes publish different catalogues under different codes.
+The faculty is the boundary; the programme is the shelf. A unit with no programme
+belongs to the faculty as a whole -- a course every programme takes -- so it stays
+visible to everyone in it, while a programme's own unit is refused to a sibling's
+students. Accounts with no programme recorded predate the field or belong to a
+faculty whose programmes are not loaded; they see the whole faculty, which is the
+behaviour they had before, rather than nothing.
+
 The rule lives here rather than in each caller because five places need it and they
 must not drift apart. It is deliberately a *server* rule. The client already sends
 its faculty as a filter, which is a convenience for rendering and not a boundary --
@@ -20,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import false
+from sqlalchemy import false, or_
 
 from app.core.exceptions import ValidationProblem
 from app.models.course_unit import CourseUnit
@@ -37,10 +45,20 @@ def visible_to(query: Any, user: User) -> Any:
     if user.faculty_id is None or user.university_id is None:
         return query.where(false())
 
-    return query.where(
+    conditions = [
         CourseUnit.subject_id == user.faculty_id,
         CourseUnit.university_id == user.university_id,
-    )
+    ]
+    if user.program_id is not None:
+        # A null unit programme is the faculty-wide shelf, not a missing value,
+        # so it stays visible to every programme in the faculty.
+        conditions.append(
+            or_(
+                CourseUnit.program_id.is_(None),
+                CourseUnit.program_id == user.program_id,
+            )
+        )
+    return query.where(*conditions)
 
 
 def require_faculty(user: User) -> None:
@@ -72,6 +90,23 @@ def require_own_faculty(unit: CourseUnit, user: User) -> None:
         )
 
 
+def require_own_program(unit: CourseUnit, user: User) -> None:
+    """Refuse a course unit that belongs to another programme in the faculty.
+
+    Two null checks rather than one, because the two nulls mean different
+    things: an account with no programme sees the whole faculty (the state every
+    account predates this rule in), and a unit with no programme is the
+    faculty-wide shelf. Neither is a mismatch.
+    """
+    if user.program_id is None or unit.program_id is None:
+        return
+    if unit.program_id != user.program_id:
+        raise ValidationProblem(
+            "That course unit belongs to a different programme.",
+            errors={"course_unit_id": "must be a course unit in your own programme"},
+        )
+
+
 def require_own_university(unit: CourseUnit, user: User) -> None:
     """Refuse a course unit at another institution."""
     if unit.university_id != user.university_id:
@@ -84,6 +119,7 @@ def require_own_university(unit: CourseUnit, user: User) -> None:
 __all__ = [
     "require_faculty",
     "require_own_faculty",
+    "require_own_program",
     "require_own_university",
     "visible_to",
 ]

@@ -846,8 +846,12 @@ async def test_seed_exposes_only_the_provisional_pilot_course_units(
     units = (
         await client.get("/v1/academics/course-units", headers=bearer(student))
     ).json()
-    assert len(units) == 63
+    assert len(units) == 62
     assert {unit["code"] for unit in units} == {unit[1] for unit in COURSE_UNITS}
+    # Every seeded unit names the programme that publishes it. A row without one
+    # would be faculty-wide by accident, which is a silent leak into every
+    # programme's catalogue rather than a harmless missing value.
+    assert all(unit["program_id"] is not None for unit in units)
 
 
 async def test_the_seeded_gate_admits_a_b_plus_and_refuses_a_b(

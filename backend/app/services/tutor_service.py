@@ -29,7 +29,7 @@ place a tutor is proposed for work.
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundProblem, ValidationProblem
@@ -91,11 +91,23 @@ async def list_top_tutors(
     scope: CourseUnit | None = None
     if course_unit_id is not None:
         scope = await _load_course_unit(db, course_unit_id)
+        # A unit on another programme's shelf is treated like one in another
+        # faculty: no tutors, not a refusal. The student cannot ask about it
+        # either, so a rail for it would be a list of people for a conversation
+        # that cannot happen. A null on either side is the bridge -- the
+        # faculty-wide unit, or the account that predates programmes.
+        programme_out_of_scope = (
+            scope is not None
+            and scope.program_id is not None
+            and user.program_id is not None
+            and scope.program_id != user.program_id
+        )
         if (
             scope is None
             or scope.university_id != user.university_id
             or user.faculty_id is None
             or scope.subject_id != user.faculty_id
+            or programme_out_of_scope
         ):
             # An empty rail rather than a 404 or a 422, for the reason
             # `academics.list_course_units` gives: the client filtered on a
@@ -384,6 +396,12 @@ async def _ranked_tutors(
         TutorProfile.rating_count, 0
     )
 
+    programme_condition = (
+        or_(User.program_id.is_(None), User.program_id == user.program_id)
+        if user.program_id is not None
+        else None
+    )
+
     result = await db.execute(
         select(
             User,
@@ -406,6 +424,13 @@ async def _ranked_tutors(
             # with no faculty compares unequal to everything -- which is the
             # answer we want for a student who has not finished onboarding.
             User.faculty_id == user.faculty_id,
+            # And the programme shelf, on the same reasoning one level in. A
+            # tutor enrolled in another programme is competent in that
+            # programme's units, which this student cannot ask about. Null on
+            # either side is the bridge -- a faculty-wide unit's tutor, or an
+            # account from before programmes existed. Left out entirely for an
+            # account with no programme, which sees the whole faculty.
+            *([programme_condition] if programme_condition is not None else []),
             TutorProfile.standing != TutorStanding.SUSPENDED,
         )
         .order_by(

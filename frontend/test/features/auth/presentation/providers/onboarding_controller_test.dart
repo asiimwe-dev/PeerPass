@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:peerpass/core/models/academic_fallback.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
@@ -232,6 +233,69 @@ void main() {
       expect(_state(harness.container).universityId, _university);
       expect(_state(harness.container).facultyId, _faculty);
     });
+
+    test(
+      'refuses to save while a published programme has not been chosen',
+      () async {
+        // A faculty with shelves publishes more than one catalogue. Saving
+        // without a choice would store "the whole faculty", which is the
+        // widening this field exists to stop.
+        final harness = await atAcademicContext();
+        harness.repository.programOptions = const [
+          ProgramOption(
+            publicId: 'programme-1',
+            name: 'Information Technology',
+            facultyId: _faculty,
+          ),
+        ];
+        _controller(harness.container)
+          ..setUniversity(_university)
+          ..setFaculty(_faculty)
+          ..setYearOfStudy(2)
+          ..setConsent(value: true);
+
+        final refused = await _controller(harness.container).saveAndAdvance();
+
+        expect(refused, isFalse);
+        expect(harness.repository.profileUpdates, isEmpty);
+
+        _controller(harness.container).setProgram('programme-1');
+        final advanced = await _controller(harness.container).saveAndAdvance();
+
+        expect(advanced, isTrue);
+        expect(
+          harness.repository.profileUpdates.single['program_id'],
+          'programme-1',
+        );
+      },
+    );
+
+    test('a second save while the programme check is in flight is a no-op', () async {
+      // The programme check awaits, so the first save does not reach the write
+      // synchronously. Without claiming the step first, two taps in the same
+      // frame both pass the `saving` guard and the step is written twice.
+      final harness = await atAcademicContext();
+      harness.repository.programOptions = const [
+        ProgramOption(
+          publicId: 'programme-1',
+          name: 'Information Technology',
+          facultyId: _faculty,
+        ),
+      ];
+      _controller(harness.container)
+        ..setUniversity(_university)
+        ..setFaculty(_faculty)
+        ..setProgram('programme-1')
+        ..setYearOfStudy(2)
+        ..setConsent(value: true);
+
+      final first = _controller(harness.container).saveAndAdvance();
+      final second = _controller(harness.container).saveAndAdvance();
+      final results = await Future.wait([first, second]);
+
+      expect(results, <bool>[true, false]);
+      expect(harness.repository.profileUpdates, hasLength(1));
+    });
   });
 
   group('university and faculty', () {
@@ -270,6 +334,59 @@ void main() {
 
       expect(_state(harness.container).universityId, _university);
       expect(_state(harness.container).facultyId, _faculty);
+    });
+
+    test('changing the university clears the programme as well', () {
+      // A programme names a shelf inside one faculty, and the faculty itself
+      // belonged to the old university's catalogue. Both have to go.
+      final harness = _harness();
+      _controller(harness.container)
+        ..setUniversity(_university)
+        ..setFaculty(_faculty)
+        ..setProgram('programme-1')
+        ..setUniversity(_otherUniversity);
+
+      expect(_state(harness.container).programId, isNull);
+    });
+  });
+
+  group('the programme', () {
+    test('changing the faculty clears the programme', () {
+      final harness = _harness();
+      _controller(harness.container)
+        ..setUniversity(_university)
+        ..setFaculty(_faculty)
+        ..setProgram('programme-1')
+        ..setFaculty('subject-2');
+
+      expect(_state(harness.container).programId, isNull);
+    });
+
+    test('choosing a different programme clears the chosen modules', () {
+      // The units were chosen from the old shelf. Keeping them would submit
+      // units the new programme does not publish.
+      final harness = _harness();
+      _controller(harness.container)
+        ..setUniversity(_university)
+        ..setFaculty(_faculty)
+        ..setProgram('programme-1')
+        ..togglePrimaryModule('unit-1')
+        ..setProgram('programme-2');
+
+      expect(_state(harness.container).programId, 'programme-2');
+      expect(_state(harness.container).primaryModuleIds, isEmpty);
+    });
+
+    test('choosing the same programme again keeps the modules', () {
+      final harness = _harness();
+      _controller(harness.container)
+        ..setUniversity(_university)
+        ..setFaculty(_faculty)
+        ..setProgram('programme-1')
+        ..togglePrimaryModule('unit-1')
+        ..setProgram('programme-1');
+
+      expect(_state(harness.container).primaryModuleIds, <String>['unit-1']);
     });
   });
 

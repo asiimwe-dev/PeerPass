@@ -6,6 +6,7 @@ import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/academic_fallback.dart';
 import 'package:peerpass/core/models/course_unit_option.dart';
+import 'package:peerpass/core/models/program_option.dart';
 import 'package:peerpass/core/models/subject.dart';
 import 'package:peerpass/core/models/university_option.dart';
 import 'package:peerpass/core/models/user_profile.dart';
@@ -61,12 +62,29 @@ const String _refusedUniversity =
     'We have not recorded a grading scale for that university';
 
 const String _consentText =
-    'I agree that PeerPass may store my name, university, faculty and year';
+    'I agree that PeerPass may store my name, university, faculty, programme';
 const List<CourseUnitOption> _courseUnits = <CourseUnitOption>[
   CourseUnitOption(
     publicId: 'unit-1',
     code: 'BIT 221',
     name: 'Database Programming',
+  ),
+];
+
+/// The programmes the first test faculty publishes.
+///
+/// Only the faculty they belong to hands them back, which is what lets a test
+/// check that a faculty change clears a programme chosen under the old shelf.
+const List<ProgramOption> _programmes = <ProgramOption>[
+  ProgramOption(
+    publicId: 'programme-1',
+    name: 'Business Administration',
+    facultyId: 'subject-1',
+  ),
+  ProgramOption(
+    publicId: 'programme-2',
+    name: 'Accounting and Finance',
+    facultyId: 'subject-1',
   ),
 ];
 
@@ -90,6 +108,7 @@ class _RefusingAuthRepository extends FakeAuthRepository {
     String? fullName,
     String? universityId,
     String? facultyId,
+    String? programId,
     int? yearOfStudy,
     bool? academicDataConsented,
     List<String>? primaryCourseUnitIds,
@@ -104,6 +123,50 @@ class _RefusingAuthRepository extends FakeAuthRepository {
       fullName: fullName,
       primaryCourseUnitIds: primaryCourseUnitIds,
     );
+  }
+}
+
+/// A repository whose programme catalogue never arrives.
+///
+/// The faculty list is fine, so the wizard reaches the programme section; only
+/// the shelf request drops. That is the case where a missing answer must not be
+/// read as "this faculty publishes nothing".
+class _UnavailableProgrammeRepository extends FakeAuthRepository {
+  _UnavailableProgrammeRepository()
+    : super(
+        session: _freshAccount,
+        refreshToken: 'refresh',
+        universityOptions: _universities,
+        facultyOptions: _faculties,
+        courseUnitOptions: _courseUnits,
+      );
+
+  @override
+  Future<List<ProgramOption>> programs({
+    required String universityId,
+    String? facultyId,
+  }) async {
+    throw const NetworkFailure();
+  }
+}
+
+/// Records whether the programme endpoint was asked.
+///
+/// The synthetic fallback ids are not UUIDs, so reaching the API with one would
+/// be a refusal rather than an empty list. Counting the calls proves the guard
+/// short-circuits instead of relying on the fake's empty catalogue.
+class _RecordingProgramRepository extends FakeAuthRepository {
+  _RecordingProgramRepository() : super(programOptions: _programmes);
+
+  int programRequests = 0;
+
+  @override
+  Future<List<ProgramOption>> programs({
+    required String universityId,
+    String? facultyId,
+  }) {
+    programRequests += 1;
+    return super.programs(universityId: universityId, facultyId: facultyId);
   }
 }
 
@@ -131,13 +194,18 @@ typedef _Harness = ({
 });
 
 /// The fake the wizard is normally driven against.
-FakeAuthRepository _fake() => FakeAuthRepository(
-  session: _freshAccount,
-  refreshToken: 'refresh',
-  universityOptions: _universities,
-  facultyOptions: _faculties,
-  courseUnitOptions: _courseUnits,
-);
+///
+/// [FakeAuthRepository.programOptions] defaults to empty, so the wizard asks
+/// nothing about a programme unless a test deliberately gives the fake one.
+FakeAuthRepository _fake({List<ProgramOption> programOptions = const []}) =>
+    FakeAuthRepository(
+      session: _freshAccount,
+      refreshToken: 'refresh',
+      universityOptions: _universities,
+      facultyOptions: _faculties,
+      programOptions: programOptions,
+      courseUnitOptions: _courseUnits,
+    );
 
 Future<void> _settle(WidgetTester tester) async {
   await tester.pump();
@@ -197,6 +265,11 @@ final Finder _facultyDropdown = find.widgetWithText(
   'Faculty',
 );
 
+final Finder _programmeDropdown = find.widgetWithText(
+  DropdownButtonFormField<String>,
+  'Programme',
+);
+
 final Finder _yearDropdown = find.widgetWithText(
   DropdownButtonFormField<int>,
   'Year of study',
@@ -243,14 +316,38 @@ Future<void> _chooseFacultyAndYear(WidgetTester tester) async {
 }
 
 /// Ticks or unticks the consent row, pressing the row rather than the mark.
+///
+/// Scrolled into view first: the academic step grew a programme picker, and the
+/// row can sit below the fold on a short test window. A tap on an off-screen
+/// widget is a miss, and a missed consent tap would make a later assertion pass
+/// for the wrong reason.
 Future<void> _tapConsent(WidgetTester tester) async {
-  await tester.tap(find.textContaining(_consentText));
+  final consent = find.textContaining(_consentText);
+  await tester.ensureVisible(consent);
+  await tester.pumpAndSettle();
+  await tester.tap(consent);
   await _settle(tester);
 }
 
+/// Picks a programme through its dropdown, as a student does.
+Future<void> _chooseProgramme(WidgetTester tester, String name) async {
+  await tester.ensureVisible(_programmeDropdown);
+  await tester.pumpAndSettle();
+  await tester.tap(_programmeDropdown);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(name).last);
+  await tester.pumpAndSettle();
+}
+
 /// A wizard sitting on the second step with the academic context filled in.
-Future<_Harness> _atFilledSecondStep(WidgetTester tester) async {
-  final harness = _harness(_fake());
+///
+/// [repository] is overridable so a test can drive the same flow against a fake
+/// that publishes programmes or refuses one request.
+Future<_Harness> _atFilledSecondStep(
+  WidgetTester tester, {
+  FakeAuthRepository? repository,
+}) async {
+  final harness = _harness(repository ?? _fake());
   await _pumpWizard(tester, harness);
   await _completeNameStep(tester, harness);
   _chooseUniversity(harness, _university);
@@ -260,6 +357,38 @@ Future<_Harness> _atFilledSecondStep(WidgetTester tester) async {
 }
 
 void main() {
+  test('a fallback shelf never reaches the programme endpoint', () async {
+    // A real university can show the fallback faculties when only that request
+    // dropped. Their ids are synthetic, and the endpoint would reject one as a
+    // malformed UUID -- which the wizard would then read as a failed catalogue.
+    final repository = _RecordingProgramRepository();
+    final container = ProviderContainer(
+      overrides: [authRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    final forFaculty = await container.read(
+      programsProvider((
+        universityId: _university,
+        facultyId: mustFallbackFaculties.first.publicId,
+      )).future,
+    );
+    final forUniversity = await container.read(
+      programsProvider((
+        universityId: mustFallbackUniversityId,
+        facultyId: _faculties.first.publicId,
+      )).future,
+    );
+
+    expect(forFaculty, isEmpty);
+    expect(forUniversity, isEmpty);
+    expect(
+      repository.programRequests,
+      0,
+      reason: 'a synthetic id is not a question the API can answer',
+    );
+  });
+
   testWidgets('a faculty with no course units can still finish the wizard', (
     tester,
   ) async {
@@ -330,6 +459,7 @@ void main() {
         courseUnitsProvider((
           universityId: _university,
           subjectId: _faculties.first.publicId,
+          programId: null,
         )).overrideWith((ref) => throw const NetworkFailure()),
       ],
     );
@@ -451,6 +581,140 @@ void main() {
       harness.repository.profileUpdates.last['primary_course_unit_ids'],
       <String>['unit-1'],
     );
+  });
+
+  testWidgets('a published programme has to be chosen before the step advances', (
+    tester,
+  ) async {
+    // A faculty with shelves gives more than one catalogue, so "no programme"
+    // would silently widen the student to every unit in the faculty. The answer
+    // has to be part of the step when there is one to give.
+    final harness = await _atFilledSecondStep(
+      tester,
+      repository: _fake(programOptions: _programmes),
+    );
+    await _tapConsent(tester);
+
+    expect(find.text('Programme'), findsOneWidget);
+    expect(
+      _canAdvance(tester, 'Continue'),
+      isFalse,
+      reason: 'every field the student typed is filled, but the shelf is open',
+    );
+
+    await _chooseProgramme(tester, _programmes.first.name);
+
+    expect(
+      _canAdvance(tester, 'Continue'),
+      isTrue,
+      reason: 'picking a programme completes the answer',
+    );
+    await tester.tap(_advanceButton('Continue'));
+    await _settle(tester);
+
+    final sent = harness.repository.profileUpdates[1];
+    expect(sent['program_id'], _programmes.first.publicId);
+    // The name travels back with the profile, so the Profile row does not have
+    // to fetch the catalogue again to label the choice.
+    expect(
+      harness.container.read(sessionControllerProvider).profile?.programName,
+      _programmes.first.name,
+    );
+  });
+
+  testWidgets('a faculty that publishes no programme asks nothing', (
+    tester,
+  ) async {
+    // The compatibility state is a normal one: a null programme is the whole
+    // faculty catalogue, and a faculty whose shelves are not loaded must not be a
+    // dead end.
+    final harness = await _atFilledSecondStep(tester);
+    await _tapConsent(tester);
+
+    expect(find.text('Programme'), findsNothing);
+    expect(_canAdvance(tester, 'Continue'), isTrue);
+
+    await tester.tap(_advanceButton('Continue'));
+    await _settle(tester);
+
+    expect(harness.repository.profileUpdates[1].containsKey('program_id'), isFalse);
+    expect(find.text('Which units might you need help with?'), findsOneWidget);
+  });
+
+  testWidgets('changing the faculty clears the programme chosen under it', (
+    tester,
+  ) async {
+    // A programme names a shelf inside one faculty. Carrying the answer into a
+    // different faculty would submit a programme that faculty does not publish,
+    // which the API has to reject.
+    final harness = await _atFilledSecondStep(
+      tester,
+      repository: _fake(programOptions: _programmes),
+    );
+    await _tapConsent(tester);
+    await _chooseProgramme(tester, _programmes.first.name);
+
+    expect(
+      harness.container.read(onboardingControllerProvider).programId,
+      _programmes.first.publicId,
+    );
+
+    harness.container
+        .read(onboardingControllerProvider.notifier)
+        .setFaculty(_faculties.last.publicId);
+    await tester.pumpAndSettle();
+
+    expect(
+      harness.container.read(onboardingControllerProvider).programId,
+      isNull,
+      reason: 'a programme belongs to the faculty that publishes it',
+    );
+  });
+
+  testWidgets(
+    'a programme lookup failure is visible, retryable, and keeps the step closed',
+    (tester) async {
+      // A dropped request is not an empty shelf. Reading it as one would let a
+      // student continue with no programme while the faculty does publish them,
+      // which is the widening this whole slice exists to prevent.
+      final harness = _harness(_UnavailableProgrammeRepository());
+      await _pumpWizard(tester, harness);
+      await _completeNameStep(tester, harness);
+      _chooseUniversity(harness, _university);
+      await tester.pumpAndSettle();
+      await _chooseFacultyAndYear(tester);
+      await _tapConsent(tester);
+
+      expect(
+        find.text(
+          'Could not load programmes. Check your connection and try again.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+      expect(find.text('Programme'), findsNothing);
+      expect(_canAdvance(tester, 'Continue'), isFalse);
+    },
+  );
+
+  testWidgets('the MUST fallback asks no programme', (tester) async {
+    // The fallback catalogue is synthetic and has no programmes to ask the API
+    // for. Asking anyway would turn an offline launch into a form nobody can
+    // complete.
+    final harness = _harness(_fake(programOptions: _programmes));
+    await _pumpWizard(tester, harness);
+    await _completeNameStep(tester, harness);
+    harness.container
+        .read(onboardingControllerProvider.notifier)
+        .setUniversity(mustFallbackUniversityId);
+    await _settle(tester);
+
+    await tester.tap(_facultyDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Faculty of Computing and Informatics').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Programme'), findsNothing);
   });
 
   testWidgets('tapping the consent row toggles the mark', (tester) async {

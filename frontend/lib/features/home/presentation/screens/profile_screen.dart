@@ -3,11 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:peerpass/app/router.dart';
 import 'package:peerpass/core/constants/app_dimens.dart';
+import 'package:peerpass/core/error/failures.dart';
 import 'package:peerpass/core/models/user_profile.dart';
 import 'package:peerpass/core/models/user_role.dart';
 import 'package:peerpass/core/state/session.dart';
+import 'package:peerpass/core/widgets/empty_view.dart';
+import 'package:peerpass/core/widgets/failure_view.dart';
 import 'package:peerpass/core/widgets/offline_notice.dart';
 import 'package:peerpass/features/competencies/data/repositories/competencies_repository.dart';
+import 'package:peerpass/features/home/presentation/providers/change_programme_controller.dart';
 import 'package:peerpass/features/home/presentation/providers/profile_providers.dart';
 import 'package:peerpass/features/home/presentation/providers/sign_out_controller.dart';
 import 'package:peerpass/features/home/presentation/widgets/delete_account_tile.dart';
@@ -68,6 +72,7 @@ class ProfileScreen extends ConsumerWidget {
                           ),
                   ),
                   _FacultyTile(profile: profile),
+                  _ProgrammeTile(profile: profile),
                   ListTile(
                     leading: const Icon(Icons.badge_outlined),
                     title: const Text('Role'),
@@ -150,6 +155,202 @@ class _FacultyTile extends ConsumerWidget {
         },
         loading: () => const Text('Loading...'),
         error: (_, _) => const Text('Unavailable'),
+      ),
+    );
+  }
+}
+
+/// The student's programme, and the control that changes it.
+///
+/// Editable, unlike the faculty above it: every programme belongs to the
+/// faculty the account already sits in, so the move stays inside one catalogue
+/// and the server prunes only the declared units the new shelf no longer
+/// publishes. The row still offers a catalogue rather than free text -- a
+/// programme is a record other endpoints act on, not a label.
+///
+/// A faculty that publishes none is a normal state, not a broken picker: the row
+/// says the student sees the whole faculty catalogue and offers no control,
+/// because there is nothing to choose.
+class _ProgrammeTile extends ConsumerWidget {
+  const _ProgrammeTile({required this.profile});
+
+  final UserProfile? profile;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final universityId = profile?.universityId;
+    final facultyId = profile?.facultyId;
+
+    if (universityId == null || facultyId == null) {
+      return const ListTile(
+        leading: Icon(Icons.workspaces_outline),
+        title: Text('Programme'),
+        subtitle: Text('Not provided'),
+      );
+    }
+
+    final programmes = ref.watch(
+      programsForFacultyProvider((
+        universityId: universityId,
+        facultyId: facultyId,
+      )),
+    );
+
+    // The name travels with the profile, so the row can label the current choice
+    // before the catalogue arrives. An id without a name is a server-side
+    // mismatch, not a missing choice.
+    final current =
+        profile?.programName ??
+        (profile?.programId == null ? null : 'Unavailable');
+
+    return programmes.when(
+      loading: () => ListTile(
+        leading: const Icon(Icons.workspaces_outline),
+        title: const Text('Programme'),
+        subtitle: Text(current ?? 'Loading...'),
+      ),
+      error: (_, _) => ListTile(
+        leading: const Icon(Icons.workspaces_outline),
+        title: const Text('Programme'),
+        subtitle: Text(current ?? 'Unavailable'),
+      ),
+      data: (values) => values.isEmpty
+          ? const ListTile(
+              leading: Icon(Icons.workspaces_outline),
+              title: Text('Programme'),
+              subtitle: Text('Whole faculty'),
+            )
+          : ListTile(
+              leading: const Icon(Icons.workspaces_outline),
+              title: const Text('Programme'),
+              subtitle: Text(current ?? 'Not selected'),
+              trailing: const Icon(Icons.edit_outlined),
+              onTap: () => _chooseProgramme(context, ref),
+            ),
+    );
+  }
+
+  Future<void> _chooseProgramme(BuildContext context, WidgetRef ref) async {
+    final universityId = profile?.universityId;
+    final facultyId = profile?.facultyId;
+    if (universityId == null || facultyId == null) return;
+    final current = profile?.programId;
+
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => _ProgrammeSheet(
+        universityId: universityId,
+        facultyId: facultyId,
+        currentProgrammeId: current,
+      ),
+    );
+    if (chosen == null || chosen == current || !context.mounted) return;
+
+    final before = ref.read(sessionControllerProvider).profile;
+    try {
+      await ref.read(changeProgrammeControllerProvider)(chosen);
+      if (!context.mounted) return;
+      final after = ref.read(sessionControllerProvider).profile;
+      // Only mentioned when it happened: a programme change usually keeps most
+      // of the student's units, and an unconditional warning would read as a
+      // loss that did not occur.
+      final pruned =
+          (before?.primaryCourseUnitIds.length ?? 0) -
+          (after?.primaryCourseUnitIds.length ?? 0);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            pruned > 0
+                ? 'Programme updated. Course units outside it were removed.'
+                : 'Programme updated.',
+          ),
+        ),
+      );
+    } on Failure catch (failure) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(failure.message)));
+    } on Object {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not change programme. Try again.')),
+      );
+    }
+  }
+}
+
+/// The programmes the account's faculty publishes, with the current one marked.
+class _ProgrammeSheet extends ConsumerWidget {
+  const _ProgrammeSheet({
+    required this.universityId,
+    required this.facultyId,
+    required this.currentProgrammeId,
+  });
+
+  final String universityId;
+  final String facultyId;
+  final String? currentProgrammeId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scope = (universityId: universityId, facultyId: facultyId);
+    final programmes = ref.watch(programsForFacultyProvider(scope));
+
+    return SafeArea(
+      child: programmes.when(
+        loading: () => const SizedBox(
+          height: 240,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (error, _) => FailureView(
+          failure: error is Failure ? error : const UnknownFailure(),
+          onRetry: () => ref.invalidate(programsForFacultyProvider(scope)),
+        ),
+        data: (values) => values.isEmpty
+            ? const EmptyView(
+                icon: Icons.workspaces_outline,
+                title: 'No programmes yet',
+                message:
+                    'This faculty has not published its programmes yet, so '
+                    'there is nothing to choose. You still see the whole '
+                    'faculty catalogue.',
+              )
+            : ListView(
+                shrinkWrap: true,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppDimens.xl,
+                      0,
+                      AppDimens.xl,
+                      AppDimens.sm,
+                    ),
+                    child: Text(
+                      'Your programme decides which course units you can ask '
+                      'for help with.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  for (final programme in values)
+                    ListTile(
+                      title: Text(
+                        programme.name,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: programme.publicId == currentProgrammeId
+                          ? const Icon(Icons.check)
+                          : null,
+                      selected: programme.publicId == currentProgrammeId,
+                      onTap: () =>
+                          Navigator.of(context).pop(programme.publicId),
+                    ),
+                ],
+              ),
       ),
     );
   }

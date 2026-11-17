@@ -335,6 +335,11 @@ The caller's own record. *Auth.*
 The **only** endpoint that returns `academic_data_consented_at`. `UserResponse`
 deliberately has no consent field, so no other route can leak it by accident.
 
+The record also carries `program_id` and `program_name`, the degree programme the
+account is enrolled in. `program_id` is `null` for an account that predates the
+field or whose faculty has not published its programmes yet; the client treats
+that as the whole-faculty catalogue rather than as a missing profile field.
+
 ## Users
 
 ### `PATCH /v1/users/me`
@@ -355,6 +360,7 @@ earlier step had just saved.
 | `full_name`              | string \| null | 2–160 characters after trimming.                     |
 | `university_id`          | UUID \| null  | Public id.                                          |
 | `faculty_id`             | UUID \| null  | Public id of a `subject`. See [Faculties are subjects](#faculties-are-subjects). |
+| `program_id`             | UUID \| null  | Public id of a `program` in the caller's own university and faculty. |
 | `year_of_study`          | int \| null   | 1–6.                                                |
 | `academic_data_consented` | bool \| null | `true` records consent. **Never withdraws it.**      |
 | `primary_course_unit_ids` | UUID[] | Each a course unit **inside the caller's own faculty**. `[]` clears them. |
@@ -373,11 +379,25 @@ request**, not the faculty stored before it. The wizard's second and third steps
 can save together, and validating against the old faculty would reject a correct
 choice.
 
+**Changing faculty clears the programme too.** A programme belongs to one faculty
+of one university, so a `faculty_id` change not accompanied by a `program_id`
+clears the stored one. A university change clears both.
+
+**Changing programme prunes the declared units outside the new shelf.** Units are
+validated against the programme, so one from a sibling programme in the same
+faculty is refused. A programme change keeps the modules the new programme still
+publishes (including faculty-wide units with no programme) and drops the rest;
+unlike a faculty change, it is not a wholesale clear.
+
 | Status | `detail`                        | `errors`                          |
 | ------ | ------------------------------- | --------------------------------- |
 | 404    | `One or more course units could not be found.` | Keyed by position. |
+| 404    | `That programme could not be found.` |                                |
 | 422    | `That course unit belongs to a different faculty.` | Keyed by `primary_course_unit_ids`. |
+| 422    | `That course unit belongs to a different programme.` | Keyed by `primary_course_unit_ids`. |
 | 422    | `That course unit does not belong to your university.` | Keyed by `primary_course_unit_ids`. |
+| 422    | `That programme belongs to a different faculty.` | Keyed by `program_id`. |
+| 422    | `Choose your faculty before choosing a programme.` | Keyed by `faculty_id`. |
 
 A course unit from another faculty is a validation error rather than a 404 on
 purpose: the unit exists, the student simply may not hold it, and saying "could not
@@ -463,14 +483,30 @@ Every undergraduate offering seeded for the selected university, ordered by
 faculty and name. Programs are reference information and are separate from
 course units, which remain the records used by matching.
 
+| Query        | Type | Notes                              |
+| ------------ | ---- | ---------------------------------- |
+| `faculty_id` | UUID | Optional. A faculty **public** id. |
+
+`faculty_id` narrows the list to one faculty's programmes, which is what the
+wizard calls after the student picks a faculty. It cannot widen the answer: the
+list already belongs to one university, and universities and faculties are public.
+An unrecognised faculty id returns `[]`.
+
 ### `GET /v1/academics/course-units`
 
 **Requires authentication.** Returns only the course units inside the caller's own
-university **and** their own faculty. Ordered by university, then by code.
+university, their own faculty, **and** their own programme's shelf. Ordered by
+university, then by code.
 
 | Query        | Type | Notes                                                     |
 | ------------ | ---- | --------------------------------------------------------- |
 | `subject_id` | UUID | Optional. A faculty **public** id.                       |
+
+Each unit carries `program_id`. A unit with `program_id: null` is the faculty-wide
+shelf and is visible to every programme in that faculty; a unit naming another
+programme is not returned at all. An account with no `program_id` sees the whole
+faculty, which is the compatibility state and never an empty catalogue because of
+it.
 
 The faculty scope is the server's, not the client's. `subject_id` can only ever
 narrow a list that is already inside the caller's own faculty, so a client cannot
@@ -513,9 +549,10 @@ and not an id the tutor has to resolve.
 ]
 ```
 
-The same faculty scope as the catalogue applies. A unit in another faculty, or an
-unknown id, is a **404**; a unit the caller may see but that has no suggestions
-is a **200** with `[]`. The two are different claims and must not look alike: an
+The same faculty scope as the catalogue applies, and the same programme shelf:
+a unit in another faculty or another programme, or an unknown id, is a **404**;
+a unit the caller may see but that has no suggestions is a **200** with `[]`. The
+two are different claims and must not look alike: an
 empty list says the unit is published with no suggestions yet, and the sheet
 falls back to its free-text field. Suggestions are advisory; a topic outside the
 list is a normal request.
