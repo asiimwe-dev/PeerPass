@@ -117,6 +117,7 @@ async def create_competency(
     # student could be verified against a Medicine unit and then appear in a rail
     # that is scoped away from every Medicine student.
     faculty_scope.require_own_faculty(course_unit, user)
+    faculty_scope.require_own_program(course_unit, user)
 
     grade = await _load_grade(db, payload.grade_id)
     if course_unit.university.grading_scale_id is None:

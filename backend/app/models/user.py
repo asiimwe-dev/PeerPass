@@ -38,7 +38,7 @@ from app.models.enums import UserRole
 
 if TYPE_CHECKING:
     from app.models.competency import Competency
-    from app.models.course_unit import Subject, University
+    from app.models.course_unit import Program, Subject, University
     from app.models.tutor_profile import TutorProfile
 
 
@@ -141,6 +141,18 @@ class User(Base, TimestampMixin):
 
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
+    #: The degree programme the student is enrolled in, within their faculty.
+    #:
+    #: Nullable for two ordinary states, not as a shortcut: an account that
+    #: predates the field, and a faculty whose programmes are not loaded yet. A
+    #: null programme widens the catalogue to the whole faculty rather than
+    #: narrowing it to nothing, so the account stays usable either way.
+    program_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("programs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     #: Nullable because a student may register before choosing a faculty.
     university_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("universities.id", ondelete="SET NULL"),
@@ -199,6 +211,7 @@ class User(Base, TimestampMixin):
 
     university: Mapped[University | None] = relationship()
     faculty: Mapped[Subject | None] = relationship()
+    program: Mapped[Program | None] = relationship()
     #: `foreign_keys` is required because `competencies` points at `users` twice
     #: -- the holder and the reviewer -- leaving the join otherwise ambiguous.
     competencies: Mapped[list[Competency]] = relationship(
@@ -230,6 +243,25 @@ class User(Base, TimestampMixin):
         the raw key column by accident.
         """
         return self.faculty.public_id if self.faculty else None
+
+    @property
+    def program_public_id(self) -> uuid.UUID | None:
+        """`None` when no programme is recorded.
+
+        Same rule as the two above: reached through the relationship so a
+        response cannot pick up the raw key.
+        """
+        return self.program.public_id if self.program else None
+
+    @property
+    def program_name(self) -> str | None:
+        """The programme's name, for the profile row.
+
+        Carried on the response rather than resolved by a second catalogue call:
+        the id alone would make every profile render wait on a list it may not
+        need, and the name is stable reference data.
+        """
+        return self.program.name if self.program else None
 
     def __repr__(self) -> str:
         return f"<User {self.email}>"

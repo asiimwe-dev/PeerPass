@@ -452,12 +452,12 @@ carries a filter for sessions that never happened.
 
 | Table             | Core Attributes                                                | Purpose                                                                                |
 | ----------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **Users**         | `id`, `public_id`, `email`, `full_name`, `university_id`, `faculty_id`, `year_of_study` | Identity. Roles live in `user_roles`, because one user may be both student and tutor. `full_name` is **nullable**: an account exists between sign-up and the end of onboarding, and requiring a name at registration would put four fields on the sign-up form to get the same result — the first one lost is a student who abandons it |
+| **Users**         | `id`, `public_id`, `email`, `full_name`, `university_id`, `faculty_id`, `program_id`, `year_of_study` | Identity. Roles live in `user_roles`, because one user may be both student and tutor. `full_name` is **nullable**: an account exists between sign-up and the end of onboarding, and requiring a name at registration would put four fields on the sign-up form to get the same result — the first one lost is a student who abandons it |
 | **User_Roles**    | `user_id`, `role`                                              | Join table; composite primary key stops a role being held twice                         |
 | **Tutor_Profiles**| `user_id`, `standing`, `rating_total`, `rating_count`, `certified_minutes` | Aggregate standing, stored rather than recomputed per matching query          |
 | **Grading_Scales**| `max_points`, `competency_min_points`                          | The B+ bar as data, since pilot institutions disagree on what B+ means                 |
 | **Grades**        | `label`, `grade_points`, `grading_scale_id`                    | Grade catalogue; one label per scale                                                    |
-| **Course_Units**  | `code`, `name`, `university_id`, `subject_id`, `grade_id`      | Maps the exact university curriculum                                                    |
+| **Course_Units**  | `code`, `name`, `university_id`, `subject_id`, `program_id`, `grade_id` | Maps the exact university curriculum. `program_id` is nullable: null is the faculty-wide shelf, not a missing value |
 | **Competencies**  | `user_id`, `course_unit_id`, `grade_id`, `status`, `source`    | Validation gate requiring a verified grade at or above the scale's threshold            |
 | **Refresh_Tokens** | `id` (PK), `user_id` (FK → users), `token_hash` (unique), `expires_at`, `revoked_at`, `replaced_by_id` (FK → refresh_tokens, optional) | The handle is a JWT; only its peppered hash is stored, so a database disclosure yields no usable token. `replaced_by_id` forms the chain that makes reuse of an already-rotated token detectable. Every row is deleted on user deletion |
 
@@ -474,6 +474,12 @@ university and faculty. Programs describe what an institution offers; course
 units remain the specific records used by help requests, competencies, and
 matching. This prevents a degree name such as Medicine and Surgery from being
 mistaken for a matchable course unit.
+
+Programmes also *scope* the catalogue. Each programme publishes its own course
+units under its own codes, `users.program_id` records which shelf an account is
+on, and both links are nullable on purpose: a unit with no programme is the
+faculty-wide shelf, and an account with no programme sees the whole faculty. See
+"7.4d The faculty is the boundary; the programme is the shelf".
 
 **Help_Requests** | `tutee_id`, `course_unit_id`, `topic`, `status`                | What was asked for, before a tutor was matched                                          |
 | **Sessions**      | `tutee_id`, `tutor_id`, `course_unit_id`, `status`, `duration_minutes`, `started_at`, `ended_at`, per-party check-in/finish timestamps, `meeting_link`, `meeting_venue`, `meeting_venue_detail` | A session that happened; the source for tutor hours and certificates. Attendance is two independent check-ins and two independent finishes, one from each account; a session is live only while both parties have checked in, and completes only when both have finished |
@@ -995,6 +1001,9 @@ loophole: a tutor is proposed for a unit only by holding a competency *for that
 unit*, and a competency can only be recorded for a unit their own faculty teaches,
 so the unit's faculty and the tutor's faculty cannot diverge on any result. Naming
 a unit from another faculty therefore returns `[]` rather than leaking its tutors.
+The same applies one level in: within a faculty, a unit from another programme is
+outside the caller's shelf and returns `[]`, and the rail's unfiltered form omits a
+tutor enrolled in another programme for the same reason matching does (see 7.4d).
 
 ### 7.4b A faculty that publishes nothing is a normal state
 
@@ -1044,6 +1053,42 @@ The rail's endorsed-unit list is capped at `RAIL_ENDORSED_UNITS` and the full
 total travels beside it. A tutor endorsed in fourteen units is not summarised by
 any five of them, and the number shown has to be the whole truth for the sample
 next to it to mean anything.
+
+### 7.4d The faculty is the boundary; the programme is the shelf
+
+Within one faculty, degree programmes publish different catalogues under different
+codes. A `BIT` unit is not a weaker match for a Computer Science student -- it is
+not on their shelf at all, and every surface that acts on a course unit says so.
+
+- `users.program_id` and `course_units.program_id` are both nullable, and the two
+  nulls mean different things:
+  - a **unit with no programme** is the faculty-wide shelf, visible to every
+    programme in the faculty;
+  - an **account with no programme** predates the field, or belongs to a faculty
+    whose programmes are not loaded yet, and sees the whole faculty.
+  Neither is a mismatch, and neither may narrow to nothing. Reading null as
+  "different" would lock either state out of a catalogue it owns.
+- The catalogue applies the shelf as a scope, before the `subject_id` rendering
+  filter, so a client-supplied filter can only narrow it. `faculty_scope.visible_to`
+  is the single place that condition is written.
+- Declaring a primary module, creating a help request, asking for matches, and
+  claiming a competency all call `require_own_program` beside the existing
+  university and faculty checks. A sibling-programme unit is a 422 with the shelf
+  named, because it is a writable value the student can correct -- not the `[]` a
+  stale picker gets from discovery.
+- Matching refuses a legacy competency whose tutor is enrolled in another
+  programme. The claim endpoint refuses that row today, but a record written before
+  the rule existed must not be matchable after it. The bridge is a null on either
+  side, exactly as above.
+- A programme change inside a faculty prunes only the declared modules the new
+  shelf no longer publishes. Dropping every module would be simpler and wrong: the
+  faculty-wide and still-published units survive. A faculty change clears the
+  programme outright, because a programme belongs to one faculty.
+
+Changing a programme is allowed from Profile; changing a faculty is not. Both are
+deliberately different: the former moves a student between shelves of the
+catalogue they already own, the latter would move every academic record at once,
+so it is an operator action rather than a profile edit.
 
 ### 7.5 The decision is the student's, and the gate is re-derived
 

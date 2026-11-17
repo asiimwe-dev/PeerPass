@@ -103,6 +103,14 @@ class UpdateProfileRequest(RequestSchema):
     )
     university_id: uuid.UUID | None = None
     faculty_id: uuid.UUID | None = None
+    program_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The degree programme the student is enrolled in. Must belong to the "
+            "university and faculty the account ends this request with; changing "
+            "faculty clears it unless a new one is sent alongside."
+        ),
+    )
     year_of_study: int | None = Field(default=None, ge=1, le=6)
     academic_data_consented: bool | None = Field(
         default=None,
@@ -144,6 +152,9 @@ class UserResponse(OrmSchema):
     faculty_id: uuid.UUID | None = Field(
         default=None, validation_alias="faculty_public_id"
     )
+    program_id: uuid.UUID | None = Field(
+        default=None, validation_alias="program_public_id"
+    )
     year_of_study: int | None = None
     is_active: bool
     created_at: datetime
@@ -168,6 +179,11 @@ class CurrentUserResponse(OrmSchema):
     faculty_id: uuid.UUID | None = Field(
         default=None, validation_alias="faculty_public_id"
     )
+    program_id: uuid.UUID | None = Field(
+        default=None, validation_alias="program_public_id"
+    )
+    #: Read through the relationship so the Profile row needs no second lookup.
+    program_name: str | None = None
     year_of_study: int | None = None
     academic_data_consented_at: datetime | None = None
     primary_course_unit_ids: list[uuid.UUID] = Field(default_factory=list)

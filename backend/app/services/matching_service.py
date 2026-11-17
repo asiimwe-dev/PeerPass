@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -54,6 +54,7 @@ async def create_help_request(
     course_unit = await _load_course_unit(db, payload.course_unit_id)
     faculty_scope.require_own_university(course_unit, user)
     faculty_scope.require_own_faculty(course_unit, user)
+    faculty_scope.require_own_program(course_unit, user)
 
     request = HelpRequest(
         tutee_id=user.id,
@@ -355,6 +356,7 @@ async def _match_for_unit(
     target = await _load_course_unit(db, course_unit_id)
     faculty_scope.require_own_university(target, user)
     faculty_scope.require_own_faculty(target, user)
+    faculty_scope.require_own_program(target, user)
 
     candidates, exclusions, widened = await _search_candidates(
         db,
@@ -408,7 +410,13 @@ async def _search_candidates(
     course_unit: CourseUnit,
     widen_to_subject: bool,
 ) -> tuple[list[MatchCandidate], list[MatchExclusion], bool]:
-    """Collect eligible tutors for the exact unit, or a subject fallback."""
+    """Collect eligible tutors for the exact unit, or a subject fallback.
+
+    The widened set goes through `faculty_scope.visible_to` rather than taking
+    every unit the subject owns. A subject spans programmes, so an unfiltered
+    widening would hand a Computing student the tutors of the other programmes'
+    shelves -- courses the exact search refuses to let them ask about.
+    """
     exact_candidates, exact_exclusions = await _search_candidates_for_units(
         db,
         user=user,
@@ -418,9 +426,12 @@ async def _search_candidates(
         return exact_candidates, exact_exclusions, False
 
     result = await db.execute(
-        select(CourseUnit.id).where(
-            CourseUnit.university_id == course_unit.university_id,
-            CourseUnit.subject_id == course_unit.subject_id,
+        faculty_scope.visible_to(
+            select(CourseUnit.id).where(
+                CourseUnit.university_id == course_unit.university_id,
+                CourseUnit.subject_id == course_unit.subject_id,
+            ),
+            user,
         )
     )
     subject_unit_ids = set(result.scalars().all())
@@ -470,10 +481,22 @@ async def _search_candidates_for_units(
                 user_roles.c.role == UserRole.TUTOR.value,
             ),
         )
+        # Joined for the programme check below, not to read anything from it:
+        # the tutor's own programme and the unit's must line up unless either
+        # side has none. Competencies claimed before programmes existed can sit
+        # across the shelf, and matching them would quietly undo the rule that
+        # claim validation now enforces.
+        .join(User, User.id == Competency.user_id)
+        .join(CourseUnit, CourseUnit.id == Competency.course_unit_id)
         .where(
             Competency.course_unit_id.in_(list(course_units)),
             # The caller cannot be a candidate for their own request.
             Competency.user_id != user.id,
+            or_(
+                CourseUnit.program_id.is_(None),
+                User.program_id.is_(None),
+                CourseUnit.program_id == User.program_id,
+            ),
         )
         .options(
             selectinload(Competency.user).selectinload(User.tutor_profile),
@@ -488,6 +511,7 @@ async def _search_candidates_for_units(
             .selectinload(CourseUnit.university)
             .selectinload(University.grading_scale),
             selectinload(Competency.course_unit).selectinload(CourseUnit.subject),
+            selectinload(Competency.course_unit).selectinload(CourseUnit.program),
         )
         # `id` breaks a tie `created_at` alone leaves open, because the dedup
         # below keeps the *first* row it sees for a tutor and that row has to be

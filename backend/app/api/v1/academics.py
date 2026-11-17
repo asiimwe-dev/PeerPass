@@ -137,14 +137,28 @@ async def list_faculties(
 async def list_programs(
     university_id: uuid.UUID,
     db: DatabaseSession,
+    faculty_id: uuid.UUID | None = None,
 ) -> list[ProgramResponse]:
-    """Every seeded program for a university, ordered by faculty and name."""
-    result = await db.execute(
+    """Every seeded programme for a university, optionally one faculty's.
+
+    `faculty_id` is what the wizard uses: it has just asked for a faculty and
+    needs that faculty's programmes, not the whole institution's. It only
+    narrows the university's list, which is already public, so a caller who
+    leaves it out is not reaching anything they could not reach with it.
+    """
+    query = (
         select(Program)
         .options(selectinload(Program.university), selectinload(Program.faculty))
         .where(Program.university_id == await _university_uuid(db, university_id))
         .order_by(Program.faculty_id, Program.name)
     )
+    if faculty_id is not None:
+        faculty_uuid = await _subject_uuid(db, faculty_id)
+        if faculty_uuid is None:
+            return []
+        query = query.where(Program.faculty_id == faculty_uuid)
+
+    result = await db.execute(query)
     return [ProgramResponse.model_validate(row) for row in result.scalars()]
 
 
@@ -180,6 +194,7 @@ async def list_course_units(
             selectinload(CourseUnit.university),
             selectinload(CourseUnit.subject),
             selectinload(CourseUnit.grade),
+            selectinload(CourseUnit.program),
         ),
         caller.user,
     )

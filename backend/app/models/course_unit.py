@@ -129,6 +129,7 @@ class Program(Base, TimestampMixin):
 
     university: Mapped[University] = relationship(back_populates="programs")
     faculty: Mapped[Subject] = relationship(back_populates="programs")
+    course_units: Mapped[list[CourseUnit]] = relationship(back_populates="program")
 
     @property
     def university_public_id(self) -> uuid.UUID:
@@ -178,6 +179,22 @@ class CourseUnit(Base, TimestampMixin):
         index=True,
     )
 
+    #: The programme whose catalogue publishes this unit.
+    #:
+    #: Nullable on purpose, and the null has a meaning rather than "not filled
+    #: in yet": a unit every programme in the faculty takes under one code (a
+    #: communication-skills course, say) belongs to the faculty and not to one
+    #: degree. `faculty_scope` reads null as visible to the whole faculty.
+    #:
+    #: `RESTRICT` because a programme with a catalogue must not be deleted out
+    #: from under the units: that would silently move courses to "faculty-wide"
+    #: instead of refusing the deletion.
+    program_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("programs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
     #: Required rather than optional, and that is what makes the per-university
     #: code constraint above sound: a composite unique index treats NULLs as
     #: distinct, so a nullable university would let two unscoped units share a
@@ -198,6 +215,7 @@ class CourseUnit(Base, TimestampMixin):
 
     subject: Mapped[Subject | None] = relationship(back_populates="course_units")
     university: Mapped[University] = relationship(back_populates="course_units")
+    program: Mapped[Program | None] = relationship(back_populates="course_units")
     grade: Mapped[Grade | None] = relationship(back_populates="course_units")
     #: `passive_deletes` because the foreign key is already ON DELETE CASCADE,
     #: so the database will remove these without the ORM loading them first.
@@ -223,6 +241,10 @@ class CourseUnit(Base, TimestampMixin):
     @property
     def subject_public_id(self) -> uuid.UUID | None:
         return self.subject.public_id if self.subject else None
+
+    @property
+    def program_public_id(self) -> uuid.UUID | None:
+        return self.program.public_id if self.program else None
 
     @property
     def grade_public_id(self) -> uuid.UUID | None:

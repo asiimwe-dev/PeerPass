@@ -189,10 +189,11 @@ async def test_the_catalogue_offers_only_your_own_faculty(
 ) -> None:
     """The reported bug, at its source.
 
-    A Computing student is offered all three Computing units and none of the
-    Science ones. Not "the client filters them out" -- the endpoint never returns
-    another faculty's units at all, so a client that forgot to filter would still
-    be correct.
+    A Computing student is offered every Computing unit and none of the Science
+    ones. Not "the client filters them out" -- the endpoint never returns another
+    faculty's units at all, so a client that forgot to filter would still be
+    correct. The account has no programme, which is the widest the faculty scope
+    gets: the whole catalogue.
     """
     body, _ = await _in_faculty(
         committed_env, pilot, pilot["own"], "bit.student@must.ac.ug"
@@ -200,7 +201,7 @@ async def test_the_catalogue_offers_only_your_own_faculty(
 
     units = (await committed_env.client.get(UNITS_URL, headers=bearer(body))).json()
 
-    assert len(units) == 63
+    assert len(units) == 62
 
 
 async def test_a_faculty_with_no_course_units_is_offered_none(
